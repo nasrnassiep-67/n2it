@@ -32,6 +32,8 @@ targets:
         CFBundleDisplayName: N2IT Phone
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSMicrophoneUsageDescription: N2IT Phone needs the microphone for calls.
         NSContactsUsageDescription: N2IT Phone shows your contacts for dialling.
         UIBackgroundModes: [audio, voip]
