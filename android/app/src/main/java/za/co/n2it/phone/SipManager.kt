@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.linphone.core.*
+import org.linphone.core.Account as LpAccount
 
 data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean)
 data class RecentCall(val number: String, val time: Long, val incoming: Boolean, val missed: Boolean)
@@ -29,8 +30,9 @@ object SipManager {
     val hasVoicemail: StateFlow<Boolean> = _voicemail
 
     private val listener = object : CoreListenerStub() {
-        override fun onAccountRegistrationStateChanged(core: Core, account: Account, state: RegistrationState, message: String) {
+        override fun onAccountRegistrationStateChanged(core: Core, account: LpAccount, state: RegistrationState, message: String) {
             _registered.value = state == RegistrationState.Ok
+            if (state == RegistrationState.Ok) subscribeVoicemail()
             _status.value = when (state) {
                 RegistrationState.Ok -> "Registered"
                 RegistrationState.Progress -> "Registering…"
@@ -59,8 +61,13 @@ object SipManager {
             }
         }
 
-        override fun onMessageWaitingIndicationChanged(core: Core, event: Event, mwi: MessageWaitingIndication) {
-            _voicemail.value = mwi.hasMessageWaiting()
+        // PBX NOTIFY for message-summary: "Messages-Waiting: yes" / "Voice-Message: 2/0 (0/0)"
+        override fun onNotifyReceived(core: Core, event: Event, notifiedEvent: String, body: Content) {
+            if (!notifiedEvent.equals("message-summary", true)) return
+            val text = body.utf8Text ?: return
+            val waiting = Regex("Messages-Waiting:\\s*yes", RegexOption.IGNORE_CASE).containsMatchIn(text)
+            val newCount = Regex("Voice-Message:\\s*(\\d+)/", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            _voicemail.value = waiting || newCount > 0
         }
     }
 
@@ -87,9 +94,20 @@ object SipManager {
         server.transport = when (acc.transport) { "TCP" -> TransportType.Tcp; "TLS" -> TransportType.Tls; else -> TransportType.Udp }
         params.serverAddress = server
         params.isRegisterEnabled = true
-        params.mwiServerAddress = params.identityAddress
         val account = core.createAccount(params)
         core.addAuthInfo(auth); core.addAccount(account); core.defaultAccount = account
+    }
+
+    private var mwiSub: Event? = null
+
+    /** Manual SUBSCRIBE for voicemail (message-waiting) notifications. */
+    private fun subscribeVoicemail() {
+        val addr = core.defaultAccount?.params?.identityAddress ?: return
+        mwiSub?.terminate()
+        mwiSub = core.createSubscribe(addr, "message-summary", 3600).also {
+            it.addCustomHeader("Accept", "application/simple-message-summary")
+            it.sendSubscribe(null)
+        }
     }
 
     fun signOut(context: Context) {
