@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>N2IT Phone: open iOS softphone framework</title>
+<meta name="description" content="A multi-tenant SwiftUI softphone for iOS with SIP, CallKit, VoIP push, contacts and voicemail.">
+<style>
+:root{--bg:#fff;--fg:#14181f;--mute:#5b6572;--card:#f3f5f8;--accent:#0b6bcb;--line:#e2e6ec}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1318;--fg:#e8ecf1;--mute:#98a2b0;--card:#1a2029;--accent:#5aa9ff;--line:#2a323d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,sans-serif}
+main{max-width:860px;margin:0 auto;padding:48px 16px}
+h1{font-size:2.2rem;margin:0 0 8px}h2{margin-top:40px;border-bottom:1px solid var(--line);padding-bottom:6px}
+p.lead{color:var(--mute);font-size:1.15rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.card{background:var(--card);border-radius:10px;padding:14px 16px}.card b{display:block}
+pre{background:var(--card);padding:14px;border-radius:10px;overflow-x:auto;font-size:.9rem}
+code{font-family:ui-monospace,monospace}a{color:var(--accent)}
+.flow li{margin:4px 0}footer{margin-top:48px;color:var(--mute);font-size:.9rem}
+</style>
+</head>
+<body><main>
+<h1>N2IT Phone</h1>
+<p class="lead">A multi-tenant iOS softphone framework in SwiftUI, modelled on Acrobits Softphone. One app, many clients: each connects to <code>&lt;client&gt;.voip.n2it.co.za</code>.</p>
+
+<h2>Features</h2>
+<div class="grid">
+<div class="card"><b>SIP calling</b>Registration, outgoing and incoming calls over UDP, TCP or TLS using the Linphone SDK.</div>
+<div class="card"><b>Multi-tenant</b>Sign in with company code, extension and password. The PBX host is derived from the company code.</div>
+<div class="card"><b>CallKit</b>Native incoming-call screen, lock-screen answer, system audio handling.</div>
+<div class="card"><b>Background calls</b>PushKit VoIP push through a small Node gateway, so calls ring when the app is closed.</div>
+<div class="card"><b>Contacts</b>Search and dial from the iPhone address book.</div>
+<div class="card"><b>Voicemail</b>Message-waiting badge and one-tap voicemail dial.</div>
+</div>
+
+<h2>How a background call works</h2>
+<ol class="flow">
+<li>The PBX receives a call for an extension and notifies the push gateway.</li>
+<li>The gateway sends an APNs VoIP push to the phone.</li>
+<li>The app wakes and reports the call to CallKit immediately.</li>
+<li>The app re-registers with the PBX, which delivers the call.</li>
+<li>The user answers on the lock screen.</li>
+</ol>
+
+<h2>Build it</h2>
+<pre><code>brew install xcodegen
+cp Config/Secrets.example.xcconfig Config/Secrets.xcconfig   # optional dev defaults
+xcodegen &amp;&amp; open N2IT.xcodeproj</code></pre>
+<p>Requires a Mac with Xcode 15+ and a real iPhone (the simulator has no microphone).</p>
+
+<h2>Repository layout</h2>
+<pre><code>N2IT/       SwiftUI app (SipManager, CallKitManager, PushManager, views)
+gateway/    Node 18 APNs push gateway (no dependencies)
+Config/     xcconfig templates (real secrets are gitignored)
+project.yml XcodeGen project definition</code></pre>
+
+<h2>Status</h2>
+<p>Early framework. It has not yet been compile-tested against the Linphone SDK. Voicemail message playback and PBX-side push hooks are still to do. See the README for open items.</p>
+
+<footer>&copy; N2IT</footer>
+</main></body></html>

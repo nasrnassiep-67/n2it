@@ -1,0 +1,37 @@
+name: N2IT
+options:
+  bundleIdPrefix: za.co.n2it
+  deploymentTarget: { iOS: "16.0" }
+packages:
+  linphonesw:
+    url: https://gitlab.linphone.org/BC/public/linphone-sdk-swift-ios.git
+    from: 5.3.0
+targets:
+  N2IT:
+    type: application
+    platform: iOS
+    sources: [N2IT]
+    dependencies:
+      - package: linphonesw
+    configFiles:
+      Debug: Config/Secrets.xcconfig
+      Release: Config/Secrets.xcconfig
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: za.co.n2it.softphone
+      ENABLE_BITCODE: NO
+    entitlements:
+      path: N2IT/N2IT.entitlements
+      properties:
+        aps-environment: development
+    info:
+      path: N2IT/Info.plist
+      properties:
+        CFBundleDisplayName: N2IT Phone
+        UILaunchScreen: {}
+        NSMicrophoneUsageDescription: N2IT Phone needs the microphone for calls.
+        NSContactsUsageDescription: N2IT Phone shows your contacts for dialling.
+        UIBackgroundModes: [audio, voip]
+        PushGatewayHost: $(PUSH_GATEWAY_HOST)
+        SIPTenant: $(SIP_TENANT)
+        SIPUser: $(SIP_USER)
+        SIPPassword: $(SIP_PASSWORD)

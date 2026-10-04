@@ -1,0 +1,11 @@
+Config/Secrets.xcconfig
+*.xcodeproj
+.DS_Store
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+gateway/tokens.json
+node_modules/
+.env
+*.p8
+.ignore
