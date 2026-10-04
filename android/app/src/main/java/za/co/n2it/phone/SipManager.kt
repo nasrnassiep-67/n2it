@@ -62,9 +62,9 @@ object SipManager {
         }
 
         // PBX NOTIFY for message-summary: "Messages-Waiting: yes" / "Voice-Message: 2/0 (0/0)"
-        override fun onNotifyReceived(core: Core, event: Event, notifiedEvent: String, body: Content) {
+        override fun onNotifyReceived(core: Core, event: Event, notifiedEvent: String, body: Content?) {
             if (!notifiedEvent.equals("message-summary", true)) return
-            val text = body.utf8Text ?: return
+            val text = body?.utf8Text ?: return
             val waiting = Regex("Messages-Waiting:\\s*yes", RegexOption.IGNORE_CASE).containsMatchIn(text)
             val newCount = Regex("Voice-Message:\\s*(\\d+)/", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             _voicemail.value = waiting || newCount > 0
