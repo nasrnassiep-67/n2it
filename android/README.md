@@ -4,7 +4,7 @@ Kotlin + Jetpack Compose, Linphone SDK. Same behaviour as the iOS app: multi-ten
 voicemail dial + MWI badge, call screen with mute/speaker/DTMF, encrypted credential storage.
 
 ## Get a test APK
-Push to GitHub: the **Android debug APK** workflow builds it. Download `n2it-phone-debug-apk` from the run's Artifacts,
+Push to GitHub: the **Android debug APK** workflow builds it and publishes it as a release. Stable link: https://github.com/ebrahim-nassiep/n2it/releases/download/latest/n2it-phone.apk
 unzip, and install `app-debug.apk` on the phone (allow "install unknown apps").
 
 ## Build locally
