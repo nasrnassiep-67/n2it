@@ -58,7 +58,6 @@ final class SipManager: ObservableObject {
         core.callkitEnabled = true
         delegate = CoreDelegateStub(
             onCallStateChanged: { [weak self] (_, call, state, _) in self?.callChanged(call, state) },
-            onAccountRegistrationStateChanged: { [weak self] (_, _, state, msg) in self?.regChanged(state, msg) },
             onNotifyReceived: { [weak self] (_, _, name, body) in
                 guard name.lowercased() == "message-summary", let text = body?.utf8Text else { return }
                 let waiting = text.range(of: "Messages-Waiting:\\s*yes", options: [.regularExpression, .caseInsensitive]) != nil
@@ -70,7 +69,8 @@ final class SipManager: ObservableObject {
                     self?.newVoicemails = count
                     self?.hasVoicemail = waiting || count > 0
                 }
-            }
+            },
+            onAccountRegistrationStateChanged: { [weak self] (_, _, state, msg) in self?.regChanged(state, msg) }
         )
         core.addDelegate(delegate: delegate)
         try? core.start()
@@ -109,7 +109,7 @@ final class SipManager: ObservableObject {
         guard let addr = core.defaultAccount?.params?.identityAddress else { return }
         mwiSub?.terminate()
         mwiSub = try? core.createSubscribe(resource: addr, event: "message-summary", expires: 3600)
-        mwiSub?.addCustomHeader(headerName: "Accept", headerValue: "application/simple-message-summary")
+        mwiSub?.addCustomHeader(name: "Accept", value: "application/simple-message-summary")
         try? mwiSub?.sendSubscribe(body: nil)
     }
 
