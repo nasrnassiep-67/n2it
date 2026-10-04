@@ -68,6 +68,10 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         uuid = nil
     }
 
+    func sipConnected() {
+        if let id = uuid { provider.reportOutgoingCall(with: id, connectedAt: nil) }
+    }
+
     func sipEnded() {
         pendingTimeout?.cancel()
         answerWhenInvite = false

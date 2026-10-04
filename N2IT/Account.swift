@@ -25,11 +25,11 @@ struct Account {
     /// Saved settings win; first launch seeds from Secrets.xcconfig via Info.plist.
     static func load() -> Account {
         let d = UserDefaults.standard
-        let info = Bundle.main.infoDictionary ?? [:]
+        let info = d.bool(forKey: signedOutKey) ? [:] : (Bundle.main.infoDictionary ?? [:])
         return Account(
             tenant: d.string(forKey: "tenant") ?? info["SIPTenant"] as? String ?? "",
             user: d.string(forKey: "user") ?? info["SIPUser"] as? String ?? "",
-            password: d.string(forKey: "password") ?? info["SIPPassword"] as? String ?? "",
+            password: Keychain.get("password") ?? info["SIPPassword"] as? String ?? "",
             port: d.object(forKey: "port") as? Int ?? 5060,
             transport: SipTransport(rawValue: d.string(forKey: "transport") ?? "") ?? .udp,
             voicemailNumber: d.string(forKey: "voicemail") ?? "*97")
@@ -37,8 +37,20 @@ struct Account {
 
     func save() {
         let d = UserDefaults.standard
+        d.set(false, forKey: Account.signedOutKey)
         d.set(tenant, forKey: "tenant"); d.set(user, forKey: "user")
-        d.set(password, forKey: "password"); d.set(port, forKey: "port")
+        Keychain.set(password, for: "password"); d.set(port, forKey: "port")
         d.set(transport.rawValue, forKey: "transport"); d.set(voicemailNumber, forKey: "voicemail")
     }
+
+    /// Sign out: forget the account on this device.
+    static func clear() {
+        let d = UserDefaults.standard
+        d.set(true, forKey: signedOutKey)
+        ["tenant", "user", "port", "transport", "voicemail", "recents"].forEach { d.removeObject(forKey: $0) }
+        Keychain.delete("password")
+    }
+
+    /// Dev defaults from Secrets.xcconfig must not silently re-login after sign-out.
+    static var signedOutKey: String { "signedOut" }
 }

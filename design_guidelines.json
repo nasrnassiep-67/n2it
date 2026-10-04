@@ -1,0 +1,197 @@
+{
+  "app_name": "N2IT Phone",
+  "personality": "7 Dark-First Utility",
+  "personality_one_liner": "A high-performance, dark-mode command center built for instant readability and effortless telephony.",
+  "color": {
+    "surface": "#121212",
+    "onSurface": "#F5F5F5",
+    "surfaceSecondary": "#1E1E1E",
+    "onSurfaceSecondary": "#E5E5E5",
+    "surfaceTertiary": "#2D2D2D",
+    "onSurfaceTertiary": "#D4D4D4",
+    "surfaceInverse": "#FAFAFA",
+    "onSurfaceInverse": "#121212",
+    "brand": "#F97316",
+    "onBrand": "#FFFFFF",
+    "brandPrimary": "#EA580C",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#C2410C",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#431407",
+    "onBrandTertiary": "#FED7AA",
+    "success": "#22C55E",
+    "onSuccess": "#FFFFFF",
+    "warning": "#EAB308",
+    "onWarning": "#121212",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#A8A29E",
+    "onInfo": "#121212",
+    "border": "#2D2D2D",
+    "borderStrong": "#404040",
+    "divider": "#262626",
+    "muted": "#737373"
+  },
+  "typography": {
+    "displayFontFamily": "Barlow Condensed",
+    "textFontFamily": "Satoshi",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous spacing around core dialpad for ergonomics. Tight, utility-driven spacing in list views for density.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 0,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use blur on bottom tab bar to allow list content to scroll underneath seamlessly.",
+      "Apply glass overlay on the in-call screen behind the main control grid, over the blurred contact avatar.",
+      "Use glass for sticky sticky headers (like the All/Missed chip filters in Recents)."
+    ],
+    "dont's": [
+      "Never blur the actual dialpad buttons, they must be solid and high-contrast.",
+      "Do not blur list items or form inputs."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "haptics": {
+    "events": {
+      "dialpad_key_press": "light",
+      "call_button_press": "medium",
+      "end_call_press": "heavy",
+      "tab_change": "light",
+      "filter_chip_select": "light"
+    }
+  },
+  "screens": [
+    {
+      "name": "Sign In",
+      "purpose": "Multi-tenant authentication via company code, extension, and password.",
+      "states": {
+        "loading": "Spinner over disabled form.",
+        "empty": "N/A",
+        "error": "Inline text below fields, shake animation on input, red border."
+      },
+      "layout": "Full-bleed background image with a gradient scrim (top to bottom, transparent to 90% surfaceInverse, actually use dark theme so surface). Centered form container. Large primary CTA sticky above keyboard."
+    },
+    {
+      "name": "Keypad",
+      "purpose": "Primary dialing interface and connection status.",
+      "states": {
+        "loading": "Connecting state in the status pill.",
+        "empty": "Dialpad is always present.",
+        "error": "Disconnected status pill (red)."
+      },
+      "layout": "Header: Settings icon right, Registration Status pill center. Top area: Typed number display (huge condensed text), backspace button right-aligned. Middle/Bottom: 3x4 grid of circular dialpad buttons (surfaceTertiary background, pill radius). Bottom sticky: Large Success-colored (Green) call button centered."
+    },
+    {
+      "name": "Recents",
+      "purpose": "Call history log with quick dial actions.",
+      "states": {
+        "loading": "Skeleton list rows.",
+        "empty": "Icon + 'No recent calls' + instruction.",
+        "error": "Error loading history, retry CTA."
+      },
+      "layout": "Header with title. Sticky sub-header with 'All' / 'Missed' segmented control / chips. List rows: Avatar or Initials left, Name/Number center, timestamp and duration right. Missed calls use brand/error color for the name."
+    },
+    {
+      "name": "Contacts",
+      "purpose": "Directory search and favorites access.",
+      "states": {
+        "loading": "Skeleton rows.",
+        "empty": "'No contacts found' illustration + add button.",
+        "error": "Retry fetching contacts."
+      },
+      "layout": "Sticky search bar at top. Horizontal scroll view for Favorites (avatars in circles with names). Vertical list below for All Contacts with alphabetical section headers. Tap row to call."
+    },
+    {
+      "name": "Voicemail",
+      "purpose": "Manage and playback recorded voicemails.",
+      "states": {
+        "loading": "Skeleton rows.",
+        "empty": "Icon + 'No new voicemails'.",
+        "error": "Retry fetch."
+      },
+      "layout": "List of voicemails showing caller name, duration, timestamp. Expanding row reveals playback slider, play/pause, and quick-call button."
+    },
+    {
+      "name": "Incoming Call",
+      "purpose": "Full-screen alert for an incoming SIP call.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Full screen overlay. Large avatar top center. Caller Name/Number below. Pulsing status text. Bottom 1/3: Two large buttons side by side (Decline in Red, Accept in Green) or a slide-to-answer bar."
+    },
+    {
+      "name": "In-Call",
+      "purpose": "Active call management.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Blurred background of caller avatar. Top: Caller info and active timer. Center: 3x2 grid of circular controls (Mute, Keypad, Speakerphone, Add Call, Hold, Transfer) with icons + labels. Bottom: Large Error-colored (Red) End Call button."
+    }
+  ],
+  "images": {
+    "sign_in_bg": {
+      "url": "https://images.unsplash.com/photo-1510507024924-fc3847d49ae2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjBidWlsZGluZyUyMGFyY2hpdGVjdHVyYWwlMjBwaG90b2dyYXBoeSUyMGRhcmt8ZW58MHx8fGJsYWNrfDE3OTExMDg0ODV8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Dark modern office building architecture"
+    },
+    "avatar_1": {
+      "url": "https://images.unsplash.com/photo-1560250097-0b93528c311a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwxfHxidXNpbmVzcyUyMHBlcnNvbiUyMHByb2Zlc3Npb25hbCUyMGhlYWRzaG90fGVufDB8fHx8MTc5MTEwODQ4NXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Professional business man"
+    },
+    "avatar_2": {
+      "url": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwzfHxidXNpbmVzcyUyMHBlcnNvbiUyMHByb2Zlc3Npb25hbCUyMGhlYWRzaG90fGVufDB8fHx8MTc5MTEwODQ4NXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Professional business woman"
+    },
+    "avatar_3": {
+      "url": "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTJ8MHwxfHNlYXJjaHwyfHxidXNpbmVzcyUyMHBlcnNvbiUyMHByb2Zlc3Npb25hbCUyMGhlYWRzaG90fGVufDB8fHx8MTc5MTEwODQ4NXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Professional business woman in focus"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Design follows Personality 7 (Dark-First Utility), focusing on a high-contrast, tactical aesthetic suitable for a premium business softphone.",
+    "BANNED: Any use of blue, indigo, or purple. The primary accent is Orange/Amber (brand), while standard Green (success) and Red (error) are STRICTLY reserved for Call and End/Decline actions respectively.",
+    "Typography: Use Barlow Condensed for numerical data (dialpad inputs, phone numbers, call timers) to maximize readability at large sizes, and Satoshi for all standard UI labels/body.",
+    "Dialpad Buttons: Keys must be circular (pill radius). Ensure large touch targets (at least 64x64) and ample spacing. Dialpad must NOT be hidden behind sub-menus.",
+    "In-Call & Incoming screens: Apply a strong gradient scrim (transparent to dense surface color) over the blurred caller avatar backdrop to ensure the foreground text/buttons exceed WCAG AA contrast.",
+    "Implement haptics using expo-haptics across all keypresses, especially on the dialpad to mimic physical device feedback.",
+    "Settings should be accessed via a header icon in the Keypad tab, saving bottom-bar space for the 4 core telephony tabs (Keypad, Recents, Contacts, Voicemail)."
+  ]
+}

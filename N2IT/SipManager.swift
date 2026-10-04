@@ -9,8 +9,8 @@ struct CallInfo: Identifiable {
     let incoming: Bool
 }
 
-struct RecentCall: Identifiable {
-    let id = UUID()
+struct RecentCall: Identifiable, Codable {
+    var id = UUID()
     let number: String
     let date: Date
     let incoming: Bool
@@ -25,14 +25,32 @@ final class SipManager: ObservableObject {
     @Published var activeCall: CallInfo?
     @Published var muted = false
     @Published var speaker = false
-    @Published var recents: [RecentCall] = []
+    @Published var recents: [RecentCall] = [] { didSet { saveRecents() } }
     @Published var newVoicemails = 0
     @Published var oldVoicemails = 0
 
     private var core: Core!
     private var delegate: CoreDelegateStub!
 
+    private func saveRecents() {
+        if let d = try? JSONEncoder().encode(Array(recents.prefix(100))) { UserDefaults.standard.set(d, forKey: "recents") }
+    }
+
+    /// Forget the account: unregister push, drop SIP account, clear stored data.
+    func signOut() {
+        PushManager.shared.unregister()
+        core?.clearAccounts()
+        core?.clearAllAuthInfo()
+        Account.clear()
+        recents = []
+        registered = false
+        registration = "Not registered"
+        newVoicemails = 0; oldVoicemails = 0
+    }
+
     private init() {
+        if let d = UserDefaults.standard.data(forKey: "recents"),
+           let r = try? JSONDecoder().decode([RecentCall].self, from: d) { recents = r }
         try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat)
         guard let c = try? Factory.Instance.createCore(configPath: "", factoryConfigPath: "", systemContext: nil) else { return }
         core = c
@@ -146,6 +164,9 @@ final class SipManager: ObservableObject {
                     let missed = incoming && call.log?.status == .Missed
                     self.recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed), at: 0)
                 }
+            case .StreamsRunning where !incoming:
+                CallKitManager.shared.sipConnected()
+                self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
             default:
                 self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
             }

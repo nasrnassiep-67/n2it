@@ -1,0 +1,6 @@
+// Optional dev defaults; the file is gitignored and may be absent.
+SIP_TENANT =
+SIP_USER =
+SIP_PASSWORD =
+PUSH_GATEWAY_HOST = push.voip.n2it.co.za
+#include? "Secrets.xcconfig"

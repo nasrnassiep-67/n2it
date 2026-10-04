@@ -17,7 +17,7 @@ struct RootView: View {
             KeypadView().tabItem { Label("Keypad", systemImage: "circle.grid.3x3.fill") }
             VoicemailView().tabItem { Label("Voicemail", systemImage: "recordingtape") }
                 .badge(sip.newVoicemails)
-            SettingsView().tabItem { Label("Settings", systemImage: "gearshape") }
+            SettingsView(onSignOut: { loggedIn = false }).tabItem { Label("Settings", systemImage: "gearshape") }
         }
     }
 }
@@ -89,6 +89,8 @@ struct RecentsView: View {
 
 struct CallView: View {
     @EnvironmentObject var sip: SipManager
+    @State private var showPad = false
+    @State private var dtmf = ""
 
     var body: some View {
         VStack(spacing: 28) {
@@ -100,6 +102,20 @@ struct CallView: View {
                 HStack(spacing: 40) {
                     toggle("mic.slash.fill", on: sip.muted) { sip.toggleMute() }
                     toggle("speaker.wave.3.fill", on: sip.speaker) { sip.toggleSpeaker() }
+                    toggle("circle.grid.3x3.fill", on: showPad) { showPad.toggle() }
+                }
+                if showPad {
+                    Text(dtmf).font(.title3).frame(height: 24)
+                    ForEach([["1","2","3"],["4","5","6"],["7","8","9"],["*","0","#"]], id: \.self) { row in
+                        HStack(spacing: 20) {
+                            ForEach(row, id: \.self) { k in
+                                Button { dtmf += k; sip.sendDigit(Character(k)) } label: {
+                                    Text(k).font(.title2).frame(width: 56, height: 56)
+                                        .background(Color(.secondarySystemBackground)).clipShape(Circle())
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
                 }
             }
             HStack(spacing: 60) {
@@ -141,6 +157,7 @@ struct CallView: View {
 
 struct SettingsView: View {
     @EnvironmentObject var sip: SipManager
+    var onSignOut: () -> Void
     @State private var acc = Account.load()
 
     var body: some View {
@@ -158,6 +175,9 @@ struct SettingsView: View {
                     }
                 }
                 Button("Save & Register") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken() }
+                Section {
+                    Button("Sign out", role: .destructive) { sip.signOut(); onSignOut() }
+                }
             }.navigationTitle("Settings")
         }
     }

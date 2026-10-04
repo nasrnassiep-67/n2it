@@ -14,8 +14,8 @@ targets:
     dependencies:
       - package: linphonesw
     configFiles:
-      Debug: Config/Secrets.xcconfig
-      Release: Config/Secrets.xcconfig
+      Debug: Config/Base.xcconfig
+      Release: Config/Base.xcconfig
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: za.co.n2it.softphone
       ENABLE_BITCODE: NO
