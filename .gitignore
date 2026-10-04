@@ -9,3 +9,7 @@ node_modules/
 .env
 *.p8
 .ignore
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
