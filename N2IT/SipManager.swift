@@ -27,7 +27,7 @@ final class SipManager: ObservableObject {
     @Published var speaker = false
     @Published var recents: [RecentCall] = [] { didSet { saveRecents() } }
     @Published var newVoicemails = 0
-    @Published var oldVoicemails = 0
+    @Published var hasVoicemail = false
 
     private var core: Core!
     private var delegate: CoreDelegateStub!
@@ -45,7 +45,7 @@ final class SipManager: ObservableObject {
         recents = []
         registered = false
         registration = "Not registered"
-        newVoicemails = 0; oldVoicemails = 0
+        newVoicemails = 0; hasVoicemail = false
     }
 
     private init() {
@@ -59,11 +59,16 @@ final class SipManager: ObservableObject {
         delegate = CoreDelegateStub(
             onCallStateChanged: { [weak self] (_, call, state, _) in self?.callChanged(call, state) },
             onAccountRegistrationStateChanged: { [weak self] (_, _, state, msg) in self?.regChanged(state, msg) },
-            onMessageWaitingIndicationChanged: { [weak self] (_, _, mwi) in
-                let v = mwi.getSummary(contextClass: .Voice)
+            onNotifyReceived: { [weak self] (_, _, name, body) in
+                guard name.lowercased() == "message-summary", let text = body?.utf8Text else { return }
+                let waiting = text.range(of: "Messages-Waiting:\\s*yes", options: [.regularExpression, .caseInsensitive]) != nil
+                var count = 0
+                if let r = text.range(of: "Voice-Message:\\s*\\d+", options: [.regularExpression, .caseInsensitive]) {
+                    count = Int(text[r].filter(\.isNumber)) ?? 0
+                }
                 DispatchQueue.main.async {
-                    self?.newVoicemails = Int(v?.nbNew ?? 0)
-                    self?.oldVoicemails = Int(v?.nbOld ?? 0)
+                    self?.newVoicemails = count
+                    self?.hasVoicemail = waiting || count > 0
                 }
             }
         )
@@ -88,8 +93,6 @@ final class SipManager: ObservableObject {
             try server.setTransport(newValue: acc.transport.linphone)
             try params.setServeraddress(newValue: server)
             params.registerEnabled = true
-            // Subscribe to message-waiting (MWI) NOTIFYs for the voicemail badge.
-            try params.setMwiserveraddress(newValue: params.identityAddress)
             let account = try core.createAccount(params: params)
             core.addAuthInfo(info: auth)
             try core.addAccount(account: account)
@@ -99,11 +102,22 @@ final class SipManager: ObservableObject {
         }
     }
 
+    private var mwiSub: Event?
+
+    /// Manual SUBSCRIBE for voicemail (message-waiting) notifications.
+    private func subscribeVoicemail() {
+        guard let addr = core.defaultAccount?.params?.identityAddress else { return }
+        mwiSub?.terminate()
+        mwiSub = try? core.createSubscribe(resource: addr, event: "message-summary", expires: 3600)
+        mwiSub?.addCustomHeader(headerName: "Accept", headerValue: "application/simple-message-summary")
+        try? mwiSub?.sendSubscribe(body: nil)
+    }
+
     private func regChanged(_ state: RegistrationState, _ msg: String) {
         DispatchQueue.main.async {
             self.registered = state == .Ok
             switch state {
-            case .Ok: self.registration = "Registered"
+            case .Ok: self.registration = "Registered"; self.subscribeVoicemail()
             case .Progress: self.registration = "Registering…"
             case .Failed: self.registration = "Failed: \(msg)"
             default: self.registration = "Not registered"
@@ -130,7 +144,7 @@ final class SipManager: ObservableObject {
     /// Re-register after a VoIP push woke the app.
     func wake() { core?.refreshRegisters() }
 
-    func audioSession(active: Bool) { core?.activateAudioSession(actived: active) }
+    func audioSession(active: Bool) { core?.activateAudioSession(activated: active) }
     func setMuted(_ m: Bool) { core.micEnabled = !m; DispatchQueue.main.async { self.muted = m } }
     func sendDigit(_ d: Character) { try? core.currentCall?.sendDtmf(dtmf: CChar(d.asciiValue ?? 48)) }
 
@@ -161,7 +175,7 @@ final class SipManager: ObservableObject {
                 self.speaker = false
                 self.muted = false
                 if state == .End || state == .Error {
-                    let missed = incoming && call.log?.status == .Missed
+                    let missed = incoming && call.callLog?.status == .Missed
                     self.recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed), at: 0)
                 }
             case .StreamsRunning where !incoming:

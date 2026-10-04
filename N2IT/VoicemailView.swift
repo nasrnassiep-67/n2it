@@ -7,12 +7,11 @@ struct VoicemailView: View {
         NavigationStack {
             VStack(spacing: 24) {
                 Image(systemName: "recordingtape").font(.system(size: 56)).foregroundStyle(.secondary)
-                if sip.newVoicemails > 0 {
-                    Text("\(sip.newVoicemails) new message\(sip.newVoicemails == 1 ? "" : "s")").font(.title2)
+                if sip.hasVoicemail {
+                    Text(sip.newVoicemails > 0 ? "\(sip.newVoicemails) new message\(sip.newVoicemails == 1 ? "" : "s")" : "You have new voicemail").font(.title2)
                 } else {
                     Text("No new messages").font(.title2).foregroundStyle(.secondary)
                 }
-                if sip.oldVoicemails > 0 { Text("\(sip.oldVoicemails) saved").foregroundStyle(.secondary) }
                 Button {
                     sip.call(Account.load().voicemailNumber)
                 } label: {

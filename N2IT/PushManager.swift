@@ -8,6 +8,14 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
     private var registry: PKPushRegistry?
     private(set) var token: String?
 
+    private static var isSandbox: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+
     func start() {
         guard registry == nil else { return }
         registry = PKPushRegistry(queue: .main)
@@ -33,11 +41,7 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
         let body: [String: Any] = [
             "tenant": acc.tenant.lowercased(), "user": acc.user, "password": acc.password,
             "token": token, "bundle": Bundle.main.bundleIdentifier ?? "",
-            "sandbox": { () -> Bool in #if DEBUG
-                return true
-            #else
-                return false
-            #endif }()
+            "sandbox": Self.isSandbox
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req).resume()

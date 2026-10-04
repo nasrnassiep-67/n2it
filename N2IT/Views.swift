@@ -16,7 +16,7 @@ struct RootView: View {
             RecentsView().tabItem { Label("Recents", systemImage: "clock") }
             KeypadView().tabItem { Label("Keypad", systemImage: "circle.grid.3x3.fill") }
             VoicemailView().tabItem { Label("Voicemail", systemImage: "recordingtape") }
-                .badge(sip.newVoicemails)
+                .badge(sip.hasVoicemail ? max(sip.newVoicemails, 1) : 0)
             SettingsView(onSignOut: { loggedIn = false }).tabItem { Label("Settings", systemImage: "gearshape") }
         }
     }
