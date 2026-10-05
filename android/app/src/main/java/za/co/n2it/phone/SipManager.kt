@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.linphone.core.*
 import org.linphone.core.Account as LpAccount
 
-data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean)
+data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false)
 data class RecentCall(val number: String, val time: Long, val incoming: Boolean, val missed: Boolean)
 
 object SipManager {
@@ -57,7 +57,7 @@ object SipManager {
                     _call.value = CallInfo(number, state, true)
                     PhoneService.notifyIncoming(appContext, number)
                 }
-                else -> _call.value = CallInfo(number, state, incoming)
+                else -> publish(call)
             }
         }
 
@@ -69,6 +69,13 @@ object SipManager {
             val newCount = Regex("Voice-Message:\\s*(\\d+)/", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
             _voicemail.value = waiting || newCount > 0
         }
+    }
+
+    /** Mirror the current call into UI state, including hold and consult flags. */
+    private fun publish(call: Call) {
+        val held = call.state == Call.State.Paused || call.state == Call.State.Pausing
+        _call.value = CallInfo(call.remoteAddress.username ?: "Unknown", call.state, call.dir == Call.Dir.Incoming,
+            held, core.callsNb > 1)
     }
 
     /** Safe to call repeatedly; the service and the activity both call it. */
@@ -93,6 +100,8 @@ object SipManager {
         val server = f.createAddress("sip:${acc.domain}:${acc.port}")!!
         server.transport = when (acc.transport) { "TCP" -> TransportType.Tcp; "TLS" -> TransportType.Tls; else -> TransportType.Udp }
         params.serverAddress = server
+        core.mediaEncryption = if (acc.srtp) MediaEncryption.SRTP else MediaEncryption.None
+        core.isMediaEncryptionMandatory = acc.srtp
         params.isRegisterEnabled = true
         val account = core.createAccount(params)
         core.addAuthInfo(auth); core.addAccount(account); core.defaultAccount = account
@@ -130,5 +139,33 @@ object SipManager {
         val want = if (!_speaker.value) AudioDevice.Type.Speaker else AudioDevice.Type.Earpiece
         core.audioDevices.firstOrNull { it.type == want }?.let { core.outputAudioDevice = it; _speaker.value = !_speaker.value }
     }
+    fun toggleHold() {
+        val c = core.currentCall ?: core.calls.firstOrNull { it.state == Call.State.Paused } ?: return
+        if (c.state == Call.State.Paused) c.resume() else c.pause()
+    }
+
+    /** Blind transfer: hand the current call to [number] and drop out. */
+    fun blindTransfer(number: String) {
+        val c = core.currentCall ?: core.calls.firstOrNull() ?: return
+        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
+        val target = Factory.instance().createAddress(if ('@' in number) "sip:$number" else "sip:$number@$domain") ?: return
+        c.transferTo(target)
+    }
+
+    /** Attended transfer, step 1: put the caller on hold and ring [number]. */
+    fun consult(number: String) {
+        core.currentCall?.pause()
+        call(number)
+    }
+
+    /** Attended transfer, step 2: connect the held caller to the consulted party. */
+    fun completeTransfer() {
+        val calls = core.calls
+        if (calls.size < 2) return
+        val held = calls.firstOrNull { it.state == Call.State.Paused } ?: return
+        val other = calls.firstOrNull { it !== held } ?: return
+        held.transferToAnother(other)
+    }
+
     fun refresh() { if (started) core.refreshRegisters() }
 }

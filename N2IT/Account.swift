@@ -16,6 +16,7 @@ struct Account {
     var port: Int
     var transport: SipTransport
     var voicemailNumber: String
+    var srtp: Bool
 
     static let baseDomain = "voip.n2it.co.za"
     /// Each client has its own PBX at <tenant>.voip.n2it.co.za
@@ -30,9 +31,10 @@ struct Account {
             tenant: d.string(forKey: "tenant") ?? info["SIPTenant"] as? String ?? "",
             user: d.string(forKey: "user") ?? info["SIPUser"] as? String ?? "",
             password: Keychain.get("password") ?? info["SIPPassword"] as? String ?? "",
-            port: d.object(forKey: "port") as? Int ?? 5060,
-            transport: SipTransport(rawValue: d.string(forKey: "transport") ?? "") ?? .udp,
-            voicemailNumber: d.string(forKey: "voicemail") ?? "*97")
+            port: d.object(forKey: "port") as? Int ?? 5061,
+            transport: SipTransport(rawValue: d.string(forKey: "transport") ?? "") ?? .tls,
+            voicemailNumber: d.string(forKey: "voicemail") ?? "*97",
+            srtp: d.object(forKey: "srtp") as? Bool ?? true)
     }
 
     func save() {
@@ -40,14 +42,14 @@ struct Account {
         d.set(false, forKey: Account.signedOutKey)
         d.set(tenant, forKey: "tenant"); d.set(user, forKey: "user")
         Keychain.set(password, for: "password"); d.set(port, forKey: "port")
-        d.set(transport.rawValue, forKey: "transport"); d.set(voicemailNumber, forKey: "voicemail")
+        d.set(transport.rawValue, forKey: "transport"); d.set(voicemailNumber, forKey: "voicemail"); d.set(srtp, forKey: "srtp")
     }
 
     /// Sign out: forget the account on this device.
     static func clear() {
         let d = UserDefaults.standard
         d.set(true, forKey: signedOutKey)
-        ["tenant", "user", "port", "transport", "voicemail", "recents"].forEach { d.removeObject(forKey: $0) }
+        ["tenant", "user", "port", "transport", "voicemail", "srtp", "recents"].forEach { d.removeObject(forKey: $0) }
         Keychain.delete("password")
     }
 

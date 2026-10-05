@@ -216,6 +216,10 @@ fun SettingsTab(onSignOut: () -> Unit) {
                 FilterChip(selected = acc.transport == t, onClick = { acc = acc.copy(transport = t) }, label = { Text(t) })
             }
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Encrypt call audio (SRTP)", Modifier.weight(1f))
+            Switch(acc.srtp, { acc = acc.copy(srtp = it) })
+        }
         Button(onClick = { Account.save(ctx, acc); SipManager.configure(acc) }, modifier = Modifier.fillMaxWidth()) { Text("Save & Register") }
         TextButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) { Text("Sign out", color = Red) }
     }
@@ -226,13 +230,15 @@ fun CallScreen(call: CallInfo) {
     val muted by SipManager.muted.collectAsState()
     val speaker by SipManager.speaker.collectAsState()
     var pad by remember { mutableStateOf(false) }
-    val connected = call.state == org.linphone.core.Call.State.StreamsRunning || call.state == org.linphone.core.Call.State.Connected
+    var transferTo by remember { mutableStateOf<Boolean?>(null) }  // null = closed, false = blind, true = attended
+    val connected = call.onHold || call.state == org.linphone.core.Call.State.StreamsRunning || call.state == org.linphone.core.Call.State.Connected
     val ringingIn = call.state == org.linphone.core.Call.State.IncomingReceived
     val label = when (call.state) {
         org.linphone.core.Call.State.IncomingReceived -> "Incoming call"
         org.linphone.core.Call.State.OutgoingInit, org.linphone.core.Call.State.OutgoingProgress -> "Calling…"
         org.linphone.core.Call.State.OutgoingRinging, org.linphone.core.Call.State.OutgoingEarlyMedia -> "Ringing…"
         org.linphone.core.Call.State.StreamsRunning, org.linphone.core.Call.State.Connected -> "Connected"
+        org.linphone.core.Call.State.Paused, org.linphone.core.Call.State.Pausing -> "On hold"
         else -> ""
     }
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -244,6 +250,12 @@ fun CallScreen(call: CallInfo) {
                 FilledTonalIconToggleButton(muted, { SipManager.toggleMute() }, Modifier.size(64.dp)) { Icon(Icons.Default.MicOff, "Mute") }
                 FilledTonalIconToggleButton(speaker, { SipManager.toggleSpeaker() }, Modifier.size(64.dp)) { Icon(Icons.Default.VolumeUp, "Speaker") }
                 FilledTonalIconToggleButton(pad, { pad = it }, Modifier.size(64.dp)) { Icon(Icons.Default.Dialpad, "Keypad") }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                FilledTonalIconToggleButton(call.onHold, { SipManager.toggleHold() }, Modifier.size(64.dp)) { Icon(Icons.Default.Pause, "Hold") }
+                FilledTonalIconButton({ transferTo = false }, Modifier.size(64.dp)) { Icon(Icons.Default.PhoneForwarded, "Transfer") }
+                if (call.consulting) FilledTonalButton({ SipManager.completeTransfer() }) { Text("Complete transfer") }
             }
             if (pad) { Spacer(Modifier.height(12.dp)); Pad { SipManager.sendDigit(it[0]) } }
         }
@@ -258,4 +270,21 @@ fun CallScreen(call: CallInfo) {
         }
         Spacer(Modifier.height(24.dp))
     }
+    if (transferTo != null) TransferDialog(
+        onDismiss = { transferTo = null },
+        onBlind = { SipManager.blindTransfer(it); transferTo = null },
+        onConsult = { SipManager.consult(it); transferTo = null })
+}
+
+@Composable
+private fun TransferDialog(onDismiss: () -> Unit, onBlind: (String) -> Unit, onConsult: (String) -> Unit) {
+    var target by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Transfer to") },
+        text = { OutlinedTextField(target, { target = it }, label = { Text("Extension or number") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)) },
+        confirmButton = { TextButton({ onBlind(target) }, enabled = target.isNotBlank()) { Text("Blind") } },
+        dismissButton = { Row { TextButton({ onConsult(target) }, enabled = target.isNotBlank()) { Text("Consult first") }
+            TextButton(onDismiss) { Text("Cancel") } } })
 }

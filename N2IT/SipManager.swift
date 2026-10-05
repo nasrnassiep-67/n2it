@@ -92,6 +92,8 @@ final class SipManager: ObservableObject {
             let server = try Factory.Instance.createAddress(addr: "sip:\(acc.domain):\(acc.port)")
             try server.setTransport(newValue: acc.transport.linphone)
             try params.setServeraddress(newValue: server)
+            try core.setMediaencryption(newValue: acc.srtp ? .SRTP : .None)
+            core.mediaEncryptionMandatory = acc.srtp
             params.registerEnabled = true
             let account = try core.createAccount(params: params)
             core.addAuthInfo(info: auth)
@@ -153,6 +155,39 @@ final class SipManager: ObservableObject {
         muted = !core.micEnabled
     }
 
+    // MARK: Hold and transfer
+
+    @Published var onHold = false
+    @Published var consulting = false
+
+    func toggleHold() {
+        guard let core else { return }
+        if let c = core.calls.first(where: { $0.state == .Paused }) { try? c.resume() }
+        else { try? core.currentCall?.pause() }
+    }
+
+    /// Blind transfer: hand the current call to `number` and drop out.
+    func blindTransfer(_ number: String) {
+        guard let core, let call = core.currentCall ?? core.calls.first,
+              let domain = core.defaultAccount?.params?.identityAddress?.domain,
+              let target = try? Factory.Instance.createAddress(addr: number.contains("@") ? "sip:\(number)" : "sip:\(number)@\(domain)")
+        else { return }
+        try? call.transferTo(referTo: target)
+    }
+
+    /// Attended transfer, step 1: hold the caller and ring `number`.
+    func consult(_ number: String) {
+        try? core.currentCall?.pause()
+        invite(number)
+    }
+
+    /// Attended transfer, step 2: connect the held caller to the consulted party.
+    func completeTransfer() {
+        guard let held = core.calls.first(where: { $0.state == .Paused }),
+              let other = core.calls.first(where: { $0 !== held }) else { return }
+        try? held.transferToAnother(dest: other)
+    }
+
     func toggleSpeaker() {
         speaker.toggle()
         let wanted: AudioDevice.Kind = speaker ? .Speaker : .Earpiece
@@ -184,6 +219,8 @@ final class SipManager: ObservableObject {
             default:
                 self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
             }
+            self.onHold = call.state == .Paused || call.state == .Pausing
+            self.consulting = (self.core?.callsNb ?? 0) > 1
         }
     }
 }

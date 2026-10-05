@@ -5,8 +5,8 @@ on:
     paths: ['N2IT/**', 'project.yml', 'Config/**', '.github/workflows/ios.yml']
   workflow_dispatch:
     inputs:
-      testflight:
-        description: Upload to TestFlight (needs the Apple secrets)
+      adhoc:
+        description: Build a signed Ad Hoc .ipa (needs the Apple secrets)
         type: boolean
         default: false
 
@@ -28,9 +28,10 @@ jobs:
         if: failure()
         run: grep -E "error:" build.log | sort -u | head -40
 
-  # Manual: Actions > "iOS build" > Run workflow > testflight = true
-  testflight:
-    if: github.event_name == 'workflow_dispatch' && inputs.testflight
+  # Manual: Actions > "iOS build" > Run workflow > adhoc = true. Needs every target iPhone's UDID
+  # registered in the developer account; the .ipa is published to voip.n2it.co.za/app/ by hand.
+  adhoc:
+    if: github.event_name == 'workflow_dispatch' && inputs.adhoc
     needs: compile
     runs-on: macos-15
     env:
@@ -48,7 +49,7 @@ jobs:
       - run: brew install xcodegen
       - name: Generate project
         run: |
-          # Production push environment for the store build.
+          # Ad Hoc builds use Apple's production push service.
           sed -i '' 's/aps-environment: development/aps-environment: production/' project.yml
           xcodegen generate
       - name: Install App Store Connect API key
@@ -63,7 +64,7 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-      - name: Export and upload to TestFlight
+      - name: Export Ad Hoc .ipa
         run: |
           sed "s/__TEAM_ID__/$TEAM_ID/" ci/ExportOptions.plist > build/ExportOptions.plist
           xcodebuild -exportArchive -archivePath build/N2IT.xcarchive \
@@ -71,3 +72,7 @@ jobs:
             -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: N2IT-adhoc-ipa
+          path: build/export/*.ipa

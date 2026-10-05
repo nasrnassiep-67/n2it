@@ -8,8 +8,9 @@ data class Account(
     val tenant: String = "",
     val user: String = "",
     val password: String = "",
-    val port: Int = 5060,
-    val transport: String = "UDP",
+    val port: Int = 5061,
+    val transport: String = "TLS",
+    val srtp: Boolean = true,
     val voicemail: String = "*97",
 ) {
     /** Each client has its own PBX at <tenant>.voip.n2it.co.za */
@@ -33,15 +34,16 @@ data class Account(
                 tenant = p.getString("tenant", null) ?: if (dev) BuildConfig.DEV_TENANT else "",
                 user = p.getString("user", null) ?: if (dev) BuildConfig.DEV_USER else "",
                 password = p.getString("password", null) ?: if (dev) BuildConfig.DEV_PASSWORD else "",
-                port = p.getInt("port", 5060),
-                transport = p.getString("transport", "UDP") ?: "UDP",
+                port = p.getInt("port", 5061),
+                transport = p.getString("transport", "TLS") ?: "TLS",
+                srtp = p.getBoolean("srtp", true),
                 voicemail = p.getString("voicemail", "*97") ?: "*97")
         }
 
         fun save(c: Context, a: Account) = prefs(c).edit()
             .putBoolean("signedOut", false)
             .putString("tenant", a.tenant.trim()).putString("user", a.user.trim()).putString("password", a.password)
-            .putInt("port", a.port).putString("transport", a.transport).putString("voicemail", a.voicemail).apply()
+            .putInt("port", a.port).putString("transport", a.transport).putBoolean("srtp", a.srtp).putString("voicemail", a.voicemail).apply()
 
         fun clear(c: Context) = prefs(c).edit().clear().putBoolean("signedOut", true).apply()
     }

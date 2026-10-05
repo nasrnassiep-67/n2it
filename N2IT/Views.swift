@@ -91,6 +91,8 @@ struct CallView: View {
     @EnvironmentObject var sip: SipManager
     @State private var showPad = false
     @State private var dtmf = ""
+    @State private var showTransfer = false
+    @State private var target = ""
 
     var body: some View {
         VStack(spacing: 28) {
@@ -103,6 +105,13 @@ struct CallView: View {
                     toggle("mic.slash.fill", on: sip.muted) { sip.toggleMute() }
                     toggle("speaker.wave.3.fill", on: sip.speaker) { sip.toggleSpeaker() }
                     toggle("circle.grid.3x3.fill", on: showPad) { showPad.toggle() }
+                }
+                HStack(spacing: 40) {
+                    toggle("pause.fill", on: sip.onHold) { sip.toggleHold() }
+                    toggle("phone.arrow.right", on: false) { showTransfer = true }
+                    if sip.consulting {
+                        Button("Complete transfer") { sip.completeTransfer() }.buttonStyle(.borderedProminent)
+                    }
                 }
                 if showPad {
                     Text(dtmf).font(.title3).frame(height: 24)
@@ -126,9 +135,15 @@ struct CallView: View {
             }
             Spacer().frame(height: 40)
         }.frame(maxWidth: .infinity).background(Color(.systemBackground))
+        .alert("Transfer to", isPresented: $showTransfer) {
+            TextField("Extension or number", text: $target).keyboardType(.phonePad)
+            Button("Blind") { sip.blindTransfer(target); target = "" }
+            Button("Consult first") { sip.consult(target); target = "" }
+            Button("Cancel", role: .cancel) { target = "" }
+        }
     }
 
-    private var connected: Bool { sip.activeCall?.state == .StreamsRunning || sip.activeCall?.state == .Connected }
+    private var connected: Bool { sip.onHold || sip.activeCall?.state == .StreamsRunning || sip.activeCall?.state == .Connected }
     private var ringingIn: Bool { sip.activeCall?.state == .IncomingReceived }
     private var label: String {
         switch sip.activeCall?.state {
@@ -136,6 +151,7 @@ struct CallView: View {
         case .OutgoingProgress, .OutgoingInit: return "Calling…"
         case .OutgoingRinging, .OutgoingEarlyMedia: return "Ringing…"
         case .StreamsRunning, .Connected: return "Connected"
+        case .Paused, .Pausing: return "On hold"
         default: return ""
         }
     }
@@ -173,6 +189,7 @@ struct SettingsView: View {
                     Picker("Transport", selection: $acc.transport) {
                         ForEach(SipTransport.allCases) { Text($0.rawValue).tag($0) }
                     }
+                    Toggle("Encrypt call audio (SRTP)", isOn: $acc.srtp)
                 }
                 Button("Save & Register") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken() }
                 Section {
