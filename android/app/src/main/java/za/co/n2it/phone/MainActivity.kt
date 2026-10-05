@@ -27,6 +27,8 @@ class MainActivity : ComponentActivity() {
                     var perms by remember { mutableStateOf(false) }
                     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
                         perms = true
+                        // The core started before the permission answer; without a reload it keeps a dead microphone.
+                        SipManager.reloadSoundDevices()
                         // The foreground service needs the mic permission decision first.
                         if (Account.load(ctx).isConfigured) PhoneService.start(ctx)
                     }

@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 
     <application
         android:label="N2IT Phone"
@@ -30,6 +31,6 @@
         <service
             android:name=".PhoneService"
             android:exported="false"
-            android:foregroundServiceType="phoneCall"/>
+            android:foregroundServiceType="phoneCall|microphone"/>
     </application>
 </manifest>

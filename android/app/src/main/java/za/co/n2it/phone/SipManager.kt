@@ -52,12 +52,18 @@ object SipManager {
                     }
                     _call.value = null; _muted.value = false; _speaker.value = false
                     PhoneService.clearIncoming(appContext)
+                    if (core.callsNb == 0) PhoneService.setInCall(appContext, false)
                 }
                 Call.State.IncomingReceived -> {
                     _call.value = CallInfo(number, state, true)
                     PhoneService.notifyIncoming(appContext, number)
                 }
-                else -> publish(call)
+                else -> {
+                    // Outgoing call placed, or incoming call answered: the user is in the app right now,
+                    // so this is when Android lets the service take the microphone.
+                    if (state == Call.State.OutgoingInit || state == Call.State.Connected) PhoneService.setInCall(appContext, true)
+                    publish(call)
+                }
             }
         }
 
@@ -86,6 +92,14 @@ object SipManager {
         core = Factory.instance().createCore(null, null, appContext)
         core.addListener(listener)
         core.isEchoCancellationEnabled = true   // without AEC, speakerphone audio loops back into the mic
+        // Shows on the PBX (registrations, logs) instead of "Unknown".
+        core.setUserAgent("N2IT Phone Android", BuildConfig.VERSION_NAME)
+        // STUN puts the phone's public address in the SDP, so the PBX can send audio before the phone does.
+        core.natPolicy = core.createNatPolicy().apply {
+            stunServer = "stun.l.google.com:19302"
+            isStunEnabled = true
+            isIceEnabled = false
+        }
         core.start()
         started = true
         configure(Account.load(appContext))
@@ -171,6 +185,9 @@ object SipManager {
         val other = calls.firstOrNull { it !== held } ?: return
         held.transferToAnother(other)
     }
+
+    /** Re-read the sound cards, e.g. after the microphone permission was granted (the core started without it). */
+    fun reloadSoundDevices() { if (started) core.reloadSoundDevices() }
 
     fun refresh() { if (started) core.refreshRegisters() }
 }
