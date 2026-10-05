@@ -85,6 +85,7 @@ object SipManager {
         appContext = context.applicationContext
         core = Factory.instance().createCore(null, null, appContext)
         core.addListener(listener)
+        core.isEchoCancellationEnabled = true   // without AEC, speakerphone audio loops back into the mic
         core.start()
         started = true
         configure(Account.load(appContext))
@@ -137,7 +138,11 @@ object SipManager {
     fun toggleMute() { core.isMicEnabled = !core.isMicEnabled; _muted.value = !core.isMicEnabled }
     fun toggleSpeaker() {
         val want = if (!_speaker.value) AudioDevice.Type.Speaker else AudioDevice.Type.Earpiece
-        core.audioDevices.firstOrNull { it.type == want }?.let { core.outputAudioDevice = it; _speaker.value = !_speaker.value }
+        val dev = core.audioDevices.firstOrNull { it.type == want && it.hasCapability(AudioDevice.Capabilities.CapabilityPlay) } ?: return
+        // A running call keeps its own device; the core setting only applies to calls started afterwards.
+        core.currentCall?.outputAudioDevice = dev
+        core.outputAudioDevice = dev
+        _speaker.value = !_speaker.value
     }
     fun toggleHold() {
         val c = core.currentCall ?: core.calls.firstOrNull { it.state == Call.State.Paused } ?: return
