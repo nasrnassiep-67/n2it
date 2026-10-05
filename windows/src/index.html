@@ -8,6 +8,7 @@
   button{padding:10px;margin:3px;border:0;border-radius:8px;background:#e8e8ec;cursor:pointer}
   button.go{background:#2e9e4f;color:#fff}button.end{background:#d33;color:#fff}button.on{background:#222;color:#fff}
   .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.pad button{font-size:20px}
+  label{display:block;margin:8px 0;font-size:13px}select{width:100%;padding:6px}label input[type=checkbox]{width:auto}
   #status{font-size:13px;color:#666;margin-bottom:8px}.hidden{display:none}#num{font-size:22px;text-align:center}
 </style></head><body>
 <div id="status">Not registered</div>
@@ -25,7 +26,7 @@
   <div id="idle">
     <input id="num" placeholder="Number">
     <div class="pad" id="pad"></div>
-    <button class="go" id="call">Call</button><button id="vm">Voicemail</button><button id="out">Sign out</button>
+    <button class="go" id="call">Call</button><button id="vm">Voicemail</button><button id="cfg">Settings</button>
   </div>
   <div id="incall" class="hidden">
     <h2 id="who"></h2><div id="state"></div>
@@ -33,6 +34,19 @@
     <div class="pad" id="dpad"></div>
     <button class="go hidden" id="answer">Answer</button><button class="end" id="hang">Hang up</button>
   </div>
+</section>
+<section id="settings" class="hidden">
+  <h2>Settings</h2>
+  <label>Microphone <select id="s-mic"></select></label>
+  <label>Speaker <select id="s-spk"></select></label>
+  <label><input type="checkbox" id="s-echo"> Echo cancellation</label>
+  <label><input type="checkbox" id="s-noise"> Noise suppression</label>
+  <label><input type="checkbox" id="s-agc"> Automatic gain control</label>
+  <label>WSS port <input id="s-port" inputmode="numeric"></label>
+  <label>Voicemail number <input id="s-vm"></label>
+  <label>STUN server <input id="s-stun" placeholder="stun:host:port (blank = none)"></label>
+  <button class="go" id="s-save">Save</button><button id="s-back">Back</button>
+  <hr><div id="s-acct"></div><button class="end" id="out">Sign out</button>
 </section>
 <audio id="remote" autoplay></audio>
 <script src="../node_modules/jssip/dist/jssip.min.js"></script>
