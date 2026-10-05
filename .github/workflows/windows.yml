@@ -1,4 +1,4 @@
-name: Windows installer
+name: Desktop installers
 on:
   push:
     branches: [main]
@@ -24,3 +24,23 @@ jobs:
         with:
           name: n2it-phone-windows-installer
           path: windows/dist/*.exe
+
+  linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm, cache-dependency-path: windows/package-lock.json }
+      - run: npm ci
+      - name: Build AppImage and .deb
+        run: npm run dist:linux
+      # Download from the run's Artifacts section. AppImage: chmod +x, then run. Deb: sudo apt install ./file.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n2it-phone-linux
+          path: |
+            windows/dist/*.AppImage
+            windows/dist/*.deb

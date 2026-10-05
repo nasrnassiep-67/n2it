@@ -1,18 +1,42 @@
 {
   "name": "n2it-phone-desktop",
   "version": "0.1.0",
-  "description": "N2IT Phone for Windows (WebRTC softphone over WSS to FusionPBX)",
+  "description": "N2IT Phone desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis"
+    "dist": "electron-builder --win nsis",
+    "dist:linux": "electron-builder --linux AppImage deb"
   },
-  "dependencies": { "jssip": "^3.10.1" },
-  "devDependencies": { "electron": "^33.0.0", "electron-builder": "^25.1.8" },
+  "dependencies": {
+    "jssip": "^3.10.1"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
   "build": {
     "appId": "za.co.n2it.softphone.desktop",
     "productName": "N2IT Phone",
-    "files": ["src/**", "node_modules/jssip/dist/jssip.min.js"],
-    "win": { "target": "nsis" }
-  }
+    "files": [
+      "src/**",
+      "node_modules/jssip/dist/jssip.min.js"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Telephony",
+      "maintainer": "N2IT <support@n2it.co.za>"
+    }
+  },
+  "author": {
+    "name": "N2IT",
+    "email": "support@n2it.co.za"
+  },
+  "homepage": "https://n2it.co.za"
 }
