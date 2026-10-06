@@ -158,6 +158,35 @@ $('s-save').onclick = async () => {
   $('s-back').click()
 }
 $('call').onclick = () => { dial($('num').value.trim()); $('num').value = '' }
+
+// ---- Company contacts (from the PBX) ----
+let directory = []
+function renderContacts() {
+  const q = $('c-search').value.trim().toLowerCase()
+  const rows = directory.flatMap((c) => c.numbers.map((n) => ({ name: c.name, label: n.label, number: n.number })))
+    .filter((r) => !q || r.name.toLowerCase().includes(q) || r.number.includes(q))
+  $('c-list').replaceChildren(...rows.map((r) => {
+    const row = document.createElement('div'); row.className = 'contact'
+    const who = document.createElement('div'); who.textContent = r.name
+    const sub = document.createElement('small'); sub.textContent = ` ${r.label ? r.label + ' ' : ''}${r.number}`
+    who.append(document.createElement('br'), sub)
+    const call = Object.assign(document.createElement('button'), { className: 'go', textContent: 'Call' })
+    call.onclick = () => { $('c-back').click(); dial(r.number) }
+    row.append(who, call); return row
+  }))
+  if (directory.length && !rows.length) $('c-msg').textContent = 'No matches'
+}
+$('contacts-open').onclick = async () => {
+  show('phone', false); show('contacts', true)
+  $('c-msg').textContent = directory.length ? '' : 'Loading…'
+  const r = await store.directory()
+  if (r.error) { $('c-msg').textContent = r.error; return }
+  directory = r.contacts || []
+  $('c-msg').textContent = directory.length ? '' : 'No company contacts'
+  renderContacts()
+}
+$('c-search').oninput = () => { $('c-msg').textContent = ''; renderContacts() }
+$('c-back').onclick = () => { show('contacts', false); show('phone', true) }
 $('vm').onclick = () => dial(cfg().voicemail)
 $('answer').onclick = () => { session?.answer({ mediaConstraints: media(), pcConfig: pcConfig() }); show('answer', false) }
 $('hang').onclick = () => {   // in a conference, hang up on everyone; otherwise the call in front
