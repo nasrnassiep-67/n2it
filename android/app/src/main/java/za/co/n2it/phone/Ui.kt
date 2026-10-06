@@ -207,24 +207,68 @@ private fun loadContacts(c: Context): List<PhoneContact> = try {
     out
 } catch (e: SecurityException) { emptyList() }
 
+/**
+ * Company address book from FusionPBX > Apps > Contacts, served per tenant by the PBX
+ * (`/app/n2it/contacts.php`, HTTP Basic with the extension and its SIP password; see IOS-MAC-HANDOVER.md).
+ * Empty when the account isn't set up, the endpoint isn't deployed yet (404) or the request fails.
+ */
+private fun loadCompanyContacts(c: Context): List<PhoneContact> = try {
+    val acc = Account.load(c)
+    if (!acc.isConfigured) emptyList() else {
+        val conn = java.net.URL("https://${acc.domain}/app/n2it/contacts.php").openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 15_000; conn.readTimeout = 15_000
+        val login = android.util.Base64.encodeToString("${acc.user.trim()}:${acc.password}".toByteArray(), android.util.Base64.NO_WRAP)
+        conn.setRequestProperty("Authorization", "Basic $login")
+        try {
+            if (conn.responseCode != 200) emptyList() else {
+                val list = org.json.JSONObject(conn.inputStream.bufferedReader().readText()).getJSONArray("contacts")
+                val out = mutableListOf<PhoneContact>()
+                for (i in 0 until list.length()) {
+                    val o = list.getJSONObject(i)
+                    val nums = o.optJSONArray("numbers") ?: continue
+                    for (j in 0 until nums.length()) {
+                        val n = nums.getJSONObject(j).optString("number")
+                        if (n.isNotBlank()) out += PhoneContact(o.optString("name"), n)
+                    }
+                }
+                out.sortedBy { it.name.lowercase() }
+            }
+        } finally { conn.disconnect() }
+    }
+} catch (e: Exception) { emptyList() }
+
 @Composable
 fun ContactsTab() {
     val ctx = LocalContext.current
     val all = remember { loadContacts(ctx) }
+    var company by remember { mutableStateOf(emptyList<PhoneContact>()) }
+    LaunchedEffect(Unit) { company = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { loadCompanyContacts(ctx) } }
     var q by remember { mutableStateOf("") }
-    val list = all.filter { q.isBlank() || it.name.contains(q, true) || it.number.contains(q) }
+    fun matches(l: List<PhoneContact>) = l.filter { q.isBlank() || it.name.contains(q, true) || it.number.contains(q) }
+    val companyList = matches(company)
+    val list = matches(all)
     Column {
         OutlinedTextField(q, { q = it }, placeholder = { Text("Search") }, singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(12.dp))
-        if (all.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) { Text("No contacts (allow Contacts permission)") }
+        if (all.isEmpty() && company.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) { Text("No contacts (allow Contacts permission)") }
         LazyColumn {
-            items(list) { c ->
-                ListItem(modifier = Modifier.clickable { dial(c.number.filter { it in "+0123456789*#" }) },
-                    headlineContent = { Text(c.name) }, supportingContent = { Text(c.number) })
-            }
+            if (companyList.isNotEmpty()) item { SectionHeader("Company") }
+            items(companyList) { ContactRow(it) }
+            if (company.isNotEmpty() && list.isNotEmpty()) item { SectionHeader("Phone") }
+            items(list) { ContactRow(it) }
         }
     }
 }
+
+@Composable
+private fun SectionHeader(title: String) =
+    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+
+@Composable
+private fun ContactRow(c: PhoneContact) =
+    ListItem(modifier = Modifier.clickable { dial(c.number.filter { it in "+0123456789*#" }) },
+        headlineContent = { Text(c.name) }, supportingContent = { Text(c.number) })
 
 @Composable
 fun VoicemailTab() {
