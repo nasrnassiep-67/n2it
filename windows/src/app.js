@@ -39,10 +39,20 @@ function connect() {
     if (!calls.length) muted = false
     calls.push(s); session = s
     s._audio = document.body.appendChild(Object.assign(document.createElement('audio'), { autoplay: true }))
-    s.on('peerconnection', ({ peerconnection: pc }) =>
-      pc.addEventListener('track', (e) => { s._audio.srcObject = e.streams[0]; applySink() }))
-    s.on('accepted', refresh)
-    s.on('confirmed', refresh)
+    // Play the caller's audio. Incoming calls announce their peer connection ('peerconnection'); for calls we
+    // place, JsSIP creates it before this handler runs, so hook s.connection directly, and as a last resort pick
+    // up the receivers once the call is confirmed (otherwise outgoing calls are silent on our side).
+    const playRemote = (stream) => { if (stream && s._audio.srcObject !== stream) { s._audio.srcObject = stream; applySink() } }
+    const watch = (pc) => pc.addEventListener('track', (e) => playRemote(e.streams[0] || new MediaStream([e.track])))
+    if (s.connection) watch(s.connection)
+    s.on('peerconnection', ({ peerconnection: pc }) => watch(pc))
+    const pickUpReceivers = () => {
+      if (s._audio.srcObject || !s.connection) return
+      const tracks = s.connection.getReceivers().map((r) => r.track).filter((t) => t?.kind === 'audio')
+      if (tracks.length) playRemote(new MediaStream(tracks))
+    }
+    s.on('accepted', () => { pickUpReceivers(); refresh() })
+    s.on('confirmed', () => { pickUpReceivers(); refresh() })
     s.on('hold', refresh)
     s.on('unhold', () => { if (merging && calls.every((c) => !c.isOnHold().local)) buildMix(); refresh() })
     s.on('ended', () => end(s))
