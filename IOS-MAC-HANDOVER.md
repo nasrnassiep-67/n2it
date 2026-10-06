@@ -18,12 +18,18 @@ Adds "Add participant" + "Merge calls" (local Linphone conference) on Android, i
 iOS changes: `N2IT/SipManager.swift` (`addParticipant`, `merge`, conference-aware `hangupSip`, keeps CallKit up
 while another call remains) and `N2IT/Views.swift` (person.badge.plus button, Merge/Complete transfer row).
 Also on this branch for iOS: CallKit hold (`CXSetHeldCallAction` -> `SipManager.systemHold`), so "Hold & Accept"
-for a GSM/WhatsApp call holds our call and resuming restarts audio. Not yet run on a real iPhone.
+for a GSM/WhatsApp call holds our call and resuming restarts audio.
 Test: PBX call, take a WhatsApp/GSM call with Hold & Accept (other side should hear hold music), end it, resume.
 
-## Known issue to fix
-`configure()` sets `core.mediaEncryptionMandatory = acc.srtp`; it should be `false` (optional SRTP), otherwise
-calls to anything that doesn't offer SRTP fail.
+## Verified on a real iPhone (2026-10-06, iPhone 17, iOS 26.6.2, Xcode 27, Linphone SDK 5.5.29)
+Registered as 1002 over TLS 5061; calls both ways; Add participant + Merge calls; CallKit Hold & Accept with a
+WhatsApp/GSM call (hold music heard, audio back after resume); keypad paste.
+Fixed on the way (all merged): optional SRTP (`mediaEncryptionMandatory = false`, PR #1); stray spaces in company
+code/extension broke the SIP URI, now trimmed, and config errors name the failing step (PR #2).
+Signing: the owner's paid Apple membership (individual, Nasr Nassiep) is still pending, and team 69Y3USPRR5 isn't
+in Xcode on the Mac. Test builds use the owner's free Personal Team (8URJCQ48GM) with push removed through local
+build settings only (repo unchanged); they expire after 7 days. Once the membership is active, confirm its Team ID
+and update `project.yml` if it isn't 69Y3USPRR5.
 
 ## Request for the voip-server session: company contacts endpoint (2026-10-06)
 The iOS and Android apps now show a "Company" section in Contacts from FusionPBX > Apps > Contacts. They need
