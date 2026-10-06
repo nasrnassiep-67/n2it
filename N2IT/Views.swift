@@ -92,6 +92,7 @@ struct CallView: View {
     @State private var showPad = false
     @State private var dtmf = ""
     @State private var showTransfer = false
+    @State private var showAdd = false
     @State private var target = ""
 
     var body: some View {
@@ -107,10 +108,19 @@ struct CallView: View {
                     toggle("circle.grid.3x3.fill", on: showPad) { showPad.toggle() }
                 }
                 HStack(spacing: 40) {
-                    toggle("pause.fill", on: sip.onHold) { sip.toggleHold() }
-                    toggle("phone.arrow.right", on: false) { showTransfer = true }
-                    if sip.consulting {
-                        Button("Complete transfer") { sip.completeTransfer() }.buttonStyle(.borderedProminent)
+                    if !sip.inConference {
+                        toggle("pause.fill", on: sip.onHold) { sip.toggleHold() }
+                        toggle("phone.arrow.right", on: false) { showTransfer = true }
+                    }
+                    toggle("person.badge.plus", on: false) { showAdd = true }
+                }
+                if sip.consulting {
+                    HStack(spacing: 12) {
+                        Button { sip.merge() } label: { Label("Merge calls", systemImage: "arrow.triangle.merge") }
+                            .buttonStyle(.borderedProminent).tint(.green)
+                        if !sip.inConference {
+                            Button("Complete transfer") { sip.completeTransfer() }.buttonStyle(.bordered)
+                        }
                     }
                 }
                 if showPad {
@@ -141,11 +151,20 @@ struct CallView: View {
             Button("Consult first") { sip.consult(target); target = "" }
             Button("Cancel", role: .cancel) { target = "" }
         }
+        .alert("Add participant", isPresented: $showAdd) {
+            TextField("Extension or number", text: $target).keyboardType(.phonePad)
+            Button("Call") { sip.addParticipant(target); target = "" }
+            Button("Cancel", role: .cancel) { target = "" }
+        } message: {
+            Text(sip.inConference ? "They join the conference when they answer."
+                 : "The current call goes on hold. Tap Merge calls once they answer.")
+        }
     }
 
     private var connected: Bool { sip.onHold || sip.activeCall?.state == .StreamsRunning || sip.activeCall?.state == .Connected }
     private var ringingIn: Bool { sip.activeCall?.state == .IncomingReceived }
     private var label: String {
+        if sip.inConference { return "Conference · \(sip.participants.count + 1) people" }
         switch sip.activeCall?.state {
         case .IncomingReceived: return "Incoming call"
         case .OutgoingProgress, .OutgoingInit: return "Calling…"

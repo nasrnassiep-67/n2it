@@ -140,7 +140,11 @@ final class SipManager: ObservableObject {
         _ = core.invite(url: number.contains("@") ? "sip:\(number)" : "sip:\(number)@\(domain)")
     }
     func answerSip() { try? core.currentCall?.accept() }
-    func hangupSip() { try? core.currentCall?.terminate() }
+    /// Ends the call in front of the user; in a conference with nobody else ringing, ends it for everyone.
+    func hangupSip() {
+        if let c = core.currentCall, c.conference == nil { try? c.terminate(); return }
+        if let conf = conference { _ = try? conf.terminate() } else { try? liveCalls().first?.terminate() }
+    }
     var hasIncomingSip: Bool { core?.currentCall?.state == .IncomingReceived }
 
     /// Re-register after a VoIP push woke the app.
@@ -159,6 +163,39 @@ final class SipManager: ObservableObject {
 
     @Published var onHold = false
     @Published var consulting = false
+    @Published var inConference = false
+    @Published var participants: [String] = []
+
+    private func liveCalls(except: Call? = nil) -> [Call] {
+        (core?.calls ?? []).filter { $0 !== except && ![.End, .Error, .Released].contains($0.state) }
+    }
+    private var conference: Conference? { liveCalls().compactMap { $0.conference }.first }
+
+    /// Add participant, step 1: in a conference, invite `number` straight in; otherwise hold the call and ring
+    /// `number` (same as a consult), then `merge()` once they answer.
+    func addParticipant(_ number: String) {
+        guard let core, let domain = core.defaultAccount?.params?.identityAddress?.domain else { return }
+        if let conf = conference {
+            guard let target = try? Factory.Instance.createAddress(addr: number.contains("@") ? "sip:\(number)" : "sip:\(number)@\(domain)")
+            else { return }
+            _ = try? conf.addParticipant(addr: target)
+        } else { consult(number) }
+    }
+
+    /// Add participant, step 2: join every call into one conference, mixed on this phone (no PBX bridge needed).
+    func merge() {
+        guard let core else { return }
+        let calls = liveCalls()
+        guard calls.count > 1 else { return }
+        var conf = conference
+        if conf == nil, let params = try? core.createConferenceParams(conference: nil) {
+            params.videoEnabled = false
+            params.localParticipantEnabled = true
+            conf = try? core.createConferenceWithParams(params: params)
+        }
+        guard let conf else { return }
+        for c in calls where c.conference == nil { _ = try? conf.addParticipant(call: c) }
+    }
 
     func toggleHold() {
         guard let core else { return }
@@ -205,10 +242,16 @@ final class SipManager: ObservableObject {
                 CallKitManager.shared.sipIncoming(caller: number)
                 self.activeCall = CallInfo(number: number, state: state, incoming: true)
             case .End, .Error, .Released:
-                CallKitManager.shared.sipEnded()
-                self.activeCall = nil
-                self.speaker = false
-                self.muted = false
+                // Another call may still be up (held caller after a consult, or the rest of a conference).
+                if let other = self.core.currentCall ?? self.liveCalls(except: call).first {
+                    self.activeCall = CallInfo(number: other.remoteAddress?.username ?? "Unknown", state: other.state,
+                                               incoming: other.dir == .Incoming)
+                } else {
+                    CallKitManager.shared.sipEnded()
+                    self.activeCall = nil
+                    self.speaker = false
+                    self.muted = false
+                }
                 if state == .End || state == .Error {
                     let missed = incoming && call.callLog?.status == .Missed
                     self.recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed), at: 0)
@@ -219,8 +262,19 @@ final class SipManager: ObservableObject {
             default:
                 self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
             }
-            self.onHold = call.state == .Paused || call.state == .Pausing
-            self.consulting = (self.core?.callsNb ?? 0) > 1
+            let live = self.liveCalls()
+            let members = live.filter { $0.conference != nil }
+            self.inConference = !members.isEmpty
+            self.participants = members.map { $0.remoteAddress?.username ?? "Unknown" }
+            if self.inConference {
+                self.activeCall = CallInfo(number: self.participants.joined(separator: ", "), state: .StreamsRunning, incoming: false)
+                self.onHold = false
+                self.consulting = live.contains { $0.conference == nil }
+            } else {
+                let shown = self.core.currentCall ?? live.first
+                self.onHold = shown?.state == .Paused || shown?.state == .Pausing
+                self.consulting = live.count > 1
+            }
         }
     }
 }

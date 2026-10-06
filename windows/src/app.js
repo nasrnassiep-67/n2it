@@ -4,7 +4,8 @@ const BASE = 'voip.n2it.co.za'
 const DEFAULTS = { wssPort: 7443, voicemail: '*97', stun: 'stun:stun.l.google.com:19302',
   micId: '', spkId: '', echo: true, noise: true, agc: true }
 const $ = (id) => document.getElementById(id)
-let ua, session, acc, held = false, muted = false
+let ua, session, acc, muted = false
+let calls = [], mix = null, merging = false   // all live calls; mix = conference mixer (see buildMix)
 const cfg = () => ({ ...DEFAULTS, ...(acc?.settings || {}) })
 
 const show = (id, on) => $(id).classList.toggle('hidden', !on)
@@ -30,25 +31,79 @@ function connect() {
   ua.on('unregistered', () => status('Not registered'))
   ua.on('registrationFailed', (e) => status(`Failed: ${e.cause}`))
   ua.on('newRTCSession', ({ session: s, originator }) => {
-    if (session) { s.terminate({ status_code: 486 }); return }   // one call at a time
-    session = s; held = muted = false
+    if (originator === 'remote' && calls.length) { s.terminate({ status_code: 486 }); return }   // busy while in a call
+    if (!calls.length) muted = false
+    calls.push(s); session = s
+    s._audio = document.body.appendChild(Object.assign(document.createElement('audio'), { autoplay: true }))
     s.on('peerconnection', ({ peerconnection: pc }) =>
-      pc.addEventListener('track', (e) => { $('remote').srcObject = e.streams[0]; applySink() }))
-    s.on('accepted', () => $('state').textContent = 'Connected')
-    s.on('hold', () => { held = true; refresh() })
-    s.on('unhold', () => { held = false; refresh() })
-    s.on('ended', end); s.on('failed', end)
-    $('who').textContent = s.remote_identity.uri.user
-    $('state').textContent = originator === 'remote' ? 'Incoming call' : 'Calling…'
-    show('idle', false); show('incall', true); show('answer', originator === 'remote'); refresh()
+      pc.addEventListener('track', (e) => { s._audio.srcObject = e.streams[0]; applySink() }))
+    s.on('accepted', refresh)
+    s.on('confirmed', refresh)
+    s.on('hold', refresh)
+    s.on('unhold', () => { if (merging && calls.every((c) => !c.isOnHold().local)) buildMix(); refresh() })
+    s.on('ended', () => end(s)); s.on('failed', () => end(s))
+    s._incoming = originator === 'remote'
+    show('idle', false); show('incall', true); show('answer', s._incoming); refresh()
   })
   ua.start()
 }
 
-function end() { session = null; $('remote').srcObject = null; show('incall', false); show('idle', true) }
+function end(s) {
+  s._audio.srcObject = null; s._audio.remove()
+  calls = calls.filter((c) => c !== s)
+  if (mix) buildMix()   // rebuild for whoever is left (tears down below two calls)
+  if (!calls.length) { session = null; show('incall', false); show('idle', true); return }
+  if (session === s) session = calls[calls.length - 1]
+  show('answer', false); refresh()
+}
+const user = (s) => s.remote_identity.uri.user
 function refresh() {
+  if (!session) return
+  const held = session.isOnHold().local
   $('hold').classList.toggle('on', held); $('mute').classList.toggle('on', muted)
-  if (held) $('state').textContent = 'On hold'
+  const inConf = mix?.calls.length > 1
+  $('who').textContent = inConf ? mix.calls.map(user).join(', ') : user(session)
+  $('state').textContent = inConf ? `Conference · ${mix.calls.length + 1} people` + (calls.length > mix.calls.length ? ' (+1 ringing)' : '')
+    : session.isEstablished() ? (held ? 'On hold' : 'Connected') : session._incoming ? 'Incoming call' : 'Calling…'
+  show('hold', !inConf); show('xfer', !inConf)
+  show('merge', calls.length > 1 && calls.filter((c) => c.isEstablished()).length > (mix?.calls.length || 1))
+}
+
+// ---- Conference: mixed here, so the PBX needs nothing ----
+// Each call gets its own WebAudio mix (my mic + every other caller) in place of the mic on its sender;
+// every caller's audio still plays locally through their own <audio> element.
+const sender = (s) => s.connection.getSenders().find((x) => x.track?.kind === 'audio')
+function teardownMix() {
+  if (!mix) return
+  for (const s of mix.calls) if (!s.isEnded()) { s._mic.enabled = !muted; sender(s)?.replaceTrack(s._mic).catch(() => {}) }
+  mix.ctx.close(); mix = null
+}
+function buildMix() {
+  merging = false
+  teardownMix()
+  const live = calls.filter((c) => c.isEstablished())
+  if (live.length < 2) { refresh(); return }
+  for (const s of live) s._mic ??= sender(s).track
+  live[0]._mic.enabled = true   // muting is done by the gain below while mixed
+  const ctx = new AudioContext(), mic = ctx.createGain()
+  mic.gain.value = muted ? 0 : 1
+  ctx.createMediaStreamSource(new MediaStream([live[0]._mic])).connect(mic)
+  const remotes = live.map((s) => ctx.createMediaStreamSource(
+    new MediaStream(s.connection.getReceivers().map((r) => r.track).filter((t) => t?.kind === 'audio'))))
+  live.forEach((s, i) => {
+    const out = ctx.createMediaStreamDestination()
+    mic.connect(out)
+    remotes.forEach((r, j) => { if (j !== i) r.connect(out) })
+    sender(s).replaceTrack(out.stream.getAudioTracks()[0])
+  })
+  mix = { ctx, mic, calls: live }
+  refresh()
+}
+function merge() {
+  merging = true
+  const held = calls.filter((c) => c.isEstablished() && c.isOnHold().local)
+  if (held.length) held.forEach((c) => c.unhold())   // buildMix runs from the last 'unhold'
+  else buildMix()
 }
 const media = () => {
   const c = cfg()
@@ -56,7 +111,7 @@ const media = () => {
     ...(c.micId ? { deviceId: { exact: c.micId } } : {}) }, video: false }
 }
 const pcConfig = () => ({ iceServers: cfg().stun ? [{ urls: cfg().stun }] : [] })
-const applySink = () => { const id = cfg().spkId; if (id && $('remote').setSinkId) $('remote').setSinkId(id).catch(() => {}) }
+const applySink = () => { const id = cfg().spkId; for (const s of calls) if (id && s._audio?.setSinkId) s._audio.setSinkId(id).catch(() => {}) }
 const dial = (n) => n && ua?.call(`sip:${n}@${domain(acc.tenant)}`, { mediaConstraints: media(), pcConfig: pcConfig() })
 
 $('signin').onclick = async () => {
@@ -96,9 +151,25 @@ $('s-save').onclick = async () => {
 $('call').onclick = () => { dial($('num').value.trim()); $('num').value = '' }
 $('vm').onclick = () => dial(cfg().voicemail)
 $('answer').onclick = () => { session?.answer({ mediaConstraints: media(), pcConfig: pcConfig() }); show('answer', false) }
-$('hang').onclick = () => session?.terminate()
-$('mute').onclick = () => { muted = !muted; muted ? session?.mute({ audio: true }) : session?.unmute({ audio: true }); refresh() }
-$('hold').onclick = () => { held ? session?.unhold() : session?.hold(); }
+$('hang').onclick = () => {   // in a conference, hang up on everyone; otherwise the call in front
+  if (mix && !mix.calls.includes(session)) session.terminate()
+  else if (mix) [...calls].forEach((c) => c.terminate())
+  else session?.terminate()
+}
+$('mute').onclick = () => {
+  muted = !muted
+  if (mix) mix.mic.gain.value = muted ? 0 : 1
+  else muted ? session?.mute({ audio: true }) : session?.unmute({ audio: true })
+  refresh()
+}
+$('hold').onclick = () => { session?.isOnHold().local ? session.unhold() : session?.hold() }
+$('add').onclick = () => {   // hold the call (unless in a conference) and ring the new person; Merge joins them
+  const n = prompt(mix ? 'Add to conference: extension or number' : 'Add participant: extension or number\n(the current call goes on hold; press Merge when they answer)')
+  if (!n) return
+  if (!mix) session?.hold()
+  dial(n.trim())
+}
+$('merge').onclick = merge
 $('xfer').onclick = () => {   // blind transfer via SIP REFER
   const n = prompt('Transfer to extension or number'); if (n) session?.refer(`sip:${n}@${domain(acc.tenant)}`)
 }
