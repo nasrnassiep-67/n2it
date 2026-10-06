@@ -28,8 +28,8 @@ struct Account {
         let d = UserDefaults.standard
         let info = d.bool(forKey: signedOutKey) ? [:] : (Bundle.main.infoDictionary ?? [:])
         return Account(
-            tenant: d.string(forKey: "tenant") ?? info["SIPTenant"] as? String ?? "",
-            user: d.string(forKey: "user") ?? info["SIPUser"] as? String ?? "",
+            tenant: (d.string(forKey: "tenant") ?? info["SIPTenant"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            user: (d.string(forKey: "user") ?? info["SIPUser"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             password: Keychain.get("password") ?? info["SIPPassword"] as? String ?? "",
             port: d.object(forKey: "port") as? Int ?? 5061,
             transport: SipTransport(rawValue: d.string(forKey: "transport") ?? "") ?? .tls,
@@ -37,7 +37,10 @@ struct Account {
             srtp: d.object(forKey: "srtp") as? Bool ?? true)
     }
 
-    func save() {
+    /// Strips stray spaces (autocorrect, paste) so the SIP URI stays valid.
+    mutating func save() {
+        tenant = tenant.trimmingCharacters(in: .whitespacesAndNewlines)
+        user = user.trimmingCharacters(in: .whitespacesAndNewlines)
         let d = UserDefaults.standard
         d.set(false, forKey: Account.signedOutKey)
         d.set(tenant, forKey: "tenant"); d.set(user, forKey: "user")

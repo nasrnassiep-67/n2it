@@ -84,23 +84,31 @@ final class SipManager: ObservableObject {
         guard let core, !acc.user.isEmpty else { return }
         core.clearAccounts()
         core.clearAllAuthInfo()
+        var step = "auth"
         do {
             let auth = try Factory.Instance.createAuthInfo(username: acc.user, userid: "", passwd: acc.password,
                                                            ha1: "", realm: "", domain: acc.domain)
+            step = "account params"
             let params = try core.createAccountParams()
+            step = "identity"
             try params.setIdentityaddress(newValue: Factory.Instance.createAddress(addr: "sip:\(acc.user)@\(acc.domain)"))
+            step = "server address"
             let server = try Factory.Instance.createAddress(addr: "sip:\(acc.domain):\(acc.port)")
+            step = "transport"
             try server.setTransport(newValue: acc.transport.linphone)
             try params.setServeraddress(newValue: server)
+            step = "media encryption"
             try core.setMediaencryption(newValue: acc.srtp ? .SRTP : .None)
             core.mediaEncryptionMandatory = false  // optional SRTP: still call peers that do not offer it
             params.registerEnabled = true
+            step = "create account"
             let account = try core.createAccount(params: params)
             core.addAuthInfo(info: auth)
+            step = "add account"
             try core.addAccount(account: account)
             core.defaultAccount = account
         } catch {
-            registration = "Config error: \(error.localizedDescription)"
+            registration = "Config error (\(step)): \(error)"
         }
     }
 
