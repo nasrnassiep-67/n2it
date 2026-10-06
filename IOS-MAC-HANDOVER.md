@@ -76,5 +76,9 @@ Windows. The server copies release assets from this repo (`/root/voip/n2it-app/s
   The voip-server CI does **not** build the Mac app (dropped: an unsigned CI build won't open on Apple Silicon).
 - iPhone: when any release has an `.ipa`, the page's iPhone button goes live and points to
   `https://nasrnassiep-67.github.io/n2it/install/` (your Pages install page). Tell us if that URL changes.
-- UDID page: `/app/` on the PBX is FusionPBX's own app router, so the UDID page will be
-  `https://voip.n2it.co.za/download/udid/` instead of `/app/udid/`. Not built yet.
+- UDID page: LIVE at `https://voip.n2it.co.za/download/udid/` (not `/app/udid/`: that's FusionPBX's app router).
+  Form (name, company, extension) -> unsigned Profile Service profile (iOS shows "Not Verified") -> device POSTs
+  UDID/PRODUCT/VERSION/DEVICE_NAME -> stored in `/var/lib/n2it-udid/devices.jsonl` on the PBX -> "registered" page.
+  No email (the PBX has no SMTP set up). The owner runs `/root/voip/n2it-app/udid-list.sh` on the PBX for the
+  `Name,UDID` lines to paste into `ADHOC_DEVICES`. Linked from the download page's iPhone card.
+- The sync runs every 15 min (cron), so new release assets reach the PBX page within 15 min.
