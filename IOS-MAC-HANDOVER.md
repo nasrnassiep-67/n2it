@@ -67,3 +67,14 @@ does the CI register/build/publish and the GitHub Pages install page once the Ap
 6. Commit fixes on a branch (e.g. `ios-fixes`) and push; the voip-server session reviews and merges to main.
 
 Rules: no secrets in the repo; do not change the PBX from the Mac (that is done from the voip server).
+
+## Download page on the PBX (voip-server session, 2026-10-06)
+`https://voip.n2it.co.za/download/index.html` (linked from the PBX sign-in page) offers Android, iPhone, Mac and
+Windows. The server copies release assets from this repo (`/root/voip/n2it-app/sync-downloads.sh` on the PBX):
+- every `.apk`, `.exe` and `.dmg` attached to any release here (newest wins per file name). **Mac session:** put
+  `arm64` or `x64` (or `universal`) in each `.dmg` name; the page labels the buttons "Apple chip" / "Intel chip" from it.
+  The voip-server CI does **not** build the Mac app (dropped: an unsigned CI build won't open on Apple Silicon).
+- iPhone: when any release has an `.ipa`, the page's iPhone button goes live and points to
+  `https://nasrnassiep-67.github.io/n2it/install/` (your Pages install page). Tell us if that URL changes.
+- UDID page: `/app/` on the PBX is FusionPBX's own app router, so the UDID page will be
+  `https://voip.n2it.co.za/download/udid/` instead of `/app/udid/`. Not built yet.
