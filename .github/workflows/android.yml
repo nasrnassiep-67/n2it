@@ -15,9 +15,23 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
+      - name: Fixed signing key (so new builds install as updates)
+        env:
+          KEYSTORE_B64: ${{ secrets.N2IT_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/n2it.p12"
+            echo "N2IT_KEYSTORE=$RUNNER_TEMP/n2it.p12" >> "$GITHUB_ENV"
+          else
+            echo "::warning::N2IT_KEYSTORE_B64 secret not set: APK signed with a throwaway debug key (users must uninstall first)"
+          fi
       - name: Build debug APK
         working-directory: android
+        env:
+          N2IT_KEYSTORE_PASSWORD: ${{ secrets.N2IT_KEYSTORE_PASSWORD }}
         run: gradle assembleDebug --no-daemon
+      - name: Show signing certificate
+        run: $(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)/apksigner verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -i 'DN\|SHA-256'
       - uses: actions/upload-artifact@v4
         with:
           name: n2it-phone-debug-apk

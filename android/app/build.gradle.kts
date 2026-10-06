@@ -11,12 +11,26 @@ android {
         applicationId = "za.co.n2it.softphone"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.1.5"
+        versionCode = 7
+        versionName = "0.1.6"
         fun prop(n: String) = (project.findProperty(n) as String? ?: "").replace("\"", "\\\"")
         buildConfigField("String", "DEV_TENANT", "\"${prop("sipTenant")}\"")
         buildConfigField("String", "DEV_USER", "\"${prop("sipUser")}\"")
         buildConfigField("String", "DEV_PASSWORD", "\"${prop("sipPassword")}\"")
+    }
+    // Fixed N2IT signing key (CI secrets), so new builds install as updates.
+    // Without it (local builds) the default debug key is used.
+    val keystore = System.getenv("N2IT_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (keystore != null) create("n2it") {
+            storeFile = keystore
+            storePassword = System.getenv("N2IT_KEYSTORE_PASSWORD")
+            keyAlias = "n2it"
+            keyPassword = System.getenv("N2IT_KEYSTORE_PASSWORD")
+        }
+    }
+    buildTypes {
+        getByName("debug") { if (keystore != null) signingConfig = signingConfigs.getByName("n2it") }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
