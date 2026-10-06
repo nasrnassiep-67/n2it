@@ -231,9 +231,10 @@ fun CallScreen(call: CallInfo) {
     val speaker by SipManager.speaker.collectAsState()
     var pad by remember { mutableStateOf(false) }
     var transferTo by remember { mutableStateOf<Boolean?>(null) }  // null = closed, false = blind, true = attended
+    var adding by remember { mutableStateOf(false) }
     val connected = call.onHold || call.state == org.linphone.core.Call.State.StreamsRunning || call.state == org.linphone.core.Call.State.Connected
     val ringingIn = call.state == org.linphone.core.Call.State.IncomingReceived
-    val label = when (call.state) {
+    val label = if (call.conference) "Conference · ${call.participants.size + 1} people" else when (call.state) {
         org.linphone.core.Call.State.IncomingReceived -> "Incoming call"
         org.linphone.core.Call.State.OutgoingInit, org.linphone.core.Call.State.OutgoingProgress -> "Calling…"
         org.linphone.core.Call.State.OutgoingRinging, org.linphone.core.Call.State.OutgoingEarlyMedia -> "Ringing…"
@@ -253,9 +254,20 @@ fun CallScreen(call: CallInfo) {
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                FilledTonalIconToggleButton(call.onHold, { SipManager.toggleHold() }, Modifier.size(64.dp)) { Icon(Icons.Default.Pause, "Hold") }
-                FilledTonalIconButton({ transferTo = false }, Modifier.size(64.dp)) { Icon(Icons.Default.PhoneForwarded, "Transfer") }
-                if (call.consulting) FilledTonalButton({ SipManager.completeTransfer() }) { Text("Complete transfer") }
+                if (!call.conference) {
+                    FilledTonalIconToggleButton(call.onHold, { SipManager.toggleHold() }, Modifier.size(64.dp)) { Icon(Icons.Default.Pause, "Hold") }
+                    FilledTonalIconButton({ transferTo = false }, Modifier.size(64.dp)) { Icon(Icons.Default.PhoneForwarded, "Transfer") }
+                }
+                FilledTonalIconButton({ adding = true }, Modifier.size(64.dp)) { Icon(Icons.Default.PersonAdd, "Add participant") }
+            }
+            if (call.consulting) {
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button({ SipManager.merge() }, colors = ButtonDefaults.buttonColors(containerColor = Green)) {
+                        Icon(Icons.Default.CallMerge, null); Spacer(Modifier.width(6.dp)); Text("Merge calls")
+                    }
+                    if (!call.conference) FilledTonalButton({ SipManager.completeTransfer() }) { Text("Complete transfer") }
+                }
             }
             if (pad) { Spacer(Modifier.height(12.dp)); Pad { SipManager.sendDigit(it[0]) } }
         }
@@ -274,6 +286,24 @@ fun CallScreen(call: CallInfo) {
         onDismiss = { transferTo = null },
         onBlind = { SipManager.blindTransfer(it); transferTo = null },
         onConsult = { SipManager.consult(it); transferTo = null })
+    if (adding) AddParticipantDialog(call.conference, onDismiss = { adding = false }, onAdd = { SipManager.addParticipant(it); adding = false })
+}
+
+@Composable
+private fun AddParticipantDialog(inConference: Boolean, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
+    var target by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add participant") },
+        text = { Column {
+            OutlinedTextField(target, { target = it }, label = { Text("Extension or number") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+            Spacer(Modifier.height(8.dp))
+            Text(if (inConference) "They join the conference when they answer."
+                else "The current call goes on hold. Tap Merge calls once they answer.", style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = { TextButton({ onAdd(target) }, enabled = target.isNotBlank()) { Text("Call") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
 
 @Composable

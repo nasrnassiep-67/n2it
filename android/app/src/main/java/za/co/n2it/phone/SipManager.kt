@@ -6,7 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 import org.linphone.core.*
 import org.linphone.core.Account as LpAccount
 
-data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false)
+data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false,
+                    val conference: Boolean = false, val participants: List<String> = emptyList())
 data class RecentCall(val number: String, val time: Long, val incoming: Boolean, val missed: Boolean)
 
 object SipManager {
@@ -50,9 +51,12 @@ object SipManager {
                         val missed = incoming && call.callLog?.status == Call.Status.Missed
                         _recents.value = listOf(RecentCall(number, System.currentTimeMillis(), incoming, missed)) + _recents.value
                     }
-                    _call.value = null; _muted.value = false; _speaker.value = false
                     PhoneService.clearIncoming(appContext)
-                    if (core.callsNb == 0) PhoneService.setInCall(appContext, false)
+                    // Another call may still be up (held caller after a consult, or the rest of a conference).
+                    if (liveCalls(except = call).isEmpty()) {
+                        _call.value = null; _muted.value = false; _speaker.value = false
+                        if (core.callsNb == 0) PhoneService.setInCall(appContext, false)
+                    } else publish()
                 }
                 Call.State.IncomingReceived -> {
                     _call.value = CallInfo(number, state, true)
@@ -62,7 +66,7 @@ object SipManager {
                     // Outgoing call placed, or incoming call answered: the user is in the app right now,
                     // so this is when Android lets the service take the microphone.
                     if (state == Call.State.OutgoingInit || state == Call.State.Connected) PhoneService.setInCall(appContext, true)
-                    publish(call)
+                    publish()
                 }
             }
         }
@@ -77,11 +81,24 @@ object SipManager {
         }
     }
 
-    /** Mirror the current call into UI state, including hold and consult flags. */
-    private fun publish(call: Call) {
+    private val ended = setOf(Call.State.End, Call.State.Error, Call.State.Released)
+    private fun liveCalls(except: Call? = null) = core.calls.filter { it !== except && it.state !in ended }
+    private fun conference(): Conference? = liveCalls().firstNotNullOfOrNull { it.conference }
+
+    /** Mirror the calls into UI state: one call, a held call plus a consult call, or a conference. */
+    private fun publish() {
+        val calls = liveCalls()
+        val conf = conference()
+        if (conf != null) {
+            val names = calls.filter { it.conference != null }.map { it.remoteAddress.username ?: "Unknown" }
+            _call.value = CallInfo(names.joinToString(", "), Call.State.StreamsRunning, false,
+                consulting = calls.any { it.conference == null }, conference = true, participants = names)
+            return
+        }
+        val call = core.currentCall ?: calls.firstOrNull() ?: return
         val held = call.state == Call.State.Paused || call.state == Call.State.Pausing
         _call.value = CallInfo(call.remoteAddress.username ?: "Unknown", call.state, call.dir == Call.Dir.Incoming,
-            held, core.callsNb > 1)
+            held, calls.size > 1)
     }
 
     /** Safe to call repeatedly; the service and the activity both call it. */
@@ -147,7 +164,12 @@ object SipManager {
     }
 
     fun answer() { core.currentCall?.accept(); PhoneService.clearIncoming(appContext) }
-    fun hangup() { core.currentCall?.terminate() }
+    /** Ends the call in front of the user; in a conference with nobody else ringing, ends it for everyone. */
+    fun hangup() {
+        val c = core.currentCall
+        if (c != null && c.conference == null) { c.terminate(); return }
+        conference()?.terminate() ?: liveCalls().firstOrNull()?.terminate()
+    }
     fun sendDigit(d: Char) { core.currentCall?.sendDtmf(d) }
     fun toggleMute() { core.isMicEnabled = !core.isMicEnabled; _muted.value = !core.isMicEnabled }
     fun toggleSpeaker() {
@@ -175,6 +197,29 @@ object SipManager {
     fun consult(number: String) {
         core.currentCall?.pause()
         call(number)
+    }
+
+    /** Add participant, step 1: in a conference, invite [number] straight in; otherwise hold the call and ring
+     *  [number] (same as a consult), then [merge] once they answer. */
+    fun addParticipant(number: String) {
+        val conf = conference()
+        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
+        if (conf != null) {
+            val target = Factory.instance().createAddress(if ('@' in number) "sip:$number" else "sip:$number@$domain") ?: return
+            conf.addParticipant(target)
+        } else consult(number)
+    }
+
+    /** Add participant, step 2: join every call into one conference, mixed on this phone (no PBX bridge needed). */
+    fun merge() {
+        val calls = liveCalls()
+        if (calls.size < 2) return
+        val conf = conference() ?: core.createConferenceWithParams(core.createConferenceParams(null).apply {
+            isVideoEnabled = false
+            isLocalParticipantEnabled = true
+            subject = "N2IT conference"
+        }) ?: return
+        calls.filter { it.conference == null }.forEach { conf.addParticipant(it) }
     }
 
     /** Attended transfer, step 2: connect the held caller to the consulted party. */
