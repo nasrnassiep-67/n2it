@@ -13,7 +13,7 @@ Claude session on the N2IT voip server; this file is the only shared memory betw
 - CI (`.github/workflows/ios.yml`) compiles unsigned on every push to main; the Ad Hoc job needs Apple secrets
   that are not set up.
 
-## Current branch: `add-participant`
+## Recent work (merged to `main` 2026-10-06)
 Adds "Add participant" + "Merge calls" (local Linphone conference) on Android, iOS and desktop.
 iOS changes: `N2IT/SipManager.swift` (`addParticipant`, `merge`, conference-aware `hangupSip`, keeps CallKit up
 while another call remains) and `N2IT/Views.swift` (person.badge.plus button, Merge/Complete transfer row).
@@ -28,11 +28,11 @@ calls to anything that doesn't offer SRTP fail.
 ## Steps on the Mac
 1. Xcode installed and signed in with the N2IT Apple developer account (Xcode > Settings > Accounts).
 2. `brew install xcodegen`
-3. `git clone https://github.com/nasrnassiep-67/n2it && cd n2it && git checkout add-participant && xcodegen generate`
+3. `git clone https://github.com/nasrnassiep-67/n2it && cd n2it && xcodegen generate`
 4. Open `N2IT.xcodeproj`. Signing is preset in `project.yml` (team 69Y3USPRR5, automatic); check Signing &
    Capabilities shows that team with no errors.
 5. Plug in the iPhone (Developer Mode on), run. Test: call 1002 <-> another extension, then Add participant,
    Merge calls, hang up.
-6. Commit fixes to `add-participant` and push; the voip-server session merges to main.
+6. Commit fixes on a branch (e.g. `ios-fixes`) and push; the voip-server session reviews and merges to main.
 
 Rules: no secrets in the repo; do not change the PBX from the Mac (that is done from the voip server).
