@@ -45,7 +45,12 @@ function connect() {
     s.on('confirmed', refresh)
     s.on('hold', refresh)
     s.on('unhold', () => { if (merging && calls.every((c) => !c.isOnHold().local)) buildMix(); refresh() })
-    s.on('ended', () => end(s)); s.on('failed', () => end(s))
+    s.on('ended', () => end(s))
+    s.on('failed', (e) => {   // say why (no mic, busy, rejected…) instead of the call just vanishing
+      end(s)
+      const was = $('status').textContent
+      status(`Call failed: ${e.cause}`); setTimeout(() => { if ($('status').textContent.startsWith('Call failed')) status(was) }, 6000)
+    })
     s._incoming = originator === 'remote'
     show('idle', false); show('incall', true); show('answer', s._incoming); refresh()
   })
