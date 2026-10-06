@@ -12,7 +12,7 @@ from GitHub Releases. iPhones can't sideload, so they get **Ad Hoc** builds, ins
 - No automatic updates: clients reinstall from the same page.
 
 ## The client's journey
-1. **Register the phone.** In Safari on the iPhone, open `https://n2it.voip.n2it.co.za/app/udid/`, enter name and
+1. **Register the phone.** In Safari on the iPhone, open `https://voip.n2it.co.za/download/udid/`, enter name and
    company, tap *Register this iPhone*, allow the profile download, and install it under Settings > Profile
    Downloaded. The profile only reports the UDID to us and removes itself.
 2. **Wait for the go-ahead.** N2IT registers the device and runs a new build (minutes).
@@ -25,8 +25,8 @@ differ). If it does, step 3 adds Settings > Privacy & Security > Developer Mode.
 
 ## Pieces and who builds them
 
-### 1. UDID collection page: voip-server session (runs on the PBX web server)
-Standard iOS "profile service" enrollment, served from `https://n2it.voip.n2it.co.za/app/udid/`:
+### 1. UDID collection page: voip-server session (runs on the PBX web server; `/app/` is FusionPBX's router, hence `/download/udid/`)
+Standard iOS "profile service" enrollment, served from `https://voip.n2it.co.za/download/udid/`:
 - `index.php`: form (name, company, extension), then serves a `.mobileconfig` (`Content-Type:
   application/x-apple-aspen-config`) with a `Profile Service` payload whose URL is `enroll.php` and
   `DeviceAttributes` = `UDID`, `PRODUCT`, `VERSION`, `DEVICE_NAME`. Sign it with the site's TLS cert if possible,
