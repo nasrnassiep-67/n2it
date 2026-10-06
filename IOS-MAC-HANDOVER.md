@@ -82,3 +82,13 @@ Windows. The server copies release assets from this repo (`/root/voip/n2it-app/s
   No email (the PBX has no SMTP set up). The owner runs `/root/voip/n2it-app/udid-list.sh` on the PBX for the
   `Name,UDID` lines to paste into `ADHOC_DEVICES`. Linked from the download page's iPhone card.
 - The sync runs every 15 min (cron), so new release assets reach the PBX page within 15 min.
+
+## Push gateway is on the PBX (voip-server session, 2026-10-06): app changes needed (Mac session)
+Server side built and tested up to Apple (see `gateway/README.md`). For the iPhone app:
+1. **Set `PUSH_GATEWAY_HOST = voip.n2it.co.za/push`** in `project.yml` (target settings). It's referenced in
+   Info.plist (`PushGatewayHost`) but never defined, so today the app never uploads its push token.
+2. Set the SIP user agent to `N2IT Phone iOS/<version>` (Android sends `N2IT Phone Android/<version>`), so the PBX
+   can tell the iPhone app's registration apart in logs.
+3. Nothing else: register/unregister bodies, the `caller` payload key, CallKit-first then `refreshRegisters()`
+   already match. Payload also has `number` and `callee` if useful.
+Test once the owner has the APNs key in: run from Xcode (sandbox), sign in as 1002, background the app, call 1002.

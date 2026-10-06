@@ -1,0 +1,10 @@
+<?php
+// N2IT push gateway: Apple Push Notification service key (developer.apple.com > Keys, "Apple Push
+// Notifications service (APNs)"). Fill in team_id and key_id, put the .p8 at key_file
+// (root:www-data, mode 640). Nothing is pushed until all three are set.
+return [
+	'team_id'   => '',                              // 10 characters, Membership details
+	'key_id'    => '',                              // 10 characters, shown with the key
+	'key_file'  => '/etc/n2it-push/AuthKey.p8',
+	'bundle_id' => 'za.co.n2it.softphone',          // APNs topic = bundle_id + ".voip"
+];
