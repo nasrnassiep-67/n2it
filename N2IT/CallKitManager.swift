@@ -59,6 +59,7 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         u.remoteHandle = CXHandle(type: .generic, value: caller)
         u.localizedCallerName = caller
         u.hasVideo = false
+        u.supportsHolding = true
         provider.reportNewIncomingCall(with: id, update: u) { _ in completion?() }
     }
 
@@ -104,6 +105,11 @@ final class CallKitManager: NSObject, CXProviderDelegate {
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         SipManager.shared.invite(action.handle.value)
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: nil)
+        let u = CXCallUpdate()
+        u.remoteHandle = action.handle
+        u.hasVideo = false
+        u.supportsHolding = true   // lets iOS offer "Hold & Accept" when a GSM/WhatsApp call comes in
+        provider.reportCall(with: action.callUUID, updated: u)
         action.fulfill()
     }
 
@@ -123,6 +129,12 @@ final class CallKitManager: NSObject, CXProviderDelegate {
 
     func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
         SipManager.shared.setMuted(action.isMuted)
+        action.fulfill()
+    }
+
+    /// iOS holds our call when the user takes another call ("Hold & Accept"), and unholds it from the call UI.
+    func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
+        SipManager.shared.systemHold(action.isOnHold)
         action.fulfill()
     }
 

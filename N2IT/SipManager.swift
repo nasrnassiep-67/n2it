@@ -199,8 +199,24 @@ final class SipManager: ObservableObject {
 
     func toggleHold() {
         guard let core else { return }
-        if let c = core.calls.first(where: { $0.state == .Paused }) { try? c.resume() }
-        else { try? core.currentCall?.pause() }
+        if let c = core.calls.first(where: { $0.state == .Paused }) { userHeld.removeAll { $0 === c }; try? c.resume() }
+        else if let c = core.currentCall { userHeld.append(c); try? c.pause() }
+    }
+
+    /// Calls the user held themselves; `systemHold(false)` leaves these on hold.
+    private var userHeld: [Call] = []
+
+    /// CallKit hold/unhold, e.g. the user took a GSM or WhatsApp call with "Hold & Accept". Holding makes the
+    /// PBX play hold music; resuming restarts the audio streams.
+    func systemHold(_ on: Bool) {
+        if let conf = conference {
+            _ = on ? try? conf.leave() : try? conf.enter()
+            return
+        }
+        for c in liveCalls() {
+            if on, c.state == .StreamsRunning { try? c.pause() }
+            if !on, c.state == .Paused, !userHeld.contains(where: { $0 === c }) { try? c.resume() }
+        }
     }
 
     /// Blind transfer: hand the current call to `number` and drop out.
@@ -242,6 +258,7 @@ final class SipManager: ObservableObject {
                 CallKitManager.shared.sipIncoming(caller: number)
                 self.activeCall = CallInfo(number: number, state: state, incoming: true)
             case .End, .Error, .Released:
+                self.userHeld.removeAll { $0 === call }
                 // Another call may still be up (held caller after a consult, or the rest of a conference).
                 if let other = self.core.currentCall ?? self.liveCalls(except: call).first {
                     self.activeCall = CallInfo(number: other.remoteAddress?.username ?? "Unknown", state: other.state,
