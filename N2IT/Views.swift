@@ -41,6 +41,13 @@ struct KeypadView: View {
         VStack(spacing: 18) {
             StatusDot()
             Text(number.isEmpty ? " " : number).font(.system(size: 36, weight: .light)).lineLimit(1).minimumScaleFactor(0.5)
+                .frame(maxWidth: .infinity).contentShape(Rectangle())
+                .contextMenu {
+                    Button { paste() } label: { Label("Paste", systemImage: "doc.on.clipboard") }
+                    if !number.isEmpty {
+                        Button { UIPasteboard.general.string = number } label: { Label("Copy", systemImage: "doc.on.doc") }
+                    }
+                }
             ForEach(keys, id: \.self) { row in
                 HStack(spacing: 24) {
                     ForEach(row, id: \.self) { k in
@@ -62,6 +69,13 @@ struct KeypadView: View {
                 }.opacity(number.isEmpty ? 0 : 1)
             }
         }.padding()
+    }
+
+    /// Paste a copied number, keeping only dialable characters ("+27 82 123-4567" -> "+27821234567").
+    private func paste() {
+        guard let text = UIPasteboard.general.string else { return }
+        let digits = text.filter { "+0123456789*#".contains($0) }
+        if !digits.isEmpty { number = digits }
     }
 }
 
