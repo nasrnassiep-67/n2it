@@ -3,7 +3,9 @@ package za.co.n2it.phone
 import android.content.Context
 import android.provider.ContactsContract
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,7 +18,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -124,13 +128,29 @@ fun MainTabs(onSignOut: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun KeypadTab() {
     var number by remember { mutableStateOf("") }
+    var menu by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
     val registered by SipManager.registered.collectAsState()
     Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         StatusRow(); Spacer(Modifier.height(16.dp))
-        Text(number.ifEmpty { " " }, fontSize = 34.sp, maxLines = 1)
+        // Long-press the number to paste a copied one ("+27 82 123-4567" -> "+27821234567") or copy it.
+        Box(Modifier.fillMaxWidth().combinedClickable(onClick = {}, onLongClick = { menu = true }), contentAlignment = Alignment.Center) {
+            Text(number.ifEmpty { " " }, fontSize = 34.sp, maxLines = 1)
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text("Paste") }, leadingIcon = { Icon(Icons.Default.ContentPaste, null) }, onClick = {
+                    val digits = clipboard.getText()?.text.orEmpty().filter { it in "+0123456789*#" }
+                    if (digits.isNotEmpty()) number = digits
+                    menu = false
+                })
+                if (number.isNotEmpty()) DropdownMenuItem(text = { Text("Copy") }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) }, onClick = {
+                    clipboard.setText(AnnotatedString(number)); menu = false
+                })
+            }
+        }
         Spacer(Modifier.height(16.dp))
         Pad { number += it }
         Spacer(Modifier.height(16.dp))
