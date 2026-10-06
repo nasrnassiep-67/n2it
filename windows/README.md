@@ -1,6 +1,6 @@
 # N2IT Phone for Windows and Linux
 
-Electron + JsSIP. Registers over WSS (default port 7443) to `<code>.voip.n2it.co.za`, so FusionPBX needs WebRTC
+Electron + JsSIP. Registers over WSS to `wss://<code>.voip.n2it.co.za/wss` (port 443; nginx proxies it to FreeSWITCH's WSS on 7443), so FusionPBX needs WebRTC
 enabled (WSS listener, valid TLS certificate, extensions allowing WebRTC/DTLS-SRTP). Credentials are encrypted with
 Windows DPAPI. Not a push client: incoming calls ring only while the app is running (it stays in the tray/taskbar).
 

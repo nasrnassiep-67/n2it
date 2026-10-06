@@ -1,7 +1,7 @@
-// WebRTC softphone: JsSIP over WSS to FusionPBX. Assumes FusionPBX serves WSS on 7443
-// (default) at <code>.voip.n2it.co.za with a valid certificate and WebRTC-enabled extensions.
+// WebRTC softphone: JsSIP over WSS to FusionPBX at wss://<code>.voip.n2it.co.za/wss. Public port 443: nginx
+// proxies /wss to FreeSWITCH's WSS listener (7443 is the XGS VPN portal from outside).
 const BASE = 'voip.n2it.co.za'
-const DEFAULTS = { wssPort: 7443, voicemail: '*97', stun: 'stun:stun.l.google.com:19302',
+const DEFAULTS = { wssPort: 443, voicemail: '*97', stun: 'stun:stun.l.google.com:19302',
   micId: '', spkId: '', echo: true, noise: true, agc: true }
 const $ = (id) => document.getElementById(id)
 let ua, session, acc, muted = false
@@ -23,7 +23,7 @@ function connect() {
   const d = domain(acc.tenant)
   ua?.stop()
   ua = new JsSIP.UA({
-    sockets: [new JsSIP.WebSocketInterface(`wss://${d}:${cfg().wssPort}`)],
+    sockets: [new JsSIP.WebSocketInterface(`wss://${d}:${cfg().wssPort}/wss`)],
     uri: `sip:${acc.user}@${d}`, authorization_user: acc.user, password: acc.pass,
     display_name: acc.user, register: true, session_timers: false,
   })
