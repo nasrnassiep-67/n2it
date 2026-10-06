@@ -15,7 +15,8 @@
 
     <application
         android:label="N2IT Phone"
-        android:icon="@android:drawable/sym_call_outgoing"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity

@@ -87,7 +87,7 @@ class PhoneService : Service() {
     private fun buildNotification(): Notification {
         val call = SipManager.call.value
         val b = NotificationCompat.Builder(this, CH_STATUS)
-            .setSmallIcon(android.R.drawable.sym_call_outgoing)
+            .setSmallIcon(R.drawable.ic_stat_n2it)
             .setContentIntent(open(this))
             .setOngoing(true)
         if (call == null || call.state == org.linphone.core.Call.State.IncomingReceived) {
@@ -150,7 +150,7 @@ class PhoneService : Service() {
         fun notifyIncoming(c: Context, caller: String) {
             val nm = c.getSystemService(NotificationManager::class.java)
             nm.notify(ID_CALL, NotificationCompat.Builder(c, CH_CALL)
-                .setSmallIcon(android.R.drawable.sym_call_incoming)
+                .setSmallIcon(R.drawable.ic_stat_n2it)
                 .setContentTitle("Incoming call").setContentText(caller)
                 .setCategory(NotificationCompat.CATEGORY_CALL).setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setFullScreenIntent(open(c), true).setContentIntent(open(c))

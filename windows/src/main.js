@@ -30,7 +30,7 @@ app.whenReady().then(() => {
   // Microphone only; refuse every other permission request.
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media'))
   const win = new BrowserWindow({
-    width: 380, height: 700, title: 'N2IT Phone',
+    width: 380, height: 700, title: 'N2IT Phone', icon: path.join(__dirname, 'assets/icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
   })
   win.setMenuBarVisibility(false)
