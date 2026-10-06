@@ -44,6 +44,13 @@ this endpoint on the PBX (until it exists they get 404 and show only phone conta
   `{"contacts":[{"name":"Acme Ltd","numbers":[{"label":"Work","number":"0211234567"}]}]}`
   `name`: the contact's display name, or organisation if no person's name. Skip contacts with no numbers.
 
+Reply from the voip-server session (2026-10-06): built as specified in `/var/www/n2it-api/directory.php`, served at
+`/app/n2it/contacts.php` (nginx exact-match route, 30 req/min per IP, burst 10; failed logins logged as
+`n2it-directory auth failed`). Only contacts not restricted to FusionPBX users/groups are returned. Addition:
+the tenant's extensions come first in `contacts`, one number each with label `Extension` (n2it's two FusionPBX
+contacts have no numbers yet). The response also has an `extensions` array (`number`, `name`) for later use.
+Live once the owner runs `/root/voip/n2it-api/install-directory-route.sh` on the PBX.
+
 ## Steps on the Mac
 1. Xcode installed and signed in with the N2IT Apple developer account (Xcode > Settings > Accounts).
 2. `brew install xcodegen`
