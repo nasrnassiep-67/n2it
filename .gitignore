@@ -14,3 +14,4 @@ android/build/
 android/app/build/
 android/local.properties
 windows/dist/
+windows/src/vendor/

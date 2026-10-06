@@ -4,8 +4,12 @@
   "description": "N2IT Phone desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
+    "bundle": "npx --yes esbuild@0.24.0 node_modules/jssip/lib/JsSIP.js --bundle --platform=browser --format=iife --global-name=JsSIP --minify --outfile=src/vendor/jssip.min.js",
+    "prestart": "npm run bundle",
     "start": "electron .",
+    "predist": "npm run bundle",
     "dist": "electron-builder --win nsis",
+    "predist:linux": "npm run bundle",
     "dist:linux": "electron-builder --linux AppImage deb"
   },
   "dependencies": {
@@ -19,8 +23,7 @@
     "appId": "za.co.n2it.softphone.desktop",
     "productName": "N2IT Phone",
     "files": [
-      "src/**",
-      "node_modules/jssip/dist/jssip.min.js"
+      "src/**"
     ],
     "win": {
       "target": "nsis"

@@ -22,11 +22,15 @@ $('tenant').oninput = () => ($('domain').textContent = domain($('tenant').value)
 function connect() {
   const d = domain(acc.tenant)
   ua?.stop()
-  ua = new JsSIP.UA({
+  if (typeof JsSIP === 'undefined') { status('Error: SIP library missing (reinstall the app)'); return }
+  status('Connecting…')
+  try { ua = new JsSIP.UA({
     sockets: [new JsSIP.WebSocketInterface(`wss://${d}:${cfg().wssPort}/wss`)],
     uri: `sip:${acc.user}@${d}`, authorization_user: acc.user, password: acc.pass,
     display_name: acc.user, register: true, session_timers: false,
-  })
+  }) } catch (e) { status(`Error: ${e.message}`); return }
+  ua.on('connected', () => status('Connected, registering…'))
+  ua.on('disconnected', () => status(`Cannot reach ${d} (retrying)`))
   ua.on('registered', () => status('Registered'))
   ua.on('unregistered', () => status('Not registered'))
   ua.on('registrationFailed', (e) => status(`Failed: ${e.cause}`))
