@@ -39,6 +39,9 @@ function connect() {
     if (!calls.length) muted = false
     calls.push(s); session = s
     s._audio = document.body.appendChild(Object.assign(document.createElement('audio'), { autoplay: true }))
+    // JsSIP sends the INVITE / 200 OK only when ICE gathering ends; a dead interface (VPN, 169.254 adapter) or an
+    // unreachable STUN server stalls that for ~40 s. Go once candidates have been quiet for 1 s.
+    s.on('icecandidate', ({ ready }) => { clearTimeout(s._ice); s._ice = setTimeout(ready, 1000) })
     // Play the caller's audio. Incoming calls announce their peer connection ('peerconnection'); for calls we
     // place, JsSIP creates it before this handler runs, so hook s.connection directly, and as a last resort pick
     // up the receivers once the call is confirmed (otherwise outgoing calls are silent on our side).
