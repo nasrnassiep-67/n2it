@@ -25,6 +25,19 @@ Test: PBX call, take a WhatsApp/GSM call with Hold & Accept (other side should h
 `configure()` sets `core.mediaEncryptionMandatory = acc.srtp`; it should be `false` (optional SRTP), otherwise
 calls to anything that doesn't offer SRTP fail.
 
+## Request for the voip-server session: company contacts endpoint (2026-10-06)
+The iOS and Android apps now show a "Company" section in Contacts from FusionPBX > Apps > Contacts. They need
+this endpoint on the PBX (until it exists they get 404 and show only phone contacts):
+
+- `GET https://<tenant>.voip.n2it.co.za/app/n2it/contacts.php`
+- Auth: HTTP Basic, username = extension (e.g. `1002`), password = that extension's SIP password. Resolve the
+  domain from the Host header, check the extension exists, is enabled and the password matches; else `401`.
+  Rate-limit failed attempts (fail2ban or similar), since it accepts SIP passwords.
+- Return only that domain's contacts (`v_contacts` + `v_contact_phones` for the domain_uuid), never other tenants'.
+- `200`, `Content-Type: application/json`:
+  `{"contacts":[{"name":"Acme Ltd","numbers":[{"label":"Work","number":"0211234567"}]}]}`
+  `name`: the contact's display name, or organisation if no person's name. Skip contacts with no numbers.
+
 ## Steps on the Mac
 1. Xcode installed and signed in with the N2IT Apple developer account (Xcode > Settings > Accounts).
 2. `brew install xcodegen`
