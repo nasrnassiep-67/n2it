@@ -49,10 +49,30 @@ jobs:
             windows/dist/*.AppImage
             windows/dist/*.deb
 
+  mac:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm, cache-dependency-path: windows/package-lock.json }
+      - run: npm ci
+      - name: Build .dmg for Apple Silicon and Intel (ad-hoc signed, not notarised)
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # First open: macOS says it can't verify the developer; System Settings > Privacy & Security > Open Anyway.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n2it-phone-mac
+          path: windows/dist/*.dmg
+
   # Stable download links (no GitHub login needed, unlike run artifacts). Main only.
   publish:
     if: github.ref == 'refs/heads/main'
-    needs: [build, linux]
+    needs: [build, linux, mac]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -67,6 +87,7 @@ jobs:
           cp *.AppImage n2it-phone.AppImage
           cp *.deb n2it-phone.deb
           gh release delete desktop-latest --cleanup-tag -y || true
-          gh release create desktop-latest n2it-phone-setup.exe n2it-phone.AppImage n2it-phone.deb --prerelease \
+          gh release create desktop-latest n2it-phone-setup.exe n2it-phone.AppImage n2it-phone.deb \
+            n2it-phone-mac-arm64.dmg n2it-phone-mac-x64.dmg --prerelease \
             --title "N2IT Phone desktop (latest test build)" \
-            --notes "Build of commit ${GITHUB_SHA::7}. Windows: run n2it-phone-setup.exe (SmartScreen: More info > Run anyway). Linux: AppImage (chmod +x) or .deb."
+            --notes "Build of commit ${GITHUB_SHA::7}. Windows: run n2it-phone-setup.exe (SmartScreen: More info > Run anyway). Linux: AppImage (chmod +x) or .deb. macOS: n2it-phone-mac-arm64.dmg (Apple Silicon, M1 and later) or n2it-phone-mac-x64.dmg (Intel); drag to Applications, open once, then System Settings > Privacy & Security > Open Anyway."
