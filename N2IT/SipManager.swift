@@ -178,7 +178,7 @@ final class SipManager: ObservableObject {
         if let conf = conference {
             guard let target = try? Factory.Instance.createAddress(addr: number.contains("@") ? "sip:\(number)" : "sip:\(number)@\(domain)")
             else { return }
-            _ = try? conf.addParticipant(addr: target)
+            _ = try? conf.addParticipant(URI: target)
         } else { consult(number) }
     }
 
