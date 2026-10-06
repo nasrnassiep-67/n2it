@@ -29,7 +29,8 @@ calls to anything that doesn't offer SRTP fail.
 1. Xcode installed and signed in with the N2IT Apple developer account (Xcode > Settings > Accounts).
 2. `brew install xcodegen`
 3. `git clone https://github.com/nasrnassiep-67/n2it && cd n2it && git checkout add-participant && xcodegen generate`
-4. Open `N2IT.xcodeproj`, target N2IT > Signing & Capabilities: tick automatic signing, pick the team.
+4. Open `N2IT.xcodeproj`. Signing is preset in `project.yml` (team 69Y3USPRR5, automatic); check Signing &
+   Capabilities shows that team with no errors.
 5. Plug in the iPhone (Developer Mode on), run. Test: call 1002 <-> another extension, then Add participant,
    Merge calls, hang up.
 6. Commit fixes to `add-participant` and push; the voip-server session merges to main.
