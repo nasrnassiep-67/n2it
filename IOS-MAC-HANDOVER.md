@@ -17,7 +17,9 @@ Claude session on the N2IT voip server; this file is the only shared memory betw
 Adds "Add participant" + "Merge calls" (local Linphone conference) on Android, iOS and desktop.
 iOS changes: `N2IT/SipManager.swift` (`addParticipant`, `merge`, conference-aware `hangupSip`, keeps CallKit up
 while another call remains) and `N2IT/Views.swift` (person.badge.plus button, Merge/Complete transfer row).
-Not yet run on a real iPhone.
+Also on this branch for iOS: CallKit hold (`CXSetHeldCallAction` -> `SipManager.systemHold`), so "Hold & Accept"
+for a GSM/WhatsApp call holds our call and resuming restarts audio. Not yet run on a real iPhone.
+Test: PBX call, take a WhatsApp/GSM call with Hold & Accept (other side should hear hold music), end it, resume.
 
 ## Known issue to fix
 `configure()` sets `core.mediaEncryptionMandatory = acc.srtp`; it should be `false` (optional SRTP), otherwise
