@@ -2,6 +2,7 @@ package za.co.n2it.phone
 
 import android.content.Context
 import android.provider.ContactsContract
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,17 +27,45 @@ import java.util.Date
 private val Green = Color(0xFF2E9E4F)
 private val Red = Color(0xFFD64545)
 
+/** True while a call is up but the user left the call screen to use the rest of the app. */
+private val callMinimised = mutableStateOf(false)
+
+/** Dial from the app: with a call already up, hold it and ring [number] (ready to merge or transfer). */
+private fun dial(number: String) {
+    if (SipManager.call.value != null) { SipManager.addParticipant(number); callMinimised.value = false }
+    else SipManager.call(number)
+}
+
 @Composable
 fun App(onSignedIn: () -> Unit, onSignedOut: () -> Unit) {
     val ctx = LocalContext.current
     var loggedIn by remember { mutableStateOf(Account.load(ctx).isConfigured) }
     val call by SipManager.call.collectAsState()
 
-    if (call != null) { CallScreen(call!!); return }
+    var minimised by callMinimised
+    // A new incoming call, or the end of the call, always brings the call screen back.
+    LaunchedEffect(call == null, call?.state == org.linphone.core.Call.State.IncomingReceived) {
+        if (call == null || call?.state == org.linphone.core.Call.State.IncomingReceived) minimised = false
+    }
+    if (call != null && !minimised) { CallScreen(call!!, onMinimise = { minimised = true }); return }
     if (!loggedIn) {
         LoginScreen { loggedIn = true; onSignedIn() }
     } else {
-        MainTabs(onSignOut = { SipManager.signOut(ctx); onSignedOut(); loggedIn = false })
+        Column {
+            call?.let { ReturnToCallBar(it) { minimised = false } }
+            MainTabs(onSignOut = { SipManager.signOut(ctx); onSignedOut(); loggedIn = false })
+        }
+    }
+}
+
+@Composable
+private fun ReturnToCallBar(call: CallInfo, onClick: () -> Unit) {
+    Surface(color = Green, modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Call, null, tint = Color.White); Spacer(Modifier.width(10.dp))
+            Text((if (call.onHold) "On hold: " else "On call: ") + call.number + " · tap to return",
+                color = Color.White, maxLines = 1)
+        }
     }
 }
 
@@ -107,7 +136,7 @@ fun KeypadTab() {
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             Spacer(Modifier.size(72.dp))
-            FilledIconButton(onClick = { SipManager.call(number); number = "" }, enabled = number.isNotEmpty() && registered,
+            FilledIconButton(onClick = { dial(number); number = "" }, enabled = number.isNotEmpty() && registered,
                 modifier = Modifier.size(72.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Green)) {
                 Icon(Icons.Default.Call, "Call", tint = Color.White)
             }
@@ -137,7 +166,7 @@ fun RecentsTab() {
     LazyColumn {
         items(recents) { r ->
             ListItem(
-                modifier = Modifier.clickable { SipManager.call(r.number) },
+                modifier = Modifier.clickable { dial(r.number) },
                 leadingContent = { Icon(if (r.incoming) Icons.Default.CallReceived else Icons.Default.CallMade, null,
                     tint = if (r.missed) Red else MaterialTheme.colorScheme.onSurfaceVariant) },
                 headlineContent = { Text(r.number, color = if (r.missed) Red else Color.Unspecified) },
@@ -170,7 +199,7 @@ fun ContactsTab() {
         if (all.isEmpty()) Box(Modifier.fillMaxSize(), Alignment.Center) { Text("No contacts (allow Contacts permission)") }
         LazyColumn {
             items(list) { c ->
-                ListItem(modifier = Modifier.clickable { SipManager.call(c.number.filter { it in "+0123456789*#" }) },
+                ListItem(modifier = Modifier.clickable { dial(c.number.filter { it in "+0123456789*#" }) },
                     headlineContent = { Text(c.name) }, supportingContent = { Text(c.number) })
             }
         }
@@ -226,7 +255,7 @@ fun SettingsTab(onSignOut: () -> Unit) {
 }
 
 @Composable
-fun CallScreen(call: CallInfo) {
+fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
     val muted by SipManager.muted.collectAsState()
     val speaker by SipManager.speaker.collectAsState()
     var pad by remember { mutableStateOf(false) }
@@ -243,6 +272,11 @@ fun CallScreen(call: CallInfo) {
         else -> ""
     }
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        // Back to contacts/keypad with the call still up; the green bar (or the notification) brings it back.
+        BackHandler(enabled = !ringingIn, onBack = onMinimise)
+        if (!ringingIn) Row(Modifier.fillMaxWidth()) {
+            IconButton(onMinimise) { Icon(Icons.Default.KeyboardArrowDown, "Minimise call") }
+        }
         Spacer(Modifier.weight(1f))
         Text(call.number, fontSize = 34.sp); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))

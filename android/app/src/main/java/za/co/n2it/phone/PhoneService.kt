@@ -6,10 +6,17 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.media.AudioManager
 import android.os.IBinder
+import android.telecom.TelecomManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /**
  * Foreground service that keeps the SIP registration alive while the app is in the background,
@@ -18,29 +25,86 @@ import androidx.core.content.ContextCompat
 class PhoneService : Service() {
     override fun onBind(i: Intent?): IBinder? = null
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var fgTypes = 0
+
     override fun onCreate() {
         super.onCreate()
         SipManager.init(this)
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CH_STATUS, "Phone status", NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CH_CALL, "Incoming calls", NotificationManager.IMPORTANCE_HIGH))
+        // The status notification follows the call: "Ready to receive calls" when idle, the ongoing call otherwise.
+        scope.launch { SipManager.call.collect { refreshNotification() } }
+        // While a call is up, watch for another app's call (GSM, WhatsApp…) and hold/resume ours around it.
+        scope.launch {
+            SipManager.call.map { it != null }.distinctUntilChanged().collectLatest { inCall ->
+                if (!inCall) { SipManager.onOtherAppCall(false); return@collectLatest }
+                while (isActive) { SipManager.onOtherAppCall(otherAppInCall()); delay(1000) }
+            }
+        }
     }
 
+    override fun onDestroy() { scope.cancel(); super.onDestroy() }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val n = NotificationCompat.Builder(this, CH_STATUS)
-            .setSmallIcon(android.R.drawable.sym_call_outgoing)
-            .setContentTitle("N2IT Phone")
-            .setContentText("Ready to receive calls")
-            .setContentIntent(open(this))
-            .setOngoing(true).build()
+        if (intent?.action == ACTION_HANGUP) { SipManager.hangup(); return START_STICKY }
         val inCall = intent?.action == ACTION_IN_CALL
+        fgTypes = types(inCall)
         try {
-            ServiceCompat.startForeground(this, ID_STATUS, n, types(inCall))
+            ServiceCompat.startForeground(this, ID_STATUS, buildNotification(), fgTypes)
         } catch (e: RuntimeException) {
             // Mic type refused (permission missing or app not in the foreground): keep ringing without it.
-            ServiceCompat.startForeground(this, ID_STATUS, n, types(false))
+            fgTypes = types(false)
+            ServiceCompat.startForeground(this, ID_STATUS, buildNotification(), fgTypes)
         }
         return START_STICKY
+    }
+
+    /** True while another app has a call. A ringing GSM call (audio mode RINGTONE) is skipped, so an ignored ring
+     *  does not hold ours; our own calls are not Telecom calls, so they never count. */
+    private fun otherAppInCall(): Boolean {
+        if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return false
+        return try {
+            getSystemService(TelecomManager::class.java).isInCall &&
+                getSystemService(AudioManager::class.java).mode != AudioManager.MODE_RINGTONE
+        } catch (e: SecurityException) { false }
+    }
+
+    private fun refreshNotification() {
+        val n = buildNotification()
+        try {
+            ServiceCompat.startForeground(this, ID_STATUS, n, fgTypes)
+        } catch (e: RuntimeException) {
+            getSystemService(NotificationManager::class.java).notify(ID_STATUS, n)
+        }
+    }
+
+    /**
+     * Ongoing call: a call-style notification (green chip in the status bar, timer, Hang up) that opens
+     * the call screen, so a minimised call is always one tap away. Ringing calls have their own notification.
+     */
+    private fun buildNotification(): Notification {
+        val call = SipManager.call.value
+        val b = NotificationCompat.Builder(this, CH_STATUS)
+            .setSmallIcon(android.R.drawable.sym_call_outgoing)
+            .setContentIntent(open(this))
+            .setOngoing(true)
+        if (call == null || call.state == org.linphone.core.Call.State.IncomingReceived) {
+            return b.setContentTitle("N2IT Phone").setContentText("Ready to receive calls").build()
+        }
+        val who = if (call.conference) "Conference: ${call.number}" else call.number
+        val status = when {
+            call.conference -> "Conference · ${call.participants.size + 1} people"
+            call.onHold -> "On hold"
+            call.state == org.linphone.core.Call.State.StreamsRunning || call.state == org.linphone.core.Call.State.Connected -> "Ongoing call"
+            else -> "Calling…"
+        }
+        b.setContentTitle(who).setContentText(status)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setStyle(NotificationCompat.CallStyle.forOngoingCall(Person.Builder().setName(who).build(), hangUp(this)))
+        SipManager.callStartedAt()?.let { b.setWhen(it).setUsesChronometer(true).setShowWhen(true) }
+        return b.build()
     }
 
     /**
@@ -61,6 +125,11 @@ class PhoneService : Service() {
         const val ID_STATUS = 1; const val ID_CALL = 2
         private const val ACTION_IN_CALL = "za.co.n2it.phone.IN_CALL"
         private const val ACTION_IDLE = "za.co.n2it.phone.IDLE"
+        private const val ACTION_HANGUP = "za.co.n2it.phone.HANGUP"
+
+        private fun hangUp(c: Context) = PendingIntent.getService(
+            c, 1, Intent(c, PhoneService::class.java).setAction(ACTION_HANGUP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         private fun open(c: Context) = PendingIntent.getActivity(
             c, 0, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

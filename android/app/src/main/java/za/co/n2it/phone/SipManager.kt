@@ -52,6 +52,7 @@ object SipManager {
                         _recents.value = listOf(RecentCall(number, System.currentTimeMillis(), incoming, missed)) + _recents.value
                     }
                     PhoneService.clearIncoming(appContext)
+                    userHeld.remove(call)
                     // Another call may still be up (held caller after a consult, or the rest of a conference).
                     if (liveCalls(except = call).isEmpty()) {
                         _call.value = null; _muted.value = false; _speaker.value = false
@@ -182,8 +183,35 @@ object SipManager {
     }
     fun toggleHold() {
         val c = core.currentCall ?: core.calls.firstOrNull { it.state == Call.State.Paused } ?: return
-        if (c.state == Call.State.Paused) c.resume() else c.pause()
+        if (c.state == Call.State.Paused) { userHeld.remove(c); c.resume() } else { userHeld.add(c); c.pause() }
     }
+
+    /** Calls the user put on hold themselves; [onOtherAppCall] never resumes these. */
+    private val userHeld = mutableSetOf<Call>()
+    private var otherAppCall = false
+
+    /**
+     * Another app (GSM, WhatsApp, Teams…) started or ended a call while ours is up. That app takes the
+     * microphone and speaker, so hold ours (the PBX plays hold music to the other side), and resume it when
+     * the other call is over: resuming restarts the audio streams, which a running call would not get back.
+     */
+    fun onOtherAppCall(active: Boolean) {
+        if (!started || active == otherAppCall) return
+        otherAppCall = active
+        val conf = conference()
+        if (active) {
+            if (conf != null) conf.leave()
+            liveCalls().filter { it.conference == null && it.state == Call.State.StreamsRunning }.forEach { it.pause() }
+        } else {
+            if (conf != null && !conf.isIn) conf.enter()
+            liveCalls().filter { it.conference == null && it.state == Call.State.Paused && it !in userHeld }
+                .forEach { it.resume() }
+        }
+    }
+
+    /** When the longest-running call connected (for the notification timer), or null with no call. */
+    fun callStartedAt(): Long? = if (!started) null
+        else liveCalls().maxOfOrNull { it.duration }?.let { System.currentTimeMillis() - it * 1000L }
 
     /** Blind transfer: hand the current call to [number] and drop out. */
     fun blindTransfer(number: String) {
