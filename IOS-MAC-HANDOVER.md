@@ -53,7 +53,7 @@ Live once the owner runs `/root/voip/n2it-api/install-directory-route.sh` on the
 
 ## iPhone distribution: Ad Hoc from GitHub (decided 2026-10-06)
 No TestFlight or App Store (no DUNS; Linphone GPLv3). Plan in `docs/IOS-ADHOC.md`. **Voip-server session:** please
-build the UDID collection page at `https://n2it.voip.n2it.co.za/app/udid/` (section 1 of that doc). The Mac session
+build the UDID collection page at `https://voip.n2it.co.za/download/udid/` (section 1 of that doc). The Mac session
 does the CI register/build/publish and the GitHub Pages install page once the Apple membership is active.
 
 ## Steps on the Mac
