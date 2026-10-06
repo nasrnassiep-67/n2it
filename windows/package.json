@@ -10,7 +10,9 @@
     "predist": "npm run bundle",
     "dist": "electron-builder --win nsis",
     "predist:linux": "npm run bundle",
-    "dist:linux": "electron-builder --linux AppImage deb"
+    "dist:linux": "electron-builder --linux AppImage deb",
+    "predist:mac": "npm run bundle",
+    "dist:mac": "electron-builder --mac dmg zip"
   },
   "dependencies": {
     "jssip": "^3.10.1"
@@ -27,6 +29,17 @@
     ],
     "win": {
       "target": "nsis"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.business",
+      "identity": null,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "N2IT Phone needs the microphone for calls."
+      }
     },
     "linux": {
       "target": [
