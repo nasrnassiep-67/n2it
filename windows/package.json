@@ -12,7 +12,7 @@
     "predist:linux": "npm run bundle",
     "dist:linux": "electron-builder --linux AppImage deb",
     "predist:mac": "npm run bundle",
-    "dist:mac": "electron-builder --mac dmg zip"
+    "dist:mac": "electron-builder --mac dmg --arm64 --x64"
   },
   "dependencies": {
     "jssip": "^3.10.1"
@@ -27,19 +27,26 @@
     "files": [
       "src/**"
     ],
+    "afterPack": "build/adhoc-sign.js",
     "win": {
       "target": "nsis"
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "category": "public.app-category.business",
       "identity": null,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "N2IT Phone needs the microphone for calls."
-      }
+      },
+      "artifactName": "n2it-phone-mac-${arch}.${ext}"
     },
     "linux": {
       "target": [
