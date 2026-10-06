@@ -93,7 +93,7 @@ final class SipManager: ObservableObject {
             try server.setTransport(newValue: acc.transport.linphone)
             try params.setServeraddress(newValue: server)
             try core.setMediaencryption(newValue: acc.srtp ? .SRTP : .None)
-            core.mediaEncryptionMandatory = acc.srtp
+            core.mediaEncryptionMandatory = false  // optional SRTP: still call peers that do not offer it
             params.registerEnabled = true
             let account = try core.createAccount(params: params)
             core.addAuthInfo(info: auth)
