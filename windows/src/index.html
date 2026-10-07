@@ -24,7 +24,7 @@
   <input id="user" placeholder="Extension">
   <input id="pass" type="password" placeholder="Password">
   <div id="domain" style="font-size:12px;color:#666"></div>
-  <button class="go" id="signin">Sign in</button>
+  <button class="go" id="signin">Sign in</button><button class="hidden" id="login-cancel">Cancel</button>
 </section>
 
 <section id="phone" class="hidden">
@@ -77,7 +77,10 @@
     <span id="s-links-msg"></span><br><button id="s-links-set">Phone links: open with N2IT Phone</button>
   </div>
   <button class="go" id="s-save">Save</button><button id="s-back">Back</button>
-  <hr><div id="s-acct"></div><button class="end" id="out">Sign out</button>
+  <hr><h2>Accounts</h2>
+  <div style="font-size:13px;color:#666">Only the active account receives calls.</div>
+  <div id="s-accounts"></div>
+  <button id="s-add">Add account</button>
 </section>
 <script src="vendor/jssip.min.js"></script>
 <script src="app.js"></script>

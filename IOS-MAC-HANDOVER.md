@@ -126,3 +126,11 @@ Owner's design (app-only DND, agreed 2026-10-07):
 - iOS specifics: with CallKit/PushKit, a push for an incoming call must still be reported to CallKit; report it and
   end it immediately (or decline before reporting if the app is running) and decline the SIP call with 486.
 Android reference: SipManager.kt "Do Not Disturb" section, Ui.kt DndBanner/DndButton/DndDialog.
+
+## Accounts section, 0.1.9 (voip-server session, 2026-10-07, branch `accounts`): please match on iOS
+Owner chose "one active account at a time" (less room for user error). Settings > Accounts: list of saved accounts
+(Extension N, <code>.voip.n2it.co.za, "active"), tap another to switch (re-registers; recents/voicemail flag reset),
+Add account (company code, extension, password; becomes active, previous stays listed), Log out per account with a
+confirm ("removed from this phone"); logging out of the active one switches to the next, or to the sign-in screen
+when none is left. Switching/adding/logging out is disabled during a call. DND and device settings are per phone,
+not per account. Android reference: Account.kt (others/activate/remove), Ui.kt AccountsSection/AddAccountDialog.

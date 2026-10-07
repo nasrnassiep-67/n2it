@@ -138,12 +138,58 @@ const pcConfig = () => ({ iceServers: cfg().stun ? [{ urls: cfg().stun }] : [] }
 const applySink = () => { const id = cfg().spkId; for (const s of calls) s._audio?.setSinkId?.(id || '').catch(() => {}) }
 const dial = (n) => n && ua?.call(`sip:${n}@${domain(acc.tenant)}`, { mediaConstraints: media(), pcConfig: pcConfig() })
 
+// ---- Accounts: several saved, one active (acc); the others are kept in acc.saved ----
+let adding = false
+const login = (a) => ({ tenant: a.tenant.trim(), user: a.user.trim(), pass: a.pass })
+const key = (a) => `${domain(a.tenant)}|${a.user.trim()}`
+/** Make [a] the active account (registers it); the previous one stays in the list. Device settings and DND stay. */
+async function useAccount(a) {
+  if (calls.length) { alert('Finish the call to switch accounts.'); return }
+  await activate(a, [acc && login(acc), ...(acc?.saved || [])].filter((x) => x && key(x) !== key(a)))
+}
+async function activate(a, saved) {
+  acc = { ...login(a), settings: acc?.settings, dndUntil: acc?.dndUntil, saved }
+  await store.save(acc); directory = []
+  for (const id of ['settings', 'login', 'contacts']) show(id, false)
+  show('phone', true); connect(); renderDnd()
+}
+/** Log [a] out and forget it; with no account left, back to the sign-in screen. */
+async function logOut(a) {
+  if (calls.length) { alert('Finish the call first.'); return }
+  if (!confirm(`Log out of extension ${a.user} (${domain(a.tenant)})? It is removed from this computer.`)) return
+  if (key(a) !== key(acc)) { acc.saved = acc.saved.filter((x) => key(x) !== key(a)); await store.save(acc); renderAccounts(); return }
+  const [next, ...rest] = acc.saved || []
+  if (next) { await activate(next, rest); return }
+  ua?.stop(); await store.clear(); acc = null; directory = []
+  show('settings', false); show('login', true); status('Not registered')
+}
+function renderAccounts() {
+  $('s-accounts').replaceChildren(...[acc, ...(acc.saved || [])].map((a) => {
+    const active = a === acc
+    const row = document.createElement('div'); row.className = 'contact'
+    const who = document.createElement('div'); who.textContent = `Extension ${a.user}${active ? ' (active)' : ''}`
+    const sub = document.createElement('small'); sub.textContent = domain(a.tenant); who.append(document.createElement('br'), sub)
+    const btns = document.createElement('div')
+    if (!active) btns.append(Object.assign(document.createElement('button'), { className: 'go', textContent: 'Use', onclick: () => useAccount(a) }))
+    btns.append(Object.assign(document.createElement('button'), { className: 'end', textContent: 'Log out', onclick: () => logOut(a) }))
+    row.append(who, btns); return row
+  }))
+}
+$('s-add').onclick = () => {
+  if (calls.length) { alert('Finish the call to add an account.'); return }
+  adding = true
+  for (const id of ['tenant', 'user', 'pass']) $(id).value = ''
+  $('domain').textContent = ''; show('login-cancel', true); show('settings', false); show('login', true)
+}
+$('login-cancel').onclick = () => { adding = false; show('login-cancel', false); show('login', false); show('settings', true) }
+
 $('signin').onclick = async () => {
-  acc = { tenant: $('tenant').value, user: $('user').value, pass: $('pass').value }
-  if (!acc.tenant || !acc.user || !acc.pass) return
+  const a = { tenant: $('tenant').value, user: $('user').value, pass: $('pass').value }
+  if (!a.tenant.trim() || !a.user.trim() || !a.pass) return
+  if (adding) { adding = false; show('login-cancel', false); await useAccount(a); return }
+  acc = { ...login(a), saved: [] }
   await store.save(acc); show('login', false); show('phone', true); connect(); renderDnd()
 }
-$('out').onclick = async () => { ua?.stop(); await store.clear(); acc = null; show('settings', false); show('login', true); status('Not registered') }
 
 // ---- Settings ----
 const fill = (sel, devs, cur, label) => {
@@ -158,7 +204,7 @@ async function openSettings() {
   fill($('s-spk'), devs.filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default'), c.spkId, 'Speaker')
   $('s-echo').checked = c.echo; $('s-noise').checked = c.noise; $('s-agc').checked = c.agc
   $('s-port').value = c.wssPort; $('s-vm').value = c.voicemail; $('s-stun').value = c.stun
-  $('s-acct').textContent = `Signed in as ${acc.user} @ ${domain(acc.tenant)}`
+  renderAccounts()
   show('phone', false); show('settings', true)
 }
 $('cfg').onclick = async () => {

@@ -188,6 +188,12 @@ object SipManager {
         }
     }
 
+    /** Another saved account becomes active: what was shown belongs to the previous one. */
+    fun switchAccount(acc: za.co.n2it.phone.Account) {
+        _recents.value = emptyList(); _voicemail.value = false; _registered.value = false; _status.value = "Registering…"
+        configure(acc)
+    }
+
     fun signOut(context: Context) {
         if (started) { core.clearAccounts(); core.clearAllAuthInfo() }
         za.co.n2it.phone.Account.clear(context)

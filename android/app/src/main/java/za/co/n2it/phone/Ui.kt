@@ -6,6 +6,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -370,7 +372,7 @@ fun VoicemailTab() {
 fun SettingsTab(onSignOut: () -> Unit) {
     val ctx = LocalContext.current
     var acc by remember { mutableStateOf(Account.load(ctx)) }
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         StatusRow(); Spacer(Modifier.height(4.dp)); DndButton(); Spacer(Modifier.height(8.dp))
         OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Client (e.g. n2it)") },
             singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text(acc.domain) })
@@ -393,8 +395,75 @@ fun SettingsTab(onSignOut: () -> Unit) {
             Switch(acc.srtp, { acc = acc.copy(srtp = it) })
         }
         Button(onClick = { Account.save(ctx, acc); SipManager.configure(acc) }, modifier = Modifier.fillMaxWidth()) { Text("Save & Register") }
-        TextButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) { Text("Sign out", color = Red) }
+        HorizontalDivider(Modifier.padding(vertical = 16.dp))
+        AccountsSection(onActiveChanged = { acc = it }, onNoneLeft = onSignOut)
     }
+}
+
+/**
+ * Saved accounts (e.g. a reseller testing several clients). One is active at a time: only it is registered and
+ * rings; tap another to switch. Log out removes an account from this phone.
+ */
+@Composable
+private fun AccountsSection(onActiveChanged: (Account) -> Unit, onNoneLeft: () -> Unit) {
+    val ctx = LocalContext.current
+    val inCall = SipManager.call.collectAsState().value != null
+    var active by remember { mutableStateOf(Account.load(ctx)) }
+    var others by remember { mutableStateOf(Account.others(ctx)) }
+    var adding by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf<Account?>(null) }
+    fun refresh() { active = Account.load(ctx); others = Account.others(ctx) }
+    fun use(a: Account) { Account.activate(ctx, a); SipManager.switchAccount(a); refresh(); onActiveChanged(a) }
+
+    Text("Accounts", style = MaterialTheme.typography.titleMedium)
+    Text(if (inCall) "Finish the call to switch accounts." else "Only the active account receives calls. Tap another to switch.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    ((if (active.isConfigured) listOf(active) else emptyList()) + others).forEach { a ->
+        val isActive = a.sameAs(active)
+        ListItem(
+            modifier = Modifier.clickable(enabled = !isActive && !inCall) { use(a) },
+            leadingContent = { RadioButton(selected = isActive, onClick = if (isActive || inCall) null else ({ use(a) })) },
+            headlineContent = { Text("Extension ${a.user}") },
+            supportingContent = { Text(a.domain + if (isActive) " · active" else "") },
+            trailingContent = { TextButton({ leaving = a }, enabled = !inCall) { Text("Log out", color = Red) } })
+    }
+    OutlinedButton({ adding = true }, enabled = !inCall, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Default.PersonAdd, null); Spacer(Modifier.width(8.dp)); Text("Add account")
+    }
+    if (adding) AddAccountDialog(onDismiss = { adding = false }) { a -> adding = false; use(a) }
+    leaving?.let { a ->
+        AlertDialog(
+            onDismissRequest = { leaving = null },
+            title = { Text("Log out of extension ${a.user}?") },
+            text = { Text("${a.domain} is removed from this phone. You can add it again later with its password.") },
+            confirmButton = { TextButton({
+                leaving = null
+                val wasActive = a.sameAs(active)
+                val next = Account.remove(ctx, a)
+                if (next == null) onNoneLeft()
+                else { if (wasActive) { SipManager.switchAccount(next); onActiveChanged(next) }; refresh() }
+            }) { Text("Log out", color = Red) } },
+            dismissButton = { TextButton({ leaving = null }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+private fun AddAccountDialog(onDismiss: () -> Unit, onAdd: (Account) -> Unit) {
+    var a by remember { mutableStateOf(Account()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add account") },
+        text = { Column {
+            OutlinedTextField(a.tenant, { a = a.copy(tenant = it) }, label = { Text("Company code") }, singleLine = true,
+                supportingText = { Text(if (a.domain.isEmpty()) "e.g. n2it" else "Connects to ${a.domain}") })
+            OutlinedTextField(a.user, { a = a.copy(user = it) }, label = { Text("Extension") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            OutlinedTextField(a.password, { a = a.copy(password = it) }, label = { Text("Password") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation())
+            Text("It becomes the active account; the current one stays in the list.", style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = { TextButton({ onAdd(a.copy(tenant = a.tenant.trim(), user = a.user.trim())) }, enabled = a.isConfigured) { Text("Add") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
 
 @Composable
