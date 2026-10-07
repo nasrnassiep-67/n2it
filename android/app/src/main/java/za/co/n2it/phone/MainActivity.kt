@@ -1,8 +1,13 @@
 package za.co.n2it.phone
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -40,6 +45,7 @@ class MainActivity : ComponentActivity() {
                         SipManager.reloadSoundDevices()
                         // The foreground service needs the mic permission decision first.
                         if (Account.load(ctx).isConfigured) PhoneService.start(ctx)
+                        askBatteryExemption()
                     }
                     LaunchedEffect(Unit) {
                         val list = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS, Manifest.permission.READ_PHONE_STATE)
@@ -54,4 +60,21 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onResume() { super.onResume(); SipManager.checkDnd(); SipManager.refresh() }
+
+    /**
+     * Battery optimisation (Doze, and makers like Honor/Huawei/Xiaomi) stops the app in the background, so calls stop
+     * ringing. Ask Android once to leave the app out of it; the user can still say no.
+     */
+    private fun askBatteryExemption() {
+        val pm = getSystemService(PowerManager::class.java)
+        val prefs = getSharedPreferences("n2it", MODE_PRIVATE)
+        if (pm.isIgnoringBatteryOptimizations(packageName) || prefs.getBoolean("battery_asked", false)) return
+        prefs.edit().putBoolean("battery_asked", true).apply()
+        try {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        } catch (e: ActivityNotFoundException) {
+            // Some makers hide the dialog: the battery optimisation list instead
+            try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: ActivityNotFoundException) {}
+        }
+    }
 }

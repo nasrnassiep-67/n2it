@@ -169,9 +169,15 @@ object SipManager {
         val server = f.createAddress("sip:${acc.domain}:${acc.port}")!!
         server.transport = when (acc.transport) { "TCP" -> TransportType.Tcp; "TLS" -> TransportType.Tls; else -> TransportType.Udp }
         params.serverAddress = server
+        // SRTP preferred, never required: calls from the trunk reach the phone unencrypted, and a mandatory SRTP
+        // answered them with 488 (outside callers never rang the app; internal calls arrive encrypted).
         core.mediaEncryption = if (acc.srtp) MediaEncryption.SRTP else MediaEncryption.None
-        core.isMediaEncryptionMandatory = acc.srtp
+        core.isMediaEncryptionMandatory = false
         params.isRegisterEnabled = true
+        // Re-register every 10 min (default 1 h) and keep the connection alive: a mobile network drops an idle
+        // connection after a few minutes, and the PBX can only reach the phone over a live one.
+        params.expires = 600
+        core.isKeepAliveEnabled = true
         val account = core.createAccount(params)
         core.addAuthInfo(auth); core.addAccount(account); core.defaultAccount = account
     }
