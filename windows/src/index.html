@@ -9,6 +9,7 @@
   button.go{background:#2e9e4f;color:#fff}#signin,#s-save{background:#145ab6;color:#fff}h2{color:#0f3d80}button.end{background:#d33;color:#fff}button.on{background:#222;color:#fff}
   .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.pad button{font-size:20px}
   label{display:block;margin:8px 0;font-size:13px}select{width:100%;padding:6px}label input[type=checkbox]{width:auto}
+  .version{font-size:12px;color:#888;text-align:center;margin-top:16px}
   #status{font-size:13px;color:#666;margin-bottom:8px}#status.dnd{color:#e65100;font-weight:bold}#status.dnd::after{content:" · Do Not Disturb"}
   #dnd-banner{background:#e65100;color:#fff;padding:8px 10px;border-radius:8px;margin-bottom:8px;font-size:13px}
   #dnd-banner button{background:#fff;color:#e65100;padding:4px 10px;margin:4px 0 0}button.dndon{background:#e65100;color:#fff}
@@ -25,6 +26,7 @@
   <input id="pass" type="password" placeholder="Password">
   <div id="domain" style="font-size:12px;color:#666"></div>
   <button class="go" id="signin">Sign in</button><button class="hidden" id="login-cancel">Cancel</button>
+  <div class="version"></div>
 </section>
 
 <section id="phone" class="hidden">
@@ -81,6 +83,7 @@
   <div style="font-size:13px;color:#666">Only the active account receives calls.</div>
   <div id="s-accounts"></div>
   <button id="s-add">Add account</button>
+  <div class="version"></div>
 </section>
 <script src="vendor/jssip.min.js"></script>
 <script src="app.js"></script>

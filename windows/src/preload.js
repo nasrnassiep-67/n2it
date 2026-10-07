@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('store', {
   save: (a) => ipcRenderer.invoke('account:save', a),
   clear: () => ipcRenderer.invoke('account:clear'),
   directory: () => ipcRenderer.invoke('directory:load'),
+  version: () => ipcRenderer.invoke('app:version'),
 })
 // Phone links (tel:, callto:, sip:) clicked elsewhere: the number arrives here.
 contextBridge.exposeInMainWorld('links', {

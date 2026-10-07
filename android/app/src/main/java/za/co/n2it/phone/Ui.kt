@@ -168,7 +168,8 @@ private fun pickDndTime(ctx: Context, onPicked: (Long) -> Unit) {
 fun LoginScreen(done: () -> Unit) {
     val ctx = LocalContext.current
     var acc by remember { mutableStateOf(Account.load(ctx)) }
-    Column(Modifier.fillMaxSize().padding(24.dp).systemBarsPadding(), verticalArrangement = Arrangement.Center) {
+    Column(Modifier.fillMaxSize().padding(24.dp).systemBarsPadding()) {
+        Spacer(Modifier.weight(1f))
         Text("N2IT Phone", fontSize = 32.sp)
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Company code") },
@@ -181,6 +182,8 @@ fun LoginScreen(done: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         Button(onClick = { Account.save(ctx, acc); SipManager.configure(acc); done() },
             enabled = acc.isConfigured, modifier = Modifier.fillMaxWidth()) { Text("Sign in") }
+        Spacer(Modifier.weight(1f))
+        VersionText()
     }
 }
 
@@ -397,8 +400,15 @@ fun SettingsTab(onSignOut: () -> Unit) {
         Button(onClick = { Account.save(ctx, acc); SipManager.configure(acc) }, modifier = Modifier.fillMaxWidth()) { Text("Save & Register") }
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
         AccountsSection(onActiveChanged = { acc = it }, onNoneLeft = onSignOut)
+        Spacer(Modifier.height(16.dp))
+        VersionText()
     }
 }
+
+@Composable
+private fun VersionText() = Text("Version: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall,
+    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth(),
+    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
 
 /**
  * Saved accounts (e.g. a reseller testing several clients). One is active at a time: only it is registered and

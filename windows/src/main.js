@@ -66,6 +66,7 @@ ipcMain.handle('account:load', () => {
   try { return JSON.parse(safeStorage.decryptString(fs.readFileSync(file()))) } catch { return null }
 })
 ipcMain.handle('account:save', (_e, acc) => fs.writeFileSync(file(), safeStorage.encryptString(JSON.stringify(acc))))
+ipcMain.handle('app:version', () => app.getVersion())
 ipcMain.handle('account:clear', () => { try { fs.unlinkSync(file()) } catch {} })
 
 // Company contacts (extensions + shared FusionPBX contacts) from the PBX, fetched here rather than in the page:

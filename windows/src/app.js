@@ -372,6 +372,8 @@ $('dnd-set').onclick = () => {
 $('dnd-stop').onclick = $('dnd-off').onclick = () => setDnd(null)
 $('dnd-back').onclick = () => { show('dnd-pick', false); show('phone', true) }
 
+store.version().then((v) => { for (const e of document.querySelectorAll('.version')) e.textContent = `Version: ${v}` })
+
 store.load().then(async (a) => {
   if (a) { acc = a; show('login', false); show('phone', true); connect(); renderDnd() }
   dialFromLink(await links.pending())
