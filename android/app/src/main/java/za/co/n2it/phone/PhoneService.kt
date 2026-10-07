@@ -36,6 +36,7 @@ class PhoneService : Service() {
         nm.createNotificationChannel(NotificationChannel(CH_CALL, "Incoming calls", NotificationManager.IMPORTANCE_HIGH))
         // The status notification follows the call: "Ready to receive calls" when idle, the ongoing call otherwise.
         scope.launch { SipManager.call.collect { refreshNotification() } }
+        scope.launch { SipManager.dndUntil.collect { refreshNotification() } }
         // While a call is up, watch for another app's call (GSM, WhatsApp…) and hold/resume ours around it.
         scope.launch {
             SipManager.call.map { it != null }.distinctUntilChanged().collectLatest { inCall ->
@@ -49,6 +50,7 @@ class PhoneService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_HANGUP) { SipManager.hangup(); return START_STICKY }
+        if (intent?.action == ACTION_DND_OFF) { SipManager.setDnd(null); return START_STICKY }
         val inCall = intent?.action == ACTION_IN_CALL
         fgTypes = types(inCall)
         try {
@@ -91,6 +93,15 @@ class PhoneService : Service() {
             .setContentIntent(open(this))
             .setOngoing(true)
         if (call == null || call.state == org.linphone.core.Call.State.IncomingReceived) {
+            val until = SipManager.dndUntil.value
+            if (until != null) {   // orange, with Turn off: DND must not be forgotten
+                val text = "Please disable DND to receive calls. Until " +
+                    java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(until))
+                return b.setContentTitle("DND enabled").setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setColor(0xFFE65100.toInt()).setColorized(true)
+                    .addAction(0, "Turn off", dndOff(this)).build()
+            }
             return b.setContentTitle("N2IT Phone").setContentText("Ready to receive calls").build()
         }
         val who = if (call.conference) "Conference: ${call.number}" else call.number
@@ -126,6 +137,11 @@ class PhoneService : Service() {
         private const val ACTION_IN_CALL = "za.co.n2it.phone.IN_CALL"
         private const val ACTION_IDLE = "za.co.n2it.phone.IDLE"
         private const val ACTION_HANGUP = "za.co.n2it.phone.HANGUP"
+        private const val ACTION_DND_OFF = "za.co.n2it.phone.DND_OFF"
+
+        private fun dndOff(c: Context) = PendingIntent.getService(
+            c, 2, Intent(c, PhoneService::class.java).setAction(ACTION_DND_OFF),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         private fun hangUp(c: Context) = PendingIntent.getService(
             c, 1, Intent(c, PhoneService::class.java).setAction(ACTION_HANGUP),

@@ -53,5 +53,5 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() { super.onResume(); SipManager.refresh() }
+    override fun onResume() { super.onResume(); SipManager.checkDnd(); SipManager.refresh() }
 }

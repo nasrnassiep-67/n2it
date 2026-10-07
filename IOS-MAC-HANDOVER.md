@@ -113,3 +113,16 @@ Test once the owner has the APNs key in: run from Xcode (sandbox), sign in as 10
   core.audioDevices (one entry per Bluetooth device), output + input set on the core, live calls and a conference;
   default Bluetooth > headset > iPhone per call session; Bluetooth connecting mid-call takes over. The button also
   follows changes made from the iOS call screen / Control Centre. Installed on both iPhones; car-kit test pending.
+
+## DND, 0.1.8 (voip-server session, 2026-10-07, branch `dnd`): please match on iOS
+Owner's design (app-only DND, agreed 2026-10-07):
+- DND silences THIS APP only: incoming calls are declined with 486 Busy; the PBX then sends the caller to
+  voicemail (or, with no voicemail box, plays "not available, no voicemail"; PBX side done by us). Other phones on
+  the extension (desk phone) keep ringing. Desk phone DND stays as it is.
+- Always timed: 1 h, 2 h, 4 h, until next 08:00, or a chosen date/time — maximum 2 weeks. NO "until I turn it off".
+  "Turn off now" while on. Stored on the device (survives restarts), switches itself off at the end time.
+- Unmissable: orange (#E65100) banner on every screen: "DND enabled. Please disable DND to receive calls." +
+  "Until Fri 10 Oct, 14:00" + Turn off; status dot orange with "Do Not Disturb".
+- iOS specifics: with CallKit/PushKit, a push for an incoming call must still be reported to CallKit; report it and
+  end it immediately (or decline before reporting if the app is running) and decline the SIP call with 486.
+Android reference: SipManager.kt "Do Not Disturb" section, Ui.kt DndBanner/DndButton/DndDialog.

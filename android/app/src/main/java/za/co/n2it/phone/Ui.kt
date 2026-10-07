@@ -30,6 +30,8 @@ import java.util.Date
 
 private val Green = Color(0xFF2E9E4F)
 private val Red = Color(0xFFD64545)
+private val Orange = Color(0xFFE65100)
+private val dndTime = java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.Locale.getDefault())
 
 /** True while a call is up but the user left the call screen to use the rest of the app. */
 private val callMinimised = mutableStateOf(false)
@@ -57,6 +59,7 @@ fun App(onSignedIn: () -> Unit, onSignedOut: () -> Unit) {
     } else {
         Column {
             call?.let { ReturnToCallBar(it) { minimised = false } }
+            DndBanner(topOfScreen = call == null)
             MainTabs(onSignOut = { SipManager.signOut(ctx); onSignedOut(); loggedIn = false })
         }
     }
@@ -77,10 +80,86 @@ private fun ReturnToCallBar(call: CallInfo, onClick: () -> Unit) {
 fun StatusRow() {
     val ok by SipManager.registered.collectAsState()
     val status by SipManager.status.collectAsState()
+    val dnd by SipManager.dndUntil.collectAsState()
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Surface(color = if (ok) Green else Red, shape = CircleShape, modifier = Modifier.size(10.dp)) {}
-        Spacer(Modifier.width(6.dp)); Text(status, style = MaterialTheme.typography.bodySmall)
+        Surface(color = if (!ok) Red else if (dnd != null) Orange else Green, shape = CircleShape, modifier = Modifier.size(10.dp)) {}
+        Spacer(Modifier.width(6.dp)); Text(if (ok && dnd != null) "Do Not Disturb" else status, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+/** Orange banner on every screen while DND is on, so it can't be forgotten. */
+@Composable
+private fun DndBanner(topOfScreen: Boolean) {
+    val until by SipManager.dndUntil.collectAsState()
+    val u = until ?: return
+    Surface(color = Orange, modifier = Modifier.fillMaxWidth()) {
+        Row((if (topOfScreen) Modifier.statusBarsPadding() else Modifier).padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.DoNotDisturbOn, null, tint = Color.White); Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("DND enabled. Please disable DND to receive calls.", color = Color.White, fontSize = 14.sp)
+                Text("Until " + dndTime.format(java.util.Date(u)), color = Color.White, fontSize = 12.sp)
+            }
+            TextButton({ SipManager.setDnd(null) }) { Text("Turn off", color = Color.White) }
+        }
+    }
+}
+
+/** DND button: always with an end time, from 1 hour up to 2 weeks. */
+@Composable
+fun DndButton() {
+    val until by SipManager.dndUntil.collectAsState()
+    var open by remember { mutableStateOf(false) }
+    FilterChip(selected = until != null, onClick = { open = true },
+        leadingIcon = { Icon(Icons.Default.DoNotDisturbOn, null) },
+        label = { Text(until?.let { "DND until " + dndTime.format(java.util.Date(it)) } ?: "Do Not Disturb") },
+        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Orange, selectedLabelColor = Color.White,
+            selectedLeadingIconColor = Color.White))
+    if (open) DndDialog(active = until != null) { open = false }
+}
+
+@Composable
+private fun DndDialog(active: Boolean, onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    fun set(until: Long) { SipManager.setDnd(until); onDone() }
+    val hour = 3_600_000L
+    // Next 08:00 (today if it's still early, otherwise tomorrow)
+    val morning = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, 8); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_MONTH, 1)
+    }.timeInMillis
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Do Not Disturb") },
+        text = { Column {
+            Text("Calls to this app go to voicemail until the time you choose. Other phones on your extension still ring.",
+                style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            listOf("1 hour" to 1, "2 hours" to 2, "4 hours" to 4).forEach { (label, h) ->
+                TextButton({ set(System.currentTimeMillis() + h * hour) }) { Text(label) }
+            }
+            TextButton({ set(morning) }) { Text("Until " + dndTime.format(java.util.Date(morning))) }
+            TextButton({ pickDndTime(ctx) { set(it) } }) { Text("Choose date and time…") }
+            if (active) TextButton({ SipManager.setDnd(null); onDone() }) { Text("Turn off now", color = Red) }
+        } },
+        confirmButton = { TextButton(onDone) { Text("Cancel") } })
+}
+
+/** Date then time, within the next 2 weeks. */
+private fun pickDndTime(ctx: Context, onPicked: (Long) -> Unit) {
+    val now = System.currentTimeMillis()
+    val c = java.util.Calendar.getInstance()
+    android.app.DatePickerDialog(ctx, { _, y, m, d ->
+        android.app.TimePickerDialog(ctx, { _, h, min ->
+            val t = java.util.Calendar.getInstance().apply { set(y, m, d, h, min, 0) }.timeInMillis
+            if (t <= now || t > now + SipManager.MAX_DND_MS)
+                android.widget.Toast.makeText(ctx, "Choose a time within the next 2 weeks", android.widget.Toast.LENGTH_LONG).show()
+            else onPicked(t)
+        }, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), true).show()
+    }, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)).apply {
+        datePicker.minDate = now
+        datePicker.maxDate = now + SipManager.MAX_DND_MS
+    }.show()
 }
 
 @Composable
@@ -136,7 +215,7 @@ fun KeypadTab() {
     val clipboard = LocalClipboardManager.current
     val registered by SipManager.registered.collectAsState()
     Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        StatusRow(); Spacer(Modifier.height(16.dp))
+        StatusRow(); Spacer(Modifier.height(4.dp)); DndButton(); Spacer(Modifier.height(8.dp))
         // Long-press the number to paste a copied one ("+27 82 123-4567" -> "+27821234567") or copy it.
         Box(Modifier.fillMaxWidth().combinedClickable(onClick = {}, onLongClick = { menu = true }), contentAlignment = Alignment.Center) {
             Text(number.ifEmpty { " " }, fontSize = 34.sp, maxLines = 1)
@@ -292,7 +371,7 @@ fun SettingsTab(onSignOut: () -> Unit) {
     val ctx = LocalContext.current
     var acc by remember { mutableStateOf(Account.load(ctx)) }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        StatusRow(); Spacer(Modifier.height(12.dp))
+        StatusRow(); Spacer(Modifier.height(4.dp)); DndButton(); Spacer(Modifier.height(8.dp))
         OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Client (e.g. n2it)") },
             singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text(acc.domain) })
         OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") }, singleLine = true, modifier = Modifier.fillMaxWidth())

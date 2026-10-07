@@ -9,7 +9,9 @@
   button.go{background:#2e9e4f;color:#fff}#signin,#s-save{background:#145ab6;color:#fff}h2{color:#0f3d80}button.end{background:#d33;color:#fff}button.on{background:#222;color:#fff}
   .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.pad button{font-size:20px}
   label{display:block;margin:8px 0;font-size:13px}select{width:100%;padding:6px}label input[type=checkbox]{width:auto}
-  #status{font-size:13px;color:#666;margin-bottom:8px}
+  #status{font-size:13px;color:#666;margin-bottom:8px}#status.dnd{color:#e65100;font-weight:bold}#status.dnd::after{content:" · Do Not Disturb"}
+  #dnd-banner{background:#e65100;color:#fff;padding:8px 10px;border-radius:8px;margin-bottom:8px;font-size:13px}
+  #dnd-banner button{background:#fff;color:#e65100;padding:4px 10px;margin:4px 0 0}button.dndon{background:#e65100;color:#fff}
   .contact{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee}
   .contact small{color:#666}.contact button{margin:0}#c-list{max-height:480px;overflow-y:auto}.hidden{display:none}#num{font-size:22px;text-align:center}
 </style></head><body>
@@ -26,10 +28,12 @@
 </section>
 
 <section id="phone" class="hidden">
+  <div id="dnd-banner" class="hidden"><b>DND enabled. Please disable DND to receive calls.</b><br>
+    <span id="dnd-until"></span><br><button id="dnd-off">Turn off</button></div>
   <div id="idle">
     <input id="num" placeholder="Number">
     <div class="pad" id="pad"></div>
-    <button class="go" id="call">Call</button><button id="contacts-open">Contacts</button><button id="vm">Voicemail</button><button id="cfg">Settings</button>
+    <button class="go" id="call">Call</button><button id="contacts-open">Contacts</button><button id="vm">Voicemail</button><button id="cfg">Settings</button><button id="dnd">Do Not Disturb</button>
   </div>
   <div id="incall" class="hidden">
     <h2 id="who"></h2><div id="state"></div>
@@ -49,6 +53,15 @@
   <div id="c-msg" style="font-size:13px;color:#666"></div>
   <div id="c-list"></div>
   <button id="c-back">Back</button>
+</section>
+<section id="dnd-pick" class="hidden">
+  <h2>Do Not Disturb</h2>
+  <div style="font-size:13px;color:#666">Calls to this app go to voicemail until the time you choose (at most 2 weeks).
+    Other phones on your extension still ring.</div>
+  <button data-hours="1">1 hour</button><button data-hours="2">2 hours</button><button data-hours="4">4 hours</button>
+  <button id="dnd-morning"></button>
+  <label>Or until <input type="datetime-local" id="dnd-at"></label>
+  <button class="go" id="dnd-set">Set</button><button class="end hidden" id="dnd-stop">Turn off now</button><button id="dnd-back">Back</button>
 </section>
 <section id="settings" class="hidden">
   <h2>Settings</h2>

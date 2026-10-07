@@ -35,6 +35,8 @@ function connect() {
   ua.on('unregistered', () => status('Not registered'))
   ua.on('registrationFailed', (e) => status(`Failed: ${e.cause}`))
   ua.on('newRTCSession', ({ session: s, originator }) => {
+    // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none). Other phones still ring.
+    if (originator === 'remote' && dndUntil()) { s.terminate({ status_code: 486, reason_phrase: 'Busy Here' }); return }
     if (originator === 'remote' && calls.length) { s.terminate({ status_code: 486 }); return }   // busy while in a call
     if (!calls.length) muted = false
     calls.push(s); session = s
@@ -139,7 +141,7 @@ const dial = (n) => n && ua?.call(`sip:${n}@${domain(acc.tenant)}`, { mediaConst
 $('signin').onclick = async () => {
   acc = { tenant: $('tenant').value, user: $('user').value, pass: $('pass').value }
   if (!acc.tenant || !acc.user || !acc.pass) return
-  await store.save(acc); show('login', false); show('phone', true); connect()
+  await store.save(acc); show('login', false); show('phone', true); connect(); renderDnd()
 }
 $('out').onclick = async () => { ua?.stop(); await store.clear(); acc = null; show('settings', false); show('login', true); status('Not registered') }
 
@@ -287,7 +289,44 @@ function dialFromLink(n) {
 }
 links.onDial(dialFromLink)
 
+// ---- Do Not Disturb (this app only; always ends, at most 2 weeks) ----
+const MAX_DND = 14 * 24 * 3600 * 1000
+const dndUntil = () => (acc?.dndUntil > Date.now() ? acc.dndUntil : null)
+const when = (t) => new Date(t).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+const localInput = (t) => { const d = new Date(t - new Date(t).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16) }
+const nextMorning = () => { const d = new Date(); d.setHours(8, 0, 0, 0); if (d <= new Date()) d.setDate(d.getDate() + 1); return d.getTime() }
+async function setDnd(until) {
+  const now = Date.now()
+  acc.dndUntil = until && until > now ? Math.min(until, now + MAX_DND) : null
+  await store.save(acc); renderDnd()
+  show('dnd-pick', false); show('phone', true)
+}
+function renderDnd() {   // banner, button and status follow the end time; an expired DND switches itself off
+  if (!acc) return
+  const u = dndUntil()
+  if (acc.dndUntil && !u) { acc.dndUntil = null; store.save(acc) }
+  show('dnd-banner', !!u); $('dnd-until').textContent = u ? `Until ${when(u)}` : ''
+  $('dnd').textContent = u ? `DND until ${when(u)}` : 'Do Not Disturb'; $('dnd').classList.toggle('dndon', !!u)
+  $('status').classList.toggle('dnd', !!u)
+}
+setInterval(renderDnd, 15000)
+$('dnd').onclick = () => {
+  const now = Date.now()
+  $('dnd-morning').textContent = `Until ${when(nextMorning())}`
+  Object.assign($('dnd-at'), { min: localInput(now), max: localInput(now + MAX_DND), value: localInput(now + 3600000) })
+  show('dnd-stop', !!dndUntil()); show('phone', false); show('dnd-pick', true)
+}
+for (const b of document.querySelectorAll('#dnd-pick [data-hours]')) b.onclick = () => setDnd(Date.now() + b.dataset.hours * 3600000)
+$('dnd-morning').onclick = () => setDnd(nextMorning())
+$('dnd-set').onclick = () => {
+  const t = new Date($('dnd-at').value).getTime(), now = Date.now()
+  if (!(t > now && t <= now + MAX_DND)) { alert('Choose a time within the next 2 weeks.'); return }
+  setDnd(t)
+}
+$('dnd-stop').onclick = $('dnd-off').onclick = () => setDnd(null)
+$('dnd-back').onclick = () => { show('dnd-pick', false); show('phone', true) }
+
 store.load().then(async (a) => {
-  if (a) { acc = a; show('login', false); show('phone', true); connect() }
+  if (a) { acc = a; show('login', false); show('phone', true); connect(); renderDnd() }
   dialFromLink(await links.pending())
 })

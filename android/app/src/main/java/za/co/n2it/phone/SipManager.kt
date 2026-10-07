@@ -55,7 +55,7 @@ object SipManager {
             when (state) {
                 Call.State.End, Call.State.Error, Call.State.Released -> {
                     if (state != Call.State.Released) {
-                        val missed = incoming && call.callLog?.status == Call.Status.Missed
+                        val missed = incoming && (call.callLog?.status == Call.Status.Missed || dndRefused.remove(call))
                         _recents.value = listOf(RecentCall(number, System.currentTimeMillis(), incoming, missed)) + _recents.value
                     }
                     PhoneService.clearIncoming(appContext)
@@ -67,6 +67,14 @@ object SipManager {
                     } else publish()
                 }
                 Call.State.IncomingReceived -> {
+                    checkDnd()
+                    if (dndActive()) {
+                        // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none).
+                        // Other phones on the same extension (e.g. a desk phone) keep ringing.
+                        dndRefused.add(call)
+                        call.decline(Reason.Busy)
+                        return
+                    }
                     _call.value = CallInfo(number, state, true)
                     PhoneService.notifyIncoming(appContext, number)
                 }
@@ -147,6 +155,7 @@ object SipManager {
         core.start()
         started = true
         updateRoutes()
+        setDnd(dndPrefs().getLong("until", 0).takeIf { it > 0 })   // survives restarts; clears itself if expired
         configure(Account.load(appContext))
     }
 
@@ -323,6 +332,31 @@ object SipManager {
         val other = calls.firstOrNull { it !== held } ?: return
         held.transferToAnother(other)
     }
+
+    // ---- Do Not Disturb (this app only, always with an end time of at most 2 weeks) ----
+    const val MAX_DND_MS = 14L * 24 * 3600 * 1000
+    private val _dndUntil = MutableStateFlow<Long?>(null)
+    /** End of DND in epoch ms, or null when off. */
+    val dndUntil: StateFlow<Long?> = _dndUntil
+    private val dndRefused = mutableSetOf<Call>()
+    private val dndTimer = android.os.Handler(android.os.Looper.getMainLooper())
+    private val dndExpire = Runnable { checkDnd() }
+    private fun dndPrefs() = appContext.getSharedPreferences("n2it_dnd", Context.MODE_PRIVATE)
+
+    fun dndActive() = (_dndUntil.value ?: 0L) > System.currentTimeMillis()
+
+    /** Turn DND on until [until] (capped at 2 weeks from now), or off with null or a time already past. */
+    fun setDnd(until: Long?) {
+        val now = System.currentTimeMillis()
+        val u = until?.coerceAtMost(now + MAX_DND_MS)?.takeIf { it > now }
+        dndPrefs().edit().putLong("until", u ?: 0L).apply()
+        _dndUntil.value = u
+        dndTimer.removeCallbacks(dndExpire)
+        if (u != null) dndTimer.postDelayed(dndExpire, u - now)
+    }
+
+    /** Ends an expired DND. The timer pauses while the phone sleeps, so this also runs on resume and on each call. */
+    fun checkDnd() { if (_dndUntil.value != null && !dndActive()) setDnd(null) }
 
     /** Re-read the sound cards, e.g. after the microphone permission was granted (the core started without it). */
     fun reloadSoundDevices() { if (started) { core.reloadSoundDevices(); updateRoutes() } }
