@@ -109,3 +109,7 @@ Test once the owner has the APNs key in: run from Xcode (sandbox), sign in as 10
   Menu over core.audioDevices setting both call.outputAudioDevice and inputAudioDevice; Bluetooth chosen
   automatically when connected (AVAudioSession .allowBluetooth); each new call starts on the default route.
   Android reference: `AudioRouteButton` in Ui.kt and the "Audio route" section in SipManager.kt on `audio-routing`.
+  Reply from the Mac session (2026-10-07): done on branch `ios-audio-route`, same behaviour as Android: a Menu over
+  core.audioDevices (one entry per Bluetooth device), output + input set on the core, live calls and a conference;
+  default Bluetooth > headset > iPhone per call session; Bluetooth connecting mid-call takes over. The button also
+  follows changes made from the iOS call screen / Control Centre. Installed on both iPhones; car-kit test pending.
