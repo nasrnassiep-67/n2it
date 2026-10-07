@@ -115,10 +115,17 @@ struct CallView: View {
             Text(sip.activeCall?.number ?? "").font(.largeTitle)
             Text(label).foregroundStyle(.secondary)
             Spacer()
+            // While dialling: mute and the audio button already, so the user can pick the car or speaker before they answer.
+            if !connected && !ringingIn {
+                HStack(spacing: 40) {
+                    toggle("mic.slash.fill", on: sip.muted) { sip.toggleMute() }
+                    audioButton
+                }
+            }
             if connected {
                 HStack(spacing: 40) {
                     toggle("mic.slash.fill", on: sip.muted) { sip.toggleMute() }
-                    toggle("speaker.wave.3.fill", on: sip.speaker) { sip.toggleSpeaker() }
+                    audioButton
                     toggle("circle.grid.3x3.fill", on: showPad) { showPad.toggle() }
                 }
                 HStack(spacing: 40) {
@@ -189,6 +196,21 @@ struct CallView: View {
         }
     }
 
+    /// Speaker on/off; with Bluetooth (car kit, headset) or a wired headset connected it opens a menu to pick
+    /// where the call is heard and spoken.
+    @ViewBuilder private var audioButton: some View {
+        let route = sip.audioRoute?.route ?? .iPhone
+        if sip.audioRoutes.contains(where: { $0.route == .bluetooth || $0.route == .headset }) {
+            Menu {
+                Picker("Audio", selection: Binding(get: { sip.audioRoute?.id ?? "" }, set: { sip.setAudioRoute($0) })) {
+                    ForEach(sip.audioRoutes) { Label($0.name, systemImage: $0.route.icon).tag($0.id) }
+                }.pickerStyle(.inline)
+            } label: { circle(route.icon, on: route != .iPhone) }
+        } else {
+            toggle("speaker.wave.3.fill", on: route == .speaker) { sip.toggleSpeaker() }
+        }
+    }
+
     private func round(_ icon: String, _ color: Color, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon).font(.title).foregroundStyle(.white)
@@ -196,11 +218,12 @@ struct CallView: View {
         }
     }
     private func toggle(_ icon: String, on: Bool, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon).font(.title2).frame(width: 64, height: 64)
-                .foregroundStyle(on ? Color(.systemBackground) : .primary)
-                .background(on ? Color.primary : Color(.secondarySystemBackground)).clipShape(Circle())
-        }
+        Button(action: action) { circle(icon, on: on) }
+    }
+    private func circle(_ icon: String, on: Bool) -> some View {
+        Image(systemName: icon).font(.title2).frame(width: 64, height: 64)
+            .foregroundStyle(on ? Color(.systemBackground) : .primary)
+            .background(on ? Color.primary : Color(.secondarySystemBackground)).clipShape(Circle())
     }
 }
 

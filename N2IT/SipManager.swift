@@ -9,6 +9,27 @@ struct CallInfo: Identifiable {
     let incoming: Bool
 }
 
+/// Where the call is heard and spoken: the iPhone itself, its loudspeaker, Bluetooth (car kit, headset) or a wired headset.
+enum AudioRoute: Int, Comparable {
+    case iPhone, speaker, bluetooth, headset
+    static func < (a: AudioRoute, b: AudioRoute) -> Bool { a.rawValue < b.rawValue }
+    var icon: String {
+        switch self {
+        case .iPhone: return "iphone"
+        case .speaker: return "speaker.wave.3.fill"
+        case .bluetooth: return "dot.radiowaves.left.and.right"
+        case .headset: return "headphones"
+        }
+    }
+}
+
+/// One audio device the user can pick; `id` is Linphone's AudioDevice id.
+struct AudioOption: Identifiable, Equatable {
+    let id: String
+    let route: AudioRoute
+    let name: String
+}
+
 struct RecentCall: Identifiable, Codable {
     var id = UUID()
     let number: String
@@ -24,7 +45,8 @@ final class SipManager: ObservableObject {
     @Published var registered = false
     @Published var activeCall: CallInfo?
     @Published var muted = false
-    @Published var speaker = false
+    @Published var audioRoutes: [AudioOption] = []
+    @Published var audioRoute: AudioOption?   // what iOS plays the call through right now
     @Published var recents: [RecentCall] = [] { didSet { saveRecents() } }
     @Published var newVoicemails = 0
     @Published var hasVoicemail = false
@@ -51,7 +73,7 @@ final class SipManager: ObservableObject {
     private init() {
         if let d = UserDefaults.standard.data(forKey: "recents"),
            let r = try? JSONDecoder().decode([RecentCall].self, from: d) { recents = r }
-        try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat)
+        try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
         guard let c = try? Factory.Instance.createCore(configPath: "", factoryConfigPath: "", systemContext: nil) else { return }
         core = c
         core.pushNotificationEnabled = false   // we use our own PushKit gateway, not Linphone's flexisip push
@@ -70,10 +92,16 @@ final class SipManager: ObservableObject {
                     self?.hasVoicemail = waiting || count > 0
                 }
             },
+            onAudioDevicesListUpdated: { [weak self] _ in DispatchQueue.main.async { self?.updateRoutes() } },
             onAccountRegistrationStateChanged: { [weak self] (_, _, state, msg) in self?.regChanged(state, msg) }
         )
         core.addDelegate(delegate: delegate)
         try? core.start()
+        updateRoutes()
+        // Also catches changes made outside the app: Control Centre, the iOS call screen, a car kit connecting.
+        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) {
+            [weak self] _ in self?.readCurrentRoute()
+        }
         configure(Account.load())
         PushManager.shared.start()
     }
@@ -158,7 +186,14 @@ final class SipManager: ObservableObject {
     /// Re-register after a VoIP push woke the app.
     func wake() { core?.refreshRegisters() }
 
-    func audioSession(active: Bool) { core?.activateAudioSession(activated: active) }
+    func audioSession(active: Bool) {
+        core?.activateAudioSession(activated: active)
+        guard active else { return }
+        updateRoutes()
+        if wantedRoute == nil { wantedRoute = defaultRoute() }
+        routePending = true
+        applyRoute()
+    }
     func setMuted(_ m: Bool) { core.micEnabled = !m; DispatchQueue.main.async { self.muted = m } }
     func sendDigit(_ d: Character) { try? core.currentCall?.sendDtmf(dtmf: CChar(d.asciiValue ?? 48)) }
 
@@ -249,12 +284,97 @@ final class SipManager: ObservableObject {
         try? held.transferToAnother(dest: other)
     }
 
-    func toggleSpeaker() {
-        speaker.toggle()
-        let wanted: AudioDevice.Kind = speaker ? .Speaker : .Earpiece
-        if let dev = core.audioDevices.first(where: { $0.type == wanted }) {
-            core.outputAudioDevice = dev
+    // MARK: Audio route
+
+    /// Device picked for the calls in progress: the default when the first call starts, then the user's choice.
+    /// Cleared when the last call ends, so each new call starts on the default route again.
+    private var wantedRoute: String?
+    /// Set when the audio session starts; the route is applied once more when the streams are up.
+    private var routePending = false
+
+    private func routeOf(_ d: AudioDevice) -> AudioRoute? {
+        switch d.type {
+        case .Earpiece: return .iPhone
+        case .Microphone: return d.hasCapability(capability: .CapabilityPlay) ? .iPhone : nil   // some iOS versions list the receiver this way
+        case .Speaker: return .speaker
+        case .Bluetooth: return .bluetooth   // hands-free profile (car kits, headsets); A2DP is music-only
+        case .Headset, .Headphones: return .headset
+        default: return nil
         }
+    }
+
+    /// Bluetooth and headsets use their own microphone when they have one; otherwise the iPhone's.
+    private func recorder(for d: AudioDevice) -> AudioDevice? {
+        if routeOf(d) == .bluetooth || routeOf(d) == .headset, d.hasCapability(capability: .CapabilityRecord) { return d }
+        let mics = core.audioDevices.filter { $0.hasCapability(capability: .CapabilityRecord) }
+        return mics.first { $0.type == .Microphone } ?? mics.first { $0.type == .Earpiece }
+    }
+
+    private func updateRoutes() {
+        guard let core else { return }
+        let before = Set(audioRoutes.filter { $0.route == .bluetooth }.map(\.id))
+        var seen = Set<String>()
+        let devices = core.audioDevices.sorted { $0.type == .Earpiece && $1.type != .Earpiece }   // prefer the real receiver
+        audioRoutes = devices.compactMap { d -> AudioOption? in
+            guard let r = routeOf(d), d.hasCapability(capability: .CapabilityPlay),
+                  seen.insert(r == .bluetooth ? d.id : "\(r)").inserted else { return nil }
+            let name: String
+            switch r {
+            case .iPhone: name = "iPhone"
+            case .speaker: name = "Speaker"
+            case .bluetooth: name = d.deviceName
+            case .headset: name = "Headset"
+            }
+            return AudioOption(id: d.id, route: r, name: name)
+        }.sorted { $0.route < $1.route }
+        // Bluetooth that connects during a call takes it over, as it does for a phone call.
+        if wantedRoute != nil, let bt = audioRoutes.first(where: { $0.route == .bluetooth && !before.contains($0.id) }) {
+            setAudioRoute(bt.id)
+        }
+        readCurrentRoute()
+    }
+
+    private func readCurrentRoute() {
+        guard let out = AVAudioSession.sharedInstance().currentRoute.outputs.first else { audioRoute = nil; return }
+        let route: AudioRoute?
+        switch out.portType {
+        case .builtInReceiver: route = .iPhone
+        case .builtInSpeaker: route = .speaker
+        case .bluetoothHFP, .bluetoothA2DP, .bluetoothLE, .carAudio: route = .bluetooth
+        case .headphones, .usbAudio: route = .headset
+        default: route = nil
+        }
+        audioRoute = audioRoutes.first { $0.route == route && (route != .bluetooth || $0.name == out.portName) }
+            ?? audioRoutes.first { $0.route == route }
+    }
+
+    private func defaultRoute() -> String? {
+        for r in [AudioRoute.bluetooth, .headset, .iPhone] {
+            if let o = audioRoutes.first(where: { $0.route == r }) { return o.id }
+        }
+        return nil
+    }
+
+    /// Point every live call (and a conference) at the chosen device, both ways: speaker and microphone.
+    private func applyRoute() {
+        guard let core, let id = wantedRoute, let out = core.audioDevices.first(where: { $0.id == id }) else { return }
+        let mic = recorder(for: out)
+        // A running call keeps its own devices; the core setting only applies to calls started afterwards.
+        core.outputAudioDevice = out; if let mic { core.inputAudioDevice = mic }
+        for c in liveCalls() { c.outputAudioDevice = out; if let mic { c.inputAudioDevice = mic } }
+        if let conf = conference { conf.outputAudioDevice = out; if let mic { conf.inputAudioDevice = mic } }
+    }
+
+    func setAudioRoute(_ id: String) {
+        guard audioRoutes.contains(where: { $0.id == id }) else { return }
+        wantedRoute = id
+        applyRoute()
+    }
+
+    /// The audio button with only the iPhone and its loudspeaker to choose from.
+    func toggleSpeaker() {
+        let target: AudioRoute = audioRoute?.route == .speaker ? .iPhone : .speaker
+        if let o = audioRoutes.first(where: { $0.route == target }) { setAudioRoute(o.id) }
     }
 
     private func callChanged(_ call: Call, _ state: Call.State) {
@@ -274,15 +394,17 @@ final class SipManager: ObservableObject {
                 } else {
                     CallKitManager.shared.sipEnded()
                     self.activeCall = nil
-                    self.speaker = false
+                    self.wantedRoute = nil
+                    self.routePending = false
                     self.muted = false
                 }
                 if state == .End || state == .Error {
                     let missed = incoming && call.callLog?.status == .Missed
                     self.recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed), at: 0)
                 }
-            case .StreamsRunning where !incoming:
-                CallKitManager.shared.sipConnected()
+            case .StreamsRunning:
+                if !incoming { CallKitManager.shared.sipConnected() }
+                if self.routePending { self.routePending = false; self.applyRoute() }
                 self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
             default:
                 self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
