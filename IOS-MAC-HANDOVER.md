@@ -101,4 +101,11 @@ Test once the owner has the APNs key in: run from Xcode (sandbox), sign in as 10
   setSinkId); a saved device that is unplugged now falls back to the system default instead of failing the call.
   Mac session: please check on a Mac that clicking a tel: link in Safari opens N2IT Phone with the number.
 - **Android:** speaker/Bluetooth/headset routing (BLUETOOTH_CONNECT permission, menu when a car kit or headset is
-  connected, auto-switch to Bluetooth when it connects). iOS gets this from CallKit already (audio route picker).
+  connected, auto-switch to Bluetooth when it connects).
+- **iOS: please match (owner request 2026-10-07).** Today Views.swift shows the speaker toggle only once connected,
+  and toggleSpeaker() flips Speaker/Earpiece only, so Bluetooth (owner's VW car kit) can't be chosen in the app.
+  Wanted, same as Android: ONE audio button (speaker family) visible while dialling and in the call; with Bluetooth
+  or a headset connected it opens a picker (iPhone / Speaker / <Bluetooth name> / Headset) — AVRoutePickerView or a
+  Menu over core.audioDevices setting both call.outputAudioDevice and inputAudioDevice; Bluetooth chosen
+  automatically when connected (AVAudioSession .allowBluetooth); each new call starts on the default route.
+  Android reference: `AudioRouteButton` in Ui.kt and the "Audio route" section in SipManager.kt on `audio-routing`.
