@@ -33,7 +33,11 @@
   </div>
   <div id="incall" class="hidden">
     <h2 id="who"></h2><div id="state"></div>
-    <button id="mute">Mute</button><button id="hold">Hold</button><button id="xfer">Transfer</button><button id="add">Add</button>
+    <button id="mute">Mute</button><button id="hold">Hold</button><button id="xfer">Transfer</button><button id="add">Add</button><button id="audio">Audio</button>
+    <div id="audio-pick" class="hidden">
+      <label>Microphone <select id="a-mic"></select></label>
+      <label>Speaker <select id="a-spk"></select></label>
+    </div>
     <button class="go hidden" id="merge">Merge calls</button>
     <div class="pad" id="dpad"></div>
     <button class="go hidden" id="answer">Answer</button><button class="end" id="hang">Hang up</button>
@@ -56,6 +60,9 @@
   <label>WSS port <input id="s-port" inputmode="numeric"></label>
   <label>Voicemail number <input id="s-vm"></label>
   <label>STUN server <input id="s-stun" placeholder="stun:host:port (blank = none)"></label>
+  <div id="s-links" class="hidden" style="font-size:13px;margin:8px 0">
+    <span id="s-links-msg"></span><br><button id="s-links-set">Phone links: open with N2IT Phone</button>
+  </div>
   <button class="go" id="s-save">Save</button><button id="s-back">Back</button>
   <hr><div id="s-acct"></div><button class="end" id="out">Sign out</button>
 </section>

@@ -1,6 +1,6 @@
 {
   "name": "n2it-phone-desktop",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "description": "N2IT Phone desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
@@ -55,6 +55,19 @@
       ],
       "category": "Telephony",
       "maintainer": "N2IT <support@n2it.co.za>"
+    },
+    "protocols": [
+      {
+        "name": "Phone call",
+        "schemes": [
+          "tel",
+          "callto",
+          "sip"
+        ]
+      }
+    ],
+    "nsis": {
+      "include": "build/installer.nsh"
     }
   },
   "author": {

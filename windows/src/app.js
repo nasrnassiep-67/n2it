@@ -74,7 +74,7 @@ function end(s) {
   s._audio.srcObject = null; s._audio.remove()
   calls = calls.filter((c) => c !== s)
   if (mix) buildMix()   // rebuild for whoever is left (tears down below two calls)
-  if (!calls.length) { session = null; show('incall', false); show('idle', true); return }
+  if (!calls.length) { session = null; show('incall', false); show('audio-pick', false); show('idle', true); return }
   if (session === s) session = calls[calls.length - 1]
   show('answer', false); refresh()
 }
@@ -130,10 +130,10 @@ function merge() {
 const media = () => {
   const c = cfg()
   return { audio: { echoCancellation: c.echo, noiseSuppression: c.noise, autoGainControl: c.agc,
-    ...(c.micId ? { deviceId: { exact: c.micId } } : {}) }, video: false }
+    ...(c.micId ? { deviceId: c.micId } : {}) }, video: false }   // preferred, not exact: an unplugged headset falls back
 }
 const pcConfig = () => ({ iceServers: cfg().stun ? [{ urls: cfg().stun }] : [] })
-const applySink = () => { const id = cfg().spkId; for (const s of calls) if (id && s._audio?.setSinkId) s._audio.setSinkId(id).catch(() => {}) }
+const applySink = () => { const id = cfg().spkId; for (const s of calls) s._audio?.setSinkId?.(id || '').catch(() => {}) }
 const dial = (n) => n && ua?.call(`sip:${n}@${domain(acc.tenant)}`, { mediaConstraints: media(), pcConfig: pcConfig() })
 
 $('signin').onclick = async () => {
@@ -159,7 +159,14 @@ async function openSettings() {
   $('s-acct').textContent = `Signed in as ${acc.user} @ ${domain(acc.tenant)}`
   show('phone', false); show('settings', true)
 }
-$('cfg').onclick = openSettings
+$('cfg').onclick = async () => {
+  await openSettings()
+  // Phone links: Windows lets the user (not the app) choose the app for tel: links.
+  const l = await links.status()
+  show('s-links', l.platform === 'win32')
+  $('s-links-msg').textContent = l.tel ? 'Phone number links open in N2IT Phone.' : 'Phone number links open in another app.'
+}
+$('s-links-set').onclick = () => links.settings()
 $('s-back').onclick = () => { show('settings', false); show('phone', true) }
 $('s-save').onclick = async () => {
   const old = cfg().wssPort, port = parseInt($('s-port').value, 10)
@@ -225,4 +232,62 @@ $('xfer').onclick = () => {   // blind transfer via SIP REFER
   const n = prompt('Transfer to extension or number'); if (n) session?.refer(`sip:${n}@${domain(acc.tenant)}`)
 }
 
-store.load().then((a) => { if (a) { acc = a; show('login', false); show('phone', true); connect() } })
+// ---- Audio during a call: switch microphone and speaker (headset, Bluetooth, laptop) without hanging up ----
+async function fillAudio() {
+  const devs = await navigator.mediaDevices.enumerateDevices(), c = cfg()
+  const ins = devs.filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default')
+  const outs = devs.filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default')
+  fill($('a-mic'), ins, ins.some((d) => d.deviceId === c.micId) ? c.micId : '', 'Microphone')
+  fill($('a-spk'), outs, outs.some((d) => d.deviceId === c.spkId) ? c.spkId : '', 'Speaker')
+}
+async function saveAudio(change) { acc.settings = { ...cfg(), ...change }; await store.save(acc) }
+$('audio').onclick = async () => {
+  const open = $('audio-pick').classList.contains('hidden')
+  if (open) await fillAudio()
+  show('audio-pick', open); $('audio').classList.toggle('on', open)
+}
+$('a-spk').onchange = async () => { await saveAudio({ spkId: $('a-spk').value }); applySink() }
+/** New microphone on every live call: replace the track being sent (and the conference mix's input). */
+async function switchMic() {
+  if (!calls.length) return
+  let track
+  try { track = (await navigator.mediaDevices.getUserMedia(media())).getAudioTracks()[0] } catch (e) { status(`Microphone: ${e.message}`); return }
+  track.enabled = mix ? true : !muted   // in a conference, muting is the mix gain
+  const old = new Set()
+  for (const s of calls) {
+    if (s.isEnded() || !s.connection) continue
+    const cur = s._mic || sender(s)?.track
+    if (cur) old.add(cur)
+    if (mix) s._mic = track
+    else await sender(s)?.replaceTrack(track).catch(() => {})
+  }
+  if (mix) buildMix()
+  old.forEach((t) => { if (t !== track) t.stop() })
+}
+$('a-mic').onchange = async () => { await saveAudio({ micId: $('a-mic').value }); switchMic() }
+// A headset or Bluetooth device plugged in or removed mid-call: refresh the lists; if the chosen one is gone,
+// go back to the system default (the browser keeps playing to a dead device otherwise).
+navigator.mediaDevices.addEventListener('devicechange', async () => {
+  if (!calls.length) return
+  const devs = await navigator.mediaDevices.enumerateDevices(), c = cfg()
+  const has = (kind, id) => !id || devs.some((d) => d.kind === kind && d.deviceId === id)
+  if (!has('audiooutput', c.spkId)) { await saveAudio({ spkId: '' }); applySink() }
+  if (!has('audioinput', c.micId)) { await saveAudio({ micId: '' }); switchMic() }
+  if (!$('audio-pick').classList.contains('hidden')) fillAudio()
+})
+
+// ---- Phone links: a number clicked in a browser or email lands in the dial box, ready to call ----
+function dialFromLink(n) {
+  if (!n) return
+  $('num').value = n
+  if (!acc) return   // not signed in: stays in the box for after sign-in
+  for (const id of ['contacts', 'settings']) show(id, false)
+  show('phone', true)
+  if (!calls.length) $('num').focus()
+}
+links.onDial(dialFromLink)
+
+store.load().then(async (a) => {
+  if (a) { acc = a; show('login', false); show('phone', true); connect() }
+  dialFromLink(await links.pending())
+})

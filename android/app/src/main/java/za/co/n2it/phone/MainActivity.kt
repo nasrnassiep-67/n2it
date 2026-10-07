@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(Unit) {
                         val list = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_CONTACTS, Manifest.permission.READ_PHONE_STATE)
                         if (Build.VERSION.SDK_INT >= 33) list += Manifest.permission.POST_NOTIFICATIONS
+                        if (Build.VERSION.SDK_INT >= 31) list += Manifest.permission.BLUETOOTH_CONNECT   // car kit / headset
                         ask.launch(list.toTypedArray())
                     }
                     App(onSignedIn = { PhoneService.start(ctx) }, onSignedOut = { PhoneService.stop(ctx) })

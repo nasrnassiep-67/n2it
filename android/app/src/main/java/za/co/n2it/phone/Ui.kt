@@ -321,7 +321,6 @@ fun SettingsTab(onSignOut: () -> Unit) {
 @Composable
 fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
     val muted by SipManager.muted.collectAsState()
-    val speaker by SipManager.speaker.collectAsState()
     var pad by remember { mutableStateOf(false) }
     var transferTo by remember { mutableStateOf<Boolean?>(null) }  // null = closed, false = blind, true = attended
     var adding by remember { mutableStateOf(false) }
@@ -344,10 +343,15 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
         Spacer(Modifier.weight(1f))
         Text(call.number, fontSize = 34.sp); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))
+        // While dialling: mute and speaker/Bluetooth already, so the user can pick the car or speaker before they answer.
+        if (!connected && !ringingIn) Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            FilledTonalIconToggleButton(muted, { SipManager.toggleMute() }, Modifier.size(64.dp)) { Icon(Icons.Default.MicOff, "Mute") }
+            AudioRouteButton()
+        }
         if (connected) {
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 FilledTonalIconToggleButton(muted, { SipManager.toggleMute() }, Modifier.size(64.dp)) { Icon(Icons.Default.MicOff, "Mute") }
-                FilledTonalIconToggleButton(speaker, { SipManager.toggleSpeaker() }, Modifier.size(64.dp)) { Icon(Icons.Default.VolumeUp, "Speaker") }
+                AudioRouteButton()
                 FilledTonalIconToggleButton(pad, { pad = it }, Modifier.size(64.dp)) { Icon(Icons.Default.Dialpad, "Keypad") }
             }
             Spacer(Modifier.height(12.dp))
@@ -385,6 +389,44 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
         onBlind = { SipManager.blindTransfer(it); transferTo = null },
         onConsult = { SipManager.consult(it); transferTo = null })
     if (adding) AddParticipantDialog(call.conference, onDismiss = { adding = false }, onAdd = { SipManager.addParticipant(it); adding = false })
+}
+
+private fun AudioRoute.icon() = when (this) {
+    AudioRoute.Earpiece -> Icons.Default.PhoneInTalk
+    AudioRoute.Speaker -> Icons.Default.VolumeUp
+    AudioRoute.Bluetooth -> Icons.Default.BluetoothAudio
+    AudioRoute.Headset -> Icons.Default.Headset
+}
+private fun AudioOption.label() = when (route) {
+    AudioRoute.Earpiece -> "Phone"
+    AudioRoute.Speaker -> "Speaker"
+    AudioRoute.Bluetooth -> name.ifBlank { "Bluetooth" }
+    AudioRoute.Headset -> "Headset"
+}
+
+/**
+ * Speaker button. With only the phone and its loudspeaker it simply toggles the speaker; with Bluetooth (car kit,
+ * headset) or a wired headset connected it opens a menu to pick where the call is heard and spoken.
+ */
+@Composable
+private fun AudioRouteButton() {
+    val route by SipManager.audioRoute.collectAsState()
+    val routes by SipManager.audioRoutes.collectAsState()
+    var menu by remember { mutableStateOf(false) }
+    val choice = routes.any { it.route == AudioRoute.Bluetooth || it.route == AudioRoute.Headset }
+    Box {
+        FilledTonalIconToggleButton(route != AudioRoute.Earpiece, {
+            if (choice) menu = true
+            else SipManager.setAudioRoute(if (route == AudioRoute.Speaker) AudioRoute.Earpiece else AudioRoute.Speaker)
+        }, Modifier.size(64.dp)) { Icon(route.icon(), if (choice) "Audio output" else "Speaker") }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            routes.forEach { o ->
+                DropdownMenuItem(text = { Text(o.label()) }, leadingIcon = { Icon(o.route.icon(), null) },
+                    trailingIcon = { if (o.route == route) Icon(Icons.Default.Check, null) },
+                    onClick = { SipManager.setAudioRoute(o.route); menu = false })
+            }
+        }
+    }
 }
 
 @Composable

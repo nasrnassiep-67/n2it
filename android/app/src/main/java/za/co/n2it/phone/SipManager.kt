@@ -10,6 +10,11 @@ data class CallInfo(val number: String, val state: Call.State, val incoming: Boo
                     val conference: Boolean = false, val participants: List<String> = emptyList())
 data class RecentCall(val number: String, val time: Long, val incoming: Boolean, val missed: Boolean)
 
+/** Where call audio goes: the phone's earpiece, the loudspeaker, a Bluetooth device (car kit, headset) or a wired headset. */
+enum class AudioRoute { Earpiece, Speaker, Bluetooth, Headset }
+/** A route the phone can use right now; [name] is the device's own name for Bluetooth ("VW BT 1234"). */
+data class AudioOption(val route: AudioRoute, val name: String)
+
 object SipManager {
     private lateinit var core: Core
     private var started = false
@@ -19,14 +24,16 @@ object SipManager {
     private val _status = MutableStateFlow("Not registered")
     private val _call = MutableStateFlow<CallInfo?>(null)
     private val _muted = MutableStateFlow(false)
-    private val _speaker = MutableStateFlow(false)
+    private val _route = MutableStateFlow(AudioRoute.Earpiece)
+    private val _routes = MutableStateFlow<List<AudioOption>>(emptyList())
     private val _recents = MutableStateFlow<List<RecentCall>>(emptyList())
     private val _voicemail = MutableStateFlow(false)
     val registered: StateFlow<Boolean> = _registered
     val status: StateFlow<String> = _status
     val call: StateFlow<CallInfo?> = _call
     val muted: StateFlow<Boolean> = _muted
-    val speaker: StateFlow<Boolean> = _speaker
+    val audioRoute: StateFlow<AudioRoute> = _route
+    val audioRoutes: StateFlow<List<AudioOption>> = _routes
     val recents: StateFlow<List<RecentCall>> = _recents
     val hasVoicemail: StateFlow<Boolean> = _voicemail
 
@@ -55,7 +62,7 @@ object SipManager {
                     userHeld.remove(call)
                     // Another call may still be up (held caller after a consult, or the rest of a conference).
                     if (liveCalls(except = call).isEmpty()) {
-                        _call.value = null; _muted.value = false; _speaker.value = false
+                        _call.value = null; _muted.value = false; routeChosen = false
                         if (core.callsNb == 0) PhoneService.setInCall(appContext, false)
                     } else publish()
                 }
@@ -66,13 +73,32 @@ object SipManager {
                 else -> {
                     // Outgoing call placed, or incoming call answered: the user is in the app right now,
                     // so this is when Android lets the service take the microphone.
-                    if (state == Call.State.OutgoingInit || state == Call.State.Connected) PhoneService.setInCall(appContext, true)
+                    if (state == Call.State.OutgoingInit || state == Call.State.Connected) {
+                        PhoneService.setInCall(appContext, true)
+                        // First call: Bluetooth if connected (car, headset), else a wired headset, else the earpiece.
+                        if (!routeChosen) { routeChosen = true; _route.value = defaultRoute() }
+                        applyRoute()
+                    }
+                    // Streams restart after hold/resume and on answer: keep them on the chosen device.
+                    if (state == Call.State.StreamsRunning) applyRoute()
                     publish()
                 }
             }
         }
 
         // PBX NOTIFY for message-summary: "Messages-Waiting: yes" / "Voice-Message: 2/0 (0/0)"
+        // Bluetooth or a headset connected/disconnected (e.g. the car's hands-free picks up the phone mid-call).
+        override fun onAudioDevicesListUpdated(core: Core) {
+            val before = _routes.value.map { it.route }
+            updateRoutes()
+            if (liveCalls().isEmpty()) return
+            val now = _routes.value.map { it.route }
+            when {
+                AudioRoute.Bluetooth in now && AudioRoute.Bluetooth !in before -> setAudioRoute(AudioRoute.Bluetooth)
+                _route.value !in now -> setAudioRoute(defaultRoute())
+            }
+        }
+
         override fun onNotifyReceived(core: Core, event: Event, notifiedEvent: String, body: Content?) {
             if (!notifiedEvent.equals("message-summary", true)) return
             val text = body?.utf8Text ?: return
@@ -120,6 +146,7 @@ object SipManager {
         }
         core.start()
         started = true
+        updateRoutes()
         configure(Account.load(appContext))
     }
 
@@ -173,13 +200,51 @@ object SipManager {
     }
     fun sendDigit(d: Char) { core.currentCall?.sendDtmf(d) }
     fun toggleMute() { core.isMicEnabled = !core.isMicEnabled; _muted.value = !core.isMicEnabled }
-    fun toggleSpeaker() {
-        val want = if (!_speaker.value) AudioDevice.Type.Speaker else AudioDevice.Type.Earpiece
-        val dev = core.audioDevices.firstOrNull { it.type == want && it.hasCapability(AudioDevice.Capabilities.CapabilityPlay) } ?: return
-        // A running call keeps its own device; the core setting only applies to calls started afterwards.
-        core.currentCall?.outputAudioDevice = dev
-        core.outputAudioDevice = dev
-        _speaker.value = !_speaker.value
+
+    // ---- Audio route: earpiece / speaker / Bluetooth / wired headset ----
+    private var routeChosen = false   // the first call of a session picked its route; later calls (consult, add) keep it
+
+    private fun routeOf(d: AudioDevice) = when (d.type) {
+        AudioDevice.Type.Earpiece -> AudioRoute.Earpiece
+        AudioDevice.Type.Speaker -> AudioRoute.Speaker
+        AudioDevice.Type.Bluetooth -> AudioRoute.Bluetooth   // hands-free profile (car kits, headsets); A2DP is music-only
+        AudioDevice.Type.Headset, AudioDevice.Type.Headphones -> AudioRoute.Headset
+        else -> null
+    }
+    private fun player(r: AudioRoute) = core.audioDevices.firstOrNull { routeOf(it) == r && it.hasCapability(AudioDevice.Capabilities.CapabilityPlay) }
+    /** Bluetooth and headsets use their own microphone when they have one; otherwise the phone's. */
+    private fun recorder(r: AudioRoute): AudioDevice? {
+        val mics = core.audioDevices.filter { it.hasCapability(AudioDevice.Capabilities.CapabilityRecord) }
+        val own = if (r == AudioRoute.Bluetooth || r == AudioRoute.Headset) mics.firstOrNull { routeOf(it) == r } else null
+        return own ?: mics.firstOrNull { it.type == AudioDevice.Type.Microphone }
+    }
+
+    private fun updateRoutes() {
+        _routes.value = AudioRoute.entries.mapNotNull { r ->
+            player(r)?.let { AudioOption(r, if (r == AudioRoute.Bluetooth) it.deviceName else "") }
+        }
+    }
+
+    private fun defaultRoute(): AudioRoute {
+        val have = _routes.value.map { it.route }
+        return listOf(AudioRoute.Bluetooth, AudioRoute.Headset, AudioRoute.Earpiece).firstOrNull { it in have } ?: AudioRoute.Speaker
+    }
+
+    /** Point every live call (and a conference) at the chosen route, both ways: speaker and microphone. */
+    private fun applyRoute() {
+        if (!started) return
+        val out = player(_route.value) ?: return
+        val mic = recorder(_route.value)
+        // A running call keeps its own devices; the core setting only applies to calls started afterwards.
+        core.outputAudioDevice = out; mic?.let { core.inputAudioDevice = it }
+        liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
+        conference()?.let { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
+    }
+
+    fun setAudioRoute(r: AudioRoute) {
+        if (!started || player(r) == null) return
+        _route.value = r; routeChosen = true
+        applyRoute()
     }
     fun toggleHold() {
         val c = core.currentCall ?: core.calls.firstOrNull { it.state == Call.State.Paused } ?: return
@@ -260,7 +325,7 @@ object SipManager {
     }
 
     /** Re-read the sound cards, e.g. after the microphone permission was granted (the core started without it). */
-    fun reloadSoundDevices() { if (started) core.reloadSoundDevices() }
+    fun reloadSoundDevices() { if (started) { core.reloadSoundDevices(); updateRoutes() } }
 
     fun refresh() { if (started) core.refreshRegisters() }
 }

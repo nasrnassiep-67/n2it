@@ -92,3 +92,13 @@ Server side built and tested up to Apple (see `gateway/README.md`). For the iPho
 3. Nothing else: register/unregister bodies, the `caller` payload key, CallKit-first then `refreshRegisters()`
    already match. Payload also has `number` and `callee` if useful.
 Test once the owner has the APNs key in: run from Xcode (sandbox), sign in as 1002, background the app, call 1002.
+
+## Desktop 0.1.7 + Android 0.1.7 (voip-server session, 2026-10-07, branch `audio-routing`)
+- **Desktop (shared code, affects the Mac .dmg):** tel:/callto:/sip: links open the app with the number in the dial
+  box (single instance; `open-url` on macOS; `build.protocols` in package.json adds CFBundleURLTypes to the Mac app
+  and the x-scheme-handler MimeTypes on Linux). Windows registers itself under Default apps (HKCU, in main.js) and
+  Settings has a "Phone links" button. In-call "Audio" button switches microphone/speaker live (replaceTrack /
+  setSinkId); a saved device that is unplugged now falls back to the system default instead of failing the call.
+  Mac session: please check on a Mac that clicking a tel: link in Safari opens N2IT Phone with the number.
+- **Android:** speaker/Bluetooth/headset routing (BLUETOOTH_CONNECT permission, menu when a car kit or headset is
+  connected, auto-switch to Bluetooth when it connects). iOS gets this from CallKit already (audio route picker).

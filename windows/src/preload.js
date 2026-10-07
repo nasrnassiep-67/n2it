@@ -5,3 +5,10 @@ contextBridge.exposeInMainWorld('store', {
   clear: () => ipcRenderer.invoke('account:clear'),
   directory: () => ipcRenderer.invoke('directory:load'),
 })
+// Phone links (tel:, callto:, sip:) clicked elsewhere: the number arrives here.
+contextBridge.exposeInMainWorld('links', {
+  onDial: (cb) => ipcRenderer.on('dial', (_e, n) => cb(n)),
+  pending: () => ipcRenderer.invoke('links:pending'),
+  settings: () => ipcRenderer.invoke('links:settings'),
+  status: () => ipcRenderer.invoke('links:status'),
+})
