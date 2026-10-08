@@ -2,5 +2,6 @@
 SIP_TENANT =
 SIP_USER =
 SIP_PASSWORD =
-PUSH_GATEWAY_HOST = push.voip.n2it.co.za
+// Push gateway on the PBX (https://voip.n2it.co.za/push/register)
+PUSH_GATEWAY_HOST = voip.n2it.co.za/push
 #include? "Secrets.xcconfig"
