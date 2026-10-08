@@ -2,6 +2,7 @@ package za.co.n2it.phone
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -78,6 +79,7 @@ object SipManager {
                     // Another call may still be up (held caller after a consult, or the rest of a conference).
                     if (liveCalls(except = call).isEmpty()) {
                         _call.value = null; _muted.value = false; routeChosen = false
+                        releaseFocus()
                         if (core.callsNb == 0) PhoneService.setInCall(appContext, false)
                     } else publish()
                 }
@@ -104,6 +106,7 @@ object SipManager {
                     // so this is when Android lets the service take the microphone.
                     if (state == Call.State.OutgoingInit || state == Call.State.Connected) {
                         PhoneService.setInCall(appContext, true)
+                        if (state == Call.State.Connected) takeFocus()
                         // First call: Bluetooth if connected (car, headset), else a wired headset, else the earpiece.
                         if (!routeChosen) { routeChosen = true; _route.value = defaultRoute() }
                         applyRoute()
@@ -153,6 +156,8 @@ object SipManager {
 
     private val ended = setOf(Call.State.End, Call.State.Error, Call.State.Released)
     private fun liveCalls(except: Call? = null) = core.calls.filter { it !== except && it.state !in ended }
+    /** A call of ours that is up (not just ringing in). */
+    fun hasActiveCall() = started && liveCalls().any { it.state != Call.State.IncomingReceived }
     private fun conference(): Conference? = liveCalls().firstNotNullOfOrNull { it.conference }
 
     /** Mirror the calls into UI state: one call, a held call plus a consult call, or a conference. */
@@ -371,7 +376,50 @@ object SipManager {
     }
     fun toggleHold() {
         val c = core.currentCall ?: core.calls.firstOrNull { it.state == Call.State.Paused } ?: return
-        if (c.state == Call.State.Paused) { userHeld.remove(c); c.resume() } else { userHeld.add(c); c.pause() }
+        if (c.state == Call.State.Paused) {
+            // Resume (also after an automatic hold whose other call Android never reported as over): take the audio back
+            userHeld.remove(c); takeFocus(force = true); c.resume()
+        } else { userHeld.add(c); c.pause() }
+    }
+
+    /*
+     * Audio focus (owner 2026-10-08: on the HONOR a WhatsApp call taken during a softphone call was not noticed and both
+     * were heard at once). WhatsApp and other calling apps do not always show up as calls in Android's call list
+     * (TelecomManager), but every one of them takes the audio focus when its call starts. So the app holds the focus for
+     * the length of its calls and treats losing it to another app as "another call started": PhoneService's watcher then
+     * holds ours. Getting it back (the other call ended) resumes ours. Linphone may ask for the focus itself when a call
+     * connects or resumes; losses right after our own actions are ours, not another app's: the focus is simply taken back.
+     */
+    private var focusRequest: AudioFocusRequest? = null
+    @Volatile var focusLost = false
+        private set
+    private var focusGraceUntil = 0L
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        when (change) {
+            AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                if (System.currentTimeMillis() < focusGraceUntil) main.postDelayed({ takeFocus(force = true) }, 500)
+                else focusLost = true
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> focusLost = false
+        }
+    }
+    private fun takeFocus(force: Boolean = false) {
+        if (!started || (focusRequest != null && !force)) return
+        val am = appContext.getSystemService(AudioManager::class.java) ?: return
+        focusRequest?.let { am.abandonAudioFocusRequest(it) }
+        val r = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            .setOnAudioFocusChangeListener(focusListener, main)
+            .setWillPauseWhenDucked(true)
+            .build()
+        focusGraceUntil = System.currentTimeMillis() + 3000
+        if (am.requestAudioFocus(r) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { focusRequest = r; focusLost = false }
+        else { focusRequest = r; focusLost = true }   // refused: another call holds the audio right now
+    }
+    private fun releaseFocus() {
+        focusRequest?.let { appContext.getSystemService(AudioManager::class.java)?.abandonAudioFocusRequest(it) }
+        focusRequest = null; focusLost = false
     }
 
     /** Calls the user put on hold themselves; [onOtherAppCall] never resumes these. */
@@ -391,9 +439,11 @@ object SipManager {
             if (conf != null) conf.leave()
             liveCalls().filter { it.conference == null && it.state == Call.State.StreamsRunning }.forEach { it.pause() }
         } else {
+            focusGraceUntil = System.currentTimeMillis() + 3000   // Linphone may take the focus as the calls resume
             if (conf != null && !conf.isIn) conf.enter()
             liveCalls().filter { it.conference == null && it.state == Call.State.Paused && it !in userHeld }
                 .forEach { it.resume() }
+            main.postDelayed({ if (liveCalls().isNotEmpty()) takeFocus(force = true) }, 1500)
         }
     }
 

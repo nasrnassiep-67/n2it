@@ -140,10 +140,16 @@ class PhoneService : Service() {
          *  GSM call (audio mode RINGTONE) is skipped, so an ignored ring does not hold ours; our own calls are not
          *  Telecom calls, so they never count. */
         fun otherAppInCall(c: Context): Boolean {
+            val am = c.getSystemService(AudioManager::class.java)
+            if (am.mode == AudioManager.MODE_RINGTONE) return false
+            // Our call lost the audio to another app's call (WhatsApp and others that are not in Android's call list)
+            if (SipManager.focusLost) return true
+            // No call of ours up yet (a call is ringing in): a GSM call (IN_CALL) or another app's internet call
+            // (IN_COMMUNICATION) holds the phone's audio
+            if (!SipManager.hasActiveCall() && (am.mode == AudioManager.MODE_IN_CALL || am.mode == AudioManager.MODE_IN_COMMUNICATION)) return true
             if (c.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return false
             return try {
-                c.getSystemService(TelecomManager::class.java).isInCall &&
-                    c.getSystemService(AudioManager::class.java).mode != AudioManager.MODE_RINGTONE
+                c.getSystemService(TelecomManager::class.java).isInCall
             } catch (e: SecurityException) { false }
         }
 
