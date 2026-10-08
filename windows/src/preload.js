@@ -20,3 +20,9 @@ contextBridge.exposeInMainWorld('links', {
   settings: () => ipcRenderer.invoke('links:settings'),
   status: () => ipcRenderer.invoke('links:status'),
 })
+// Window / notification area: the tray shows the registration status; quitting asks first during a call.
+contextBridge.exposeInMainWorld('appShell', {
+  state: (st) => ipcRenderer.send('app:state', st),
+  startup: () => ipcRenderer.invoke('startup:get'),
+  setStartup: (on) => ipcRenderer.invoke('startup:set', on),
+})

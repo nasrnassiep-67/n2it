@@ -3,98 +3,244 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; connect-src wss://*.voip.n2it.co.za:*; media-src 'self' blob:; style-src 'self' 'unsafe-inline'">
 <title>N2IT Phone</title>
 <style>
-  body{font:15px system-ui;margin:0;padding:16px;background:#fff;color:#111}
-  input{width:100%;box-sizing:border-box;padding:8px;margin:4px 0}
-  button{padding:10px;margin:3px;border:0;border-radius:8px;background:#e8e8ec;cursor:pointer}
-  button.go{background:#2e9e4f;color:#fff}#signin,#s-save{background:#145ab6;color:#fff}h2{color:#0f3d80}button.end{background:#d33;color:#fff}button.on{background:#222;color:#fff}
-  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.pad button{font-size:20px}
-  label{display:block;margin:8px 0;font-size:13px}select{width:100%;padding:6px}label input[type=checkbox]{width:auto}
-  .version{font-size:12px;color:#888;text-align:center;margin-top:16px}
-  #status{font-size:13px;color:#666;margin-bottom:8px}#status.dnd{color:#e65100;font-weight:bold}#status.dnd::after{content:" · Do Not Disturb"}
-  #dnd-banner{background:#e65100;color:#fff;padding:8px 10px;border-radius:8px;margin-bottom:8px;font-size:13px}
-  #dnd-banner button{background:#fff;color:#e65100;padding:4px 10px;margin:4px 0 0}button.dndon{background:#e65100;color:#fff}
-  .contact{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee}
-  #waiting{background:#fff4e5;border:1px solid #f0b357;border-radius:8px;padding:8px;margin-bottom:8px}
-  #other-note{background:#eef3fb;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;color:#0f3d80}
-  .contact small{color:#666}.contact button{margin:0}#c-list{max-height:480px;overflow-y:auto}.hidden{display:none}#num{font-size:22px;text-align:center}
-</style></head><body>
-<div id="status">Not registered</div>
+  /* N2IT blue + the Android app's green / red / orange; light and dark follow Windows */
+  :root{--blue:#145ab6;--blue-soft:#e3ecf9;--green:#2e9e4f;--red:#d64545;--orange:#e65100;
+    --bg:#f3f5f9;--panel:#fff;--line:#e3e7ee;--text:#14181f;--muted:#6b7380;--key:#e9edf4;--key-hover:#dce3ee;--shadow:0 1px 3px rgba(20,30,50,.08),0 4px 16px rgba(20,30,50,.06)}
+  @media (prefers-color-scheme:dark){:root{--blue-soft:#1d2d47;--bg:#14171c;--panel:#1c2027;--line:#2b313b;--text:#e8ebf0;--muted:#97a0ad;--key:#272d36;--key-hover:#323945;--shadow:0 1px 3px rgba(0,0,0,.3)}}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{font:14px "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;margin:0;background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden;user-select:none}
+  input,select{font:inherit;color:var(--text);background:var(--panel);width:100%;padding:9px 11px;margin:4px 0;border:1px solid var(--line);border-radius:10px;outline:none;user-select:text}
+  input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+  button{font:inherit;color:var(--text);padding:9px 16px;margin:3px;border:0;border-radius:999px;background:var(--key);cursor:pointer;transition:background .12s,transform .06s}
+  button:hover{background:var(--key-hover)}button:active{transform:scale(.96)}
+  button.go{background:var(--green);color:#fff}button.go:hover{filter:brightness(1.08)}
+  button.end{background:var(--red);color:#fff}button.end:hover{filter:brightness(1.08)}
+  button.primary,#signin,#s-save{background:var(--blue);color:#fff}
+  button.on{background:var(--blue);color:#fff}
+  button.flat{background:none;padding:8px}button.flat:hover{background:var(--key)}
+  svg.i{width:20px;height:20px;fill:currentColor;flex:none;vertical-align:middle}
+  h2{font-size:20px;font-weight:600;margin:4px 0 12px}
+  label{display:block;margin:10px 0;font-size:13px;color:var(--muted)}label input[type=checkbox]{width:auto;margin-right:8px;accent-color:var(--blue)}
+  label.check{color:var(--text)}
+  .hidden{display:none!important}
+  .version{font-size:12px;color:var(--muted);text-align:center;margin-top:16px}
+  .hint{font-size:13px;color:var(--muted)}
 
-<section id="login">
-  <img src="assets/logo.png" alt="N2IT" style="display:block;width:220px;margin:8px auto 12px">
+  /* ---- Top bar ---- */
+  header{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line);flex:none}
+  header img{height:26px;margin:0 6px}
+  #status-pill{display:flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;background:var(--bg);font-size:13px;min-width:0}
+  #status-pill::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+  #status-pill[data-s=ok]::before{background:var(--green)}#status-pill[data-s=bad]::before{background:var(--red)}
+  #status-pill.dnd::before{background:var(--orange)}
+  #status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#status.dnd::after{content:" · Do Not Disturb";color:var(--orange);font-weight:600}
+  #me{font-size:13px;color:var(--muted);white-space:nowrap}
+  .grow{flex:1}
+  #dnd.dndon{background:var(--orange);color:#fff}
+  #side-toggle{position:relative}
+  .badge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--red);color:#fff;font-size:11px;line-height:16px;text-align:center}
+
+  /* ---- Recent calls side bar ---- */
+  #shell{flex:1;display:flex;min-height:0;position:relative}
+  aside{width:300px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;transition:margin .18s}
+  body.side-closed aside{margin-left:-301px}
+  .side-head{display:flex;align-items:center;justify-content:space-between;padding:14px 14px 8px}
+  .side-head b{font-size:16px}
+  .seg{display:flex;background:var(--bg);border-radius:999px;padding:3px;margin:0 14px 8px}
+  .seg button{flex:1;margin:0;padding:6px;background:none;font-size:13px}.seg button.sel{background:var(--panel);box-shadow:var(--shadow)}
+  #recent{flex:1;overflow-y:auto;padding:0 6px 10px}
+  .rc{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;cursor:pointer}
+  .rc:hover{background:var(--bg)}
+  .rc .av{width:36px;height:36px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-weight:600;flex:none}
+  .rc .who{flex:1;min-width:0}.rc .who div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rc small{color:var(--muted);display:flex;align-items:center;gap:4px}.rc small svg.i{width:14px;height:14px}
+  .rc.missed .who div{color:var(--red)}.rc.missed small svg.i{color:var(--red)}
+  .rc button{opacity:0;margin:0;padding:7px}.rc:hover button{opacity:1}
+  .rc time{font-size:12px;color:var(--muted);white-space:nowrap}
+  .empty{color:var(--muted);text-align:center;padding:30px 10px;font-size:13px}
+  body.signed-out aside,body.signed-out #side-toggle,body.signed-out #dnd,body.signed-out #cfg,body.signed-out #me{display:none}
+  @media (max-width:720px){aside{position:absolute;inset:0 auto 0 0;z-index:5;box-shadow:var(--shadow)}}
+
+  /* ---- Main area: one centred column ---- */
+  main{flex:1;overflow-y:auto;display:flex;justify-content:center;padding:20px 16px}
+  main>section,#phone>div{width:100%;max-width:400px}
+  .card{background:var(--panel);border-radius:18px;padding:20px;box-shadow:var(--shadow)}
+  #login img{display:block;width:200px;margin:4px auto 16px}
+
+  /* Keypad: round "bubble" keys like the Android app */
+  .tabs{display:flex;justify-content:center;gap:6px;margin-bottom:14px}
+  .tabs button{display:flex;align-items:center;gap:6px;background:var(--panel);box-shadow:var(--shadow)}
+  #num{font-size:30px;text-align:center;border:0;background:none;box-shadow:none;padding:6px;letter-spacing:1px}
+  .pad{display:grid;grid-template-columns:repeat(3,72px);gap:14px 26px;justify-content:center;margin:10px 0 18px}
+  .pad button{width:72px;height:72px;margin:0;padding:0;font-size:26px;line-height:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .pad button small{font-size:10px;letter-spacing:1.5px;color:var(--muted);height:12px;margin-top:2px}
+  .callrow{display:grid;grid-template-columns:repeat(3,72px);gap:26px;justify-content:center;align-items:center}
+  .round{width:72px;height:72px;margin:0;padding:0;display:grid;place-items:center}
+  .round svg.i{width:30px;height:30px}
+  #back{background:none}#back svg.i{width:26px;height:26px;color:var(--muted)}
+
+  /* In a call */
+  #incall{text-align:center}
+  .avatar{width:96px;height:96px;border-radius:50%;margin:10px auto 12px;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-size:38px;font-weight:600}
+  #who{font-size:26px;margin:0 0 4px;word-break:break-all}#state{color:var(--muted)}#timer{font-variant-numeric:tabular-nums}
+  .ctrls{display:grid;grid-template-columns:repeat(3,auto);gap:14px 22px;justify-content:center;margin:24px 0}
+  .bub{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;padding:0;font-size:12px;color:var(--muted)}
+  .bub:hover{background:none}
+  .bub span.c{width:64px;height:64px;border-radius:50%;background:var(--key);display:grid;place-items:center;color:var(--text);transition:background .12s}
+  .bub:hover span.c{background:var(--key-hover)}.bub.on span.c{background:var(--blue);color:#fff}
+  .bub svg.i{width:26px;height:26px}
+  .endrow{display:flex;justify-content:center;gap:40px;margin-top:6px}
+  .endrow .round{width:76px;height:76px}
+  #dpad{margin:6px 0 18px}#dpad button{width:60px;height:60px;font-size:22px}
+  .panel{background:var(--panel);border-radius:14px;padding:12px;margin:10px 0;text-align:left;box-shadow:var(--shadow)}
+  #waiting{background:#fff4e5;color:#5a3700;border:1px solid #f0b357}
+  #other-note{background:var(--blue-soft);font-size:13px}
+  .row{display:flex;flex-wrap:wrap;gap:4px;justify-content:center}
+
+  /* Lists in contacts / settings */
+  #dnd-banner{background:var(--orange);color:#fff;padding:10px 14px;border-radius:14px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;gap:10px}
+  #dnd-banner button{background:#fff;color:var(--orange);margin:0 0 0 auto}
+  .contact{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 4px;border-bottom:1px solid var(--line)}
+  .contact small{color:var(--muted)}.contact button{margin:0}
+  #c-list{max-height:calc(100vh - 260px);overflow-y:auto}
+  hr{border:0;border-top:1px solid var(--line);margin:18px 0}
+  ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px;border:2px solid transparent;background-clip:padding-box}
+</style></head><body class="side-closed signed-out">
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-call" viewBox="0 0 24 24"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 0 0-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/></symbol>
+  <symbol id="i-end" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 0 0-2.67-1.85.996.996 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3 3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/></symbol>
+  <symbol id="i-hold" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></symbol>
+  <symbol id="i-pad" viewBox="0 0 24 24"><path d="M12 19c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM6 1c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12-8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-6 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></symbol>
+  <symbol id="i-xfer" viewBox="0 0 24 24"><path d="M18 11l5-5-5-5v3h-4v4h4v3zm2 4.5c-1.25 0-2.45-.2-3.57-.57-.35-.11-.74-.03-1.02.24l-2.2 2.2c-2.83-1.44-5.15-3.75-6.59-6.59l2.2-2.21c.28-.26.36-.65.25-1C8.7 6.45 8.5 5.25 8.5 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 0 9.39 7.61 17 17 17 .55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1z"/></symbol>
+  <symbol id="i-add" viewBox="0 0 24 24"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></symbol>
+  <symbol id="i-audio" viewBox="0 0 24 24"><path d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z"/></symbol>
+  <symbol id="i-cfg" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></symbol>
+  <symbol id="i-vm" viewBox="0 0 24 24"><path d="M18.5 6C15.46 6 13 8.46 13 11.5c0 1.33.47 2.55 1.26 3.5H9.74c.79-.95 1.26-2.17 1.26-3.5C11 8.46 8.54 6 5.5 6S0 8.46 0 11.5 2.46 17 5.5 17h13c3.04 0 5.5-2.46 5.5-5.5S21.54 6 18.5 6zm-13 9C3.57 15 2 13.43 2 11.5S3.57 8 5.5 8 9 9.57 9 11.5 7.43 15 5.5 15zm13 0c-1.93 0-3.5-1.57-3.5-3.5S16.57 8 18.5 8 22 9.57 22 11.5 20.43 15 18.5 15z"/></symbol>
+  <symbol id="i-recent" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M9 5v2h6.59L4 18.59 5.41 20 17 8.41V15h2V5z"/></symbol>
+  <symbol id="i-in" viewBox="0 0 24 24"><path d="M20 5.41 18.59 4 7 15.59V9H5v10h10v-2H8.41z"/></symbol>
+  <symbol id="i-missed" viewBox="0 0 24 24"><path d="M19.59 7 12 14.59 6.41 9H11V7H3v8h2v-4.59l7 7 9-9z"/></symbol>
+  <symbol id="i-dnd" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11H7v-2h10v2z"/></symbol>
+  <symbol id="i-merge" viewBox="0 0 24 24"><path d="M17 20.41 18.41 19 15 15.59 13.59 17 17 20.41zM7.5 8H11v5.59L5.59 19 7 20.41l6-6V8h3.5L12 3.5 7.5 8z"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></symbol>
+</svg>
+
+<header>
+  <button class="flat" id="side-toggle" title="Recent calls"><svg class="i"><use href="#i-recent"/></svg><span class="badge hidden" id="missed-badge"></span></button>
+  <img src="assets/logo.png" alt="N2IT">
+  <div id="status-pill"><span id="status">Not registered</span></div>
+  <span class="grow"></span>
+  <span id="me"></span>
+  <button class="flat" id="dnd" title="Do Not Disturb"><svg class="i"><use href="#i-dnd"/></svg></button>
+  <button class="flat" id="cfg" title="Settings"><svg class="i"><use href="#i-cfg"/></svg></button>
+</header>
+
+<div id="shell">
+<aside id="side">
+  <div class="side-head"><b>Recent calls</b><button class="flat" id="side-close" title="Hide"><svg class="i"><use href="#i-close"/></svg></button></div>
+  <div class="seg"><button class="sel" data-f="all">All</button><button data-f="missed">Missed</button></div>
+  <div id="recent"></div>
+</aside>
+
+<main>
+<section id="login" class="card">
+  <img src="assets/logo.png" alt="N2IT">
   <h2>Sign in</h2>
   <input id="tenant" placeholder="Company code" autocapitalize="off">
   <input id="user" placeholder="Extension">
   <input id="pass" type="password" placeholder="Password">
-  <div id="domain" style="font-size:12px;color:#666"></div>
-  <button class="go" id="signin">Sign in</button><button class="hidden" id="login-cancel">Cancel</button>
+  <div id="domain" class="hint"></div>
+  <div class="row" style="margin-top:10px"><button class="go" id="signin">Sign in</button><button class="hidden" id="login-cancel">Cancel</button></div>
   <div class="version"></div>
 </section>
 
 <section id="phone" class="hidden">
-  <div id="dnd-banner" class="hidden"><b>DND enabled. Please disable DND to receive calls.</b><br>
-    <span id="dnd-until"></span><br><button id="dnd-off">Turn off</button></div>
+  <div id="dnd-banner" class="hidden"><div><b>DND enabled. Please disable DND to receive calls.</b><br><span id="dnd-until"></span></div><button id="dnd-off">Turn off</button></div>
   <div id="idle">
-    <input id="num" placeholder="Number">
+    <div class="tabs">
+      <button id="contacts-open"><svg class="i"><use href="#i-people"/></svg>Contacts</button>
+      <button id="vm"><svg class="i"><use href="#i-vm"/></svg>Voicemail</button>
+    </div>
+    <input id="num" placeholder="Enter a number" autocomplete="off">
     <div class="pad" id="pad"></div>
-    <button class="go" id="call">Call</button><button id="contacts-open">Contacts</button><button id="vm">Voicemail</button><button id="cfg">Settings</button><button id="dnd">Do Not Disturb</button>
+    <div class="callrow"><span></span>
+      <button class="go round" id="call" title="Call"><svg class="i"><use href="#i-call"/></svg></button>
+      <button class="round" id="back" title="Delete"><svg class="i"><use href="#i-back"/></svg></button></div>
   </div>
   <div id="incall" class="hidden">
-    <div id="waiting" class="hidden"><b id="w-who"></b><br>
-      <button class="go" id="w-answer">Answer (current call on hold)</button><button class="end" id="w-decline">Decline</button><button id="w-silence">Silence</button></div>
-    <div id="other-note" class="hidden"></div>
-    <h2 id="who"></h2><div id="state"></div>
-    <button id="mute">Mute</button><button id="hold">Hold</button><button id="xfer">Transfer</button><button id="add">Add</button><button id="audio">Audio</button>
-    <div id="audio-pick" class="hidden">
+    <div id="waiting" class="panel hidden"><b id="w-who"></b>
+      <div class="row" style="margin-top:8px"><button class="go" id="w-answer">Answer (current call on hold)</button><button class="end" id="w-decline">Decline</button><button id="w-silence">Silence</button></div></div>
+    <div id="other-note" class="panel hidden"></div>
+    <div class="avatar" id="who-av"></div>
+    <h2 id="who"></h2><div><span id="state"></span> <span id="timer"></span></div>
+    <div class="ctrls">
+      <button class="bub" id="mute"><span class="c"><svg class="i"><use href="#i-mute"/></svg></span>Mute</button>
+      <button class="bub" id="keys"><span class="c"><svg class="i"><use href="#i-pad"/></svg></span>Keypad</button>
+      <button class="bub" id="hold"><span class="c"><svg class="i"><use href="#i-hold"/></svg></span>Hold</button>
+      <button class="bub" id="xfer"><span class="c"><svg class="i"><use href="#i-xfer"/></svg></span>Transfer</button>
+      <button class="bub" id="add"><span class="c"><svg class="i"><use href="#i-add"/></svg></span>Add</button>
+      <button class="bub" id="audio"><span class="c"><svg class="i"><use href="#i-audio"/></svg></span>Audio</button>
+    </div>
+    <div id="audio-pick" class="panel hidden">
       <label>Microphone <select id="a-mic"></select></label>
       <label>Speaker <select id="a-spk"></select></label>
     </div>
-    <div id="xfer-pick" class="hidden">
+    <div id="xfer-pick" class="panel hidden">
       <input id="x-num" placeholder="Transfer to extension or number">
-      <button id="x-blind">Transfer now</button><button class="go" id="x-ask">Ask first</button><button id="x-cancel">Cancel</button>
+      <div class="row"><button id="x-blind">Transfer now</button><button class="go" id="x-ask">Ask first</button><button id="x-cancel">Cancel</button></div>
     </div>
-    <button class="go hidden" id="x-complete">Complete transfer</button>
-    <button class="go hidden" id="merge">Merge calls</button>
-    <div class="pad" id="dpad"></div>
-    <button class="go hidden" id="answer">Answer</button><button class="end" id="hang">Hang up</button>
+    <div class="row"><button class="go hidden" id="x-complete">Complete transfer</button>
+      <button class="primary hidden" id="merge"><svg class="i"><use href="#i-merge"/></svg> Merge calls</button></div>
+    <div class="pad hidden" id="dpad"></div>
+    <div class="endrow">
+      <button class="go round hidden" id="answer" title="Answer"><svg class="i"><use href="#i-call"/></svg></button>
+      <button class="end round" id="hang" title="Hang up"><svg class="i"><use href="#i-end"/></svg></button>
+    </div>
   </div>
 </section>
-<section id="contacts" class="hidden">
+<section id="contacts" class="card hidden">
   <h2>Company contacts</h2>
   <input id="c-search" placeholder="Search name or number">
-  <div id="c-msg" style="font-size:13px;color:#666"></div>
+  <div id="c-msg" class="hint"></div>
   <div id="c-list"></div>
-  <button id="c-back">Back</button>
+  <div class="row" style="margin-top:10px"><button id="c-back">Back</button></div>
 </section>
-<section id="dnd-pick" class="hidden">
+<section id="dnd-pick" class="card hidden">
   <h2>Do Not Disturb</h2>
-  <div style="font-size:13px;color:#666">Calls to this app go to voicemail until the time you choose (at most 2 weeks).
+  <div class="hint">Calls to this app go to voicemail until the time you choose (at most 2 weeks).
     Other phones on your extension still ring.</div>
-  <button data-hours="1">1 hour</button><button data-hours="2">2 hours</button><button data-hours="4">4 hours</button>
-  <button id="dnd-morning"></button>
+  <div class="row" style="margin:12px 0"><button data-hours="1">1 hour</button><button data-hours="2">2 hours</button><button data-hours="4">4 hours</button>
+  <button id="dnd-morning"></button></div>
   <label>Or until <input type="datetime-local" id="dnd-at"></label>
-  <button class="go" id="dnd-set">Set</button><button class="end hidden" id="dnd-stop">Turn off now</button><button id="dnd-back">Back</button>
+  <div class="row"><button class="go" id="dnd-set">Set</button><button class="end hidden" id="dnd-stop">Turn off now</button><button id="dnd-back">Back</button></div>
 </section>
-<section id="settings" class="hidden">
+<section id="settings" class="card hidden">
   <h2>Settings</h2>
   <label>Microphone <select id="s-mic"></select></label>
   <label>Speaker <select id="s-spk"></select></label>
-  <label><input type="checkbox" id="s-echo"> Echo cancellation</label>
-  <label><input type="checkbox" id="s-noise"> Noise suppression</label>
-  <label><input type="checkbox" id="s-agc"> Automatic gain control</label>
+  <label class="check"><input type="checkbox" id="s-echo"> Echo cancellation</label>
+  <label class="check"><input type="checkbox" id="s-noise"> Noise suppression</label>
+  <label class="check"><input type="checkbox" id="s-agc"> Automatic gain control</label>
+  <label class="check" id="s-startup-row"><input type="checkbox" id="s-startup"> Start with Windows (in the hidden icons, ready for calls)</label>
   <label>WSS port <input id="s-port" inputmode="numeric"></label>
   <label>Voicemail number <input id="s-vm"></label>
   <label>STUN server <input id="s-stun" placeholder="stun:host:port (blank = none)"></label>
-  <div id="s-links" class="hidden" style="font-size:13px;margin:8px 0">
+  <div id="s-links" class="hidden hint" style="margin:8px 0">
     <span id="s-links-msg"></span><br><button id="s-links-set">Phone links: open with N2IT Phone</button>
   </div>
-  <button class="go" id="s-save">Save</button><button id="s-back">Back</button>
+  <div class="row"><button class="go" id="s-save">Save</button><button id="s-back">Back</button><button id="s-clear-recent">Clear recent calls</button></div>
   <hr><h2>Accounts</h2>
-  <div style="font-size:13px;color:#666">Only the active account receives calls.</div>
+  <div class="hint">Only the active account receives calls.</div>
   <div id="s-accounts"></div>
-  <button id="s-add">Add account</button>
+  <div class="row" style="margin-top:10px"><button id="s-add">Add account</button></div>
   <div class="version"></div>
 </section>
+</main>
+</div>
 <script src="vendor/jssip.min.js"></script>
 <script src="app.js"></script>
 </body></html>

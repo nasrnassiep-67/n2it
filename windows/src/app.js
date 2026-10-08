@@ -9,13 +9,31 @@ let calls = [], mix = null, merging = false   // all live calls; mix = conferenc
 const cfg = () => ({ ...DEFAULTS, ...(acc?.settings || {}) })
 
 const show = (id, on) => $(id).classList.toggle('hidden', !on)
-const status = (t) => ($('status').textContent = t)
+/** Status text in the top bar, a green / red dot, and the tray icon's tooltip. */
+function status(t) {
+  $('status').textContent = t
+  $('status-pill').dataset.s = t === 'Registered' ? 'ok' : /^(Failed|Cannot|Error|Microphone|Call failed)/.test(t) ? 'bad' : ''
+  appShell.state({ status: t })
+}
 const domain = (t) => (t ? `${t.trim().toLowerCase()}.${BASE}` : '')
 
-for (const [padId, onKey] of [['pad', (k) => ($('num').value += k)], ['dpad', (k) => session?.sendDTMF(k)]]) {
+// Round keys like the Android app, with the letters under the digits on the dial pad
+const LETTERS = { 2: 'ABC', 3: 'DEF', 4: 'GHI', 5: 'JKL', 6: 'MNO', 7: 'PQRS', 8: 'TUV', 9: 'WXYZ', 0: '+' }
+for (const [padId, onKey] of [['pad', (k) => { $('num').value += k; $('num').focus() }], ['dpad', (k) => session?.sendDTMF(k)]]) {
   for (const k of '123456789*0#') {
-    const b = document.createElement('button'); b.textContent = k; b.onclick = () => onKey(k); $(padId).append(b)
+    const b = document.createElement('button'); b.textContent = k; b.onclick = () => onKey(k)
+    if (padId === 'pad') b.append(Object.assign(document.createElement('small'), { textContent: LETTERS[k] || '' }))
+    $(padId).append(b)
   }
+}
+$('back').onclick = () => { $('num').value = $('num').value.slice(0, -1); $('num').focus() }
+$('num').onkeydown = (e) => { if (e.key === 'Enter') $('call').click() }
+$('keys').onclick = () => { const open = $('dpad').classList.contains('hidden'); show('dpad', open); $('keys').classList.toggle('on', open) }
+/** Signed in or not: the top bar's buttons and the recent-calls side bar only make sense signed in. */
+function signedIn(on) {
+  document.body.classList.toggle('signed-out', !on)
+  $('me').textContent = on && acc ? `Ext ${acc.user} · ${acc.tenant}` : ''
+  if (on) { renderRecent(); loadNames() }
 }
 $('tenant').oninput = () => ($('domain').textContent = domain($('tenant').value))
 
@@ -36,7 +54,11 @@ function connect() {
   ua.on('registrationFailed', (e) => status(`Failed: ${e.cause}`))
   ua.on('newRTCSession', ({ session: s, originator }) => {
     // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none). Other phones still ring.
-    if (originator === 'remote' && dndUntil()) { s.terminate({ status_code: 486, reason_phrase: 'Busy Here' }); return }
+    if (originator === 'remote' && dndUntil()) {
+      s.terminate({ status_code: 486, reason_phrase: 'Busy Here' })
+      addRecent({ number: user(s), name: s.remote_identity.display_name, dir: 'in', at: Date.now(), result: 'missed', dnd: true })
+      return
+    }
     // A call coming in while on a call waits (call-waiting beep, Answer / Decline) instead of being refused as busy
     const waiting = originator === 'remote' && calls.length > 0
     if (!calls.length) muted = false
@@ -68,6 +90,9 @@ function connect() {
       status(`Call failed: ${e.cause}`); setTimeout(() => { if ($('status').textContent.startsWith('Call failed')) status(was) }, 6000)
     })
     s._incoming = originator === 'remote'
+    s._log = { number: user(s), name: s.remote_identity.display_name, dir: s._incoming ? 'in' : 'out', at: Date.now() }
+    s.on('accepted', () => { s._log.answered ??= Date.now() })
+    s.on('confirmed', () => { s._log.answered ??= Date.now() })
     show('idle', false); show('incall', true); refresh()
     if (s._incoming) { s._silenced = false; checkOtherCall().then(updateRinging) }
   })
@@ -75,13 +100,17 @@ function connect() {
 }
 
 function end(s) {
+  logCall(s)
   if (xferFrom === s) xferFrom = null
   s._audio.srcObject = null; s._audio.remove()
   s._stream?.getTracks().forEach((t) => t.stop())
   calls = calls.filter((c) => c !== s)
   if (mix) buildMix()   // rebuild for whoever is left (tears down below two calls)
   updateRinging()
-  if (!calls.length) { session = null; show('incall', false); show('audio-pick', false); show('xfer-pick', false); show('idle', true); return }
+  if (!calls.length) {
+    session = null; show('incall', false); show('audio-pick', false); show('xfer-pick', false); show('dpad', false)
+    $('keys').classList.remove('on'); show('idle', true); appShell.state({ inCall: false }); return
+  }
   if (session === s) session = calls.find((c) => c.isEstablished()) || calls[calls.length - 1]
   refresh()
 }
@@ -91,7 +120,10 @@ function refresh() {
   const held = session.isOnHold().local
   $('hold').classList.toggle('on', held); $('mute').classList.toggle('on', muted)
   const inConf = mix?.calls.length > 1
-  $('who').textContent = inConf ? mix.calls.map(user).join(', ') : user(session)
+  $('who').textContent = inConf ? mix.calls.map(user).join(', ') : nameOf(user(session), session.remote_identity.display_name)
+  $('who-av').textContent = inConf ? mix.calls.length + 1 : initial($('who').textContent)
+  appShell.state({ inCall: true })
+  tick()
   $('state').textContent = inConf ? `Conference · ${mix.calls.length + 1} people` + (calls.length > mix.calls.length ? ' (+1 ringing)' : '')
     : session.isEstablished() ? (held ? 'On hold' : 'Connected') : session._incoming ? 'Incoming call' : 'Calling…'
   show('hold', !inConf); show('xfer', !inConf)
@@ -148,7 +180,10 @@ async function answerCall(s) {
   session = s
   own(s, stream).answer({ mediaStream: stream, pcConfig: pcConfig() }); refresh()
 }
-function declineCall(s) { if (s && !s.isEnded() && !s.isEstablished()) s.terminate({ status_code: 486, reason_phrase: 'Busy Here' }) }
+function declineCall(s) {
+  if (!s || s.isEnded() || s.isEstablished()) return
+  s._declined = true; s.terminate({ status_code: 486, reason_phrase: 'Busy Here' })
+}
 function silenceCall(s) { if (s) { s._silenced = true; updateRinging() } }
 callUi.onAction((a) => {
   const r = ringingCall()
@@ -257,7 +292,7 @@ async function activate(a, saved) {
   acc = { ...login(a), settings: acc?.settings, dndUntil: acc?.dndUntil, saved }
   await store.save(acc); directory = []
   for (const id of ['settings', 'login', 'contacts']) show(id, false)
-  show('phone', true); connect(); renderDnd()
+  show('phone', true); connect(); renderDnd(); signedIn(true)
 }
 /** Log [a] out and forget it; with no account left, back to the sign-in screen. */
 async function logOut(a) {
@@ -267,7 +302,7 @@ async function logOut(a) {
   const [next, ...rest] = acc.saved || []
   if (next) { await activate(next, rest); return }
   ua?.stop(); await store.clear(); acc = null; directory = []
-  show('settings', false); show('login', true); status('Not registered')
+  show('settings', false); show('login', true); status('Not registered'); signedIn(false)
 }
 function renderAccounts() {
   $('s-accounts').replaceChildren(...[acc, ...(acc.saved || [])].map((a) => {
@@ -294,7 +329,7 @@ $('signin').onclick = async () => {
   if (!a.tenant.trim() || !a.user.trim() || !a.pass) return
   if (adding) { adding = false; show('login-cancel', false); await useAccount(a); return }
   acc = { ...login(a), saved: [] }
-  await store.save(acc); show('login', false); show('phone', true); connect(); renderDnd()
+  await store.save(acc); show('login', false); show('phone', true); connect(); renderDnd(); signedIn(true)
 }
 
 // ---- Settings ----
@@ -311,6 +346,8 @@ async function openSettings() {
   $('s-echo').checked = c.echo; $('s-noise').checked = c.noise; $('s-agc').checked = c.agc
   $('s-port').value = c.wssPort; $('s-vm').value = c.voicemail; $('s-stun').value = c.stun
   renderAccounts()
+  show('s-startup-row', navigator.userAgent.includes('Windows')); $('s-startup').checked = await appShell.startup()
+  for (const id of ['contacts', 'dnd-pick', 'login']) show(id, false)
   show('phone', false); show('settings', true)
 }
 $('cfg').onclick = async () => {
@@ -327,7 +364,7 @@ $('s-save').onclick = async () => {
   acc.settings = { micId: $('s-mic').value, spkId: $('s-spk').value, echo: $('s-echo').checked, noise: $('s-noise').checked,
     agc: $('s-agc').checked, wssPort: port > 0 && port < 65536 ? port : DEFAULTS.wssPort,
     voicemail: $('s-vm').value.trim() || DEFAULTS.voicemail, stun: $('s-stun').value.trim() }
-  await store.save(acc); applySink()
+  await store.save(acc); applySink(); appShell.setStartup($('s-startup').checked)
   if (cfg().wssPort !== old && !session) connect()   // new port: re-register (not mid-call)
   $('s-back').click()
 }
@@ -351,7 +388,7 @@ function renderContacts() {
   if (directory.length && !rows.length) $('c-msg').textContent = 'No matches'
 }
 $('contacts-open').onclick = async () => {
-  show('phone', false); show('contacts', true)
+  show('phone', false); show('contacts', true); $('c-search').focus()
   $('c-msg').textContent = directory.length ? '' : 'Loading…'
   const r = await store.directory()
   if (r.error) { $('c-msg').textContent = r.error; return }
@@ -469,7 +506,7 @@ function dialFromLink(n) {
   if (!n) return
   $('num').value = n
   if (!acc) return   // not signed in: stays in the box for after sign-in
-  for (const id of ['contacts', 'settings']) show(id, false)
+  for (const id of ['contacts', 'settings', 'dnd-pick']) show(id, false)
   show('phone', true)
   if (!calls.length) $('num').focus()
 }
@@ -492,15 +529,17 @@ function renderDnd() {   // banner, button and status follow the end time; an ex
   const u = dndUntil()
   if (acc.dndUntil && !u) { acc.dndUntil = null; store.save(acc) }
   show('dnd-banner', !!u); $('dnd-until').textContent = u ? `Until ${when(u)}` : ''
-  $('dnd').textContent = u ? `DND until ${when(u)}` : 'Do Not Disturb'; $('dnd').classList.toggle('dndon', !!u)
-  $('status').classList.toggle('dnd', !!u)
+  $('dnd').title = u ? `Do Not Disturb until ${when(u)}` : 'Do Not Disturb'; $('dnd').classList.toggle('dndon', !!u)
+  $('status').classList.toggle('dnd', !!u); $('status-pill').classList.toggle('dnd', !!u)
 }
 setInterval(renderDnd, 15000)
 $('dnd').onclick = () => {
   const now = Date.now()
   $('dnd-morning').textContent = `Until ${when(nextMorning())}`
   Object.assign($('dnd-at'), { min: localInput(now), max: localInput(now + MAX_DND), value: localInput(now + 3600000) })
-  show('dnd-stop', !!dndUntil()); show('phone', false); show('dnd-pick', true)
+  show('dnd-stop', !!dndUntil())
+  for (const id of ['contacts', 'settings', 'login']) show(id, false)
+  show('phone', false); show('dnd-pick', true)
 }
 for (const b of document.querySelectorAll('#dnd-pick [data-hours]')) b.onclick = () => setDnd(Date.now() + b.dataset.hours * 3600000)
 $('dnd-morning').onclick = () => setDnd(nextMorning())
@@ -515,6 +554,93 @@ $('dnd-back').onclick = () => { show('dnd-pick', false); show('phone', true) }
 store.version().then((v) => { for (const e of document.querySelectorAll('.version')) e.textContent = `Version: ${v}` })
 
 store.load().then(async (a) => {
-  if (a) { acc = a; show('login', false); show('phone', true); connect(); renderDnd() }
+  if (a) { acc = a; show('login', false); show('phone', true); connect(); renderDnd(); signedIn(true) }
   dialFromLink(await links.pending())
 })
+
+// ---- Call timer and caller names ----
+const initial = (t) => (/[a-z]/i.test(t) ? t.trim()[0].toUpperCase() : '#')
+const mmss = (ms) => { const t = Math.round(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, x = String(t % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}` }
+function tick() { $('timer').textContent = session?._log?.answered && session.isEstablished() ? `· ${mmss(Date.now() - session._log.answered)}` : '' }
+setInterval(() => { if (session) tick() }, 1000)
+/** Names for numbers from the company contacts (loaded quietly after sign-in), else the caller ID name. */
+let names = new Map()
+async function loadNames() {
+  const r = await store.directory().catch(() => ({}))
+  if (!r?.contacts) return
+  names = new Map(r.contacts.flatMap((c) => c.numbers.map((n) => [n.number.replace(/[^+0-9*#]/g, ''), c.name])))
+  renderRecent()
+}
+const nameOf = (number, cid) => names.get(number) || (cid && cid !== number ? cid : number)
+
+// ---- Recent calls (owner 2026-10-08): kept on this computer per account, newest first, at most 300 ----
+const RECENT_MAX = 300
+const recentKey = () => acc && `n2it.recent.${key(acc)}`
+const ls = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} } }
+const recent = () => (acc ? ls.get(recentKey(), []) : [])
+function addRecent(r) { if (!acc) return; ls.set(recentKey(), [r, ...recent()].slice(0, RECENT_MAX)); renderRecent() }
+function logCall(s) {
+  if (!s._log || s._logged) return
+  s._logged = true
+  const l = s._log, answered = !!l.answered
+  addRecent({ number: l.number, name: l.name, dir: l.dir, at: l.at, secs: answered ? Math.round((Date.now() - l.answered) / 1000) : 0,
+    result: answered ? 'answered' : l.dir === 'out' ? 'no-answer' : s._declined ? 'declined' : 'missed' })
+}
+let recentFilter = 'all'
+const dayOf = (t) => { const d = new Date(t), now = new Date(), y = new Date(now); y.setDate(now.getDate() - 1)
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === y.toDateString()) return 'Yesterday'
+  return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) }
+const icon = (id) => { const ns = 'http://www.w3.org/2000/svg', v = document.createElementNS(ns, 'svg'), u = document.createElementNS(ns, 'use')
+  v.setAttribute('class', 'i'); u.setAttribute('href', `#i-${id}`); v.append(u); return v }
+function renderRecent() {
+  const all = recent(), rows = recentFilter === 'missed' ? all.filter((r) => r.result === 'missed') : all
+  $('recent').replaceChildren(...rows.map((r) => {
+    const row = document.createElement('div'); row.className = 'rc' + (r.result === 'missed' ? ' missed' : '')
+    const name = nameOf(r.number, r.name)
+    const av = Object.assign(document.createElement('div'), { className: 'av', textContent: initial(name) })
+    const who = document.createElement('div'); who.className = 'who'
+    const sub = document.createElement('small')
+    const what = r.result === 'missed' ? (r.dnd ? 'Missed (DND)' : 'Missed') : r.result === 'declined' ? 'Declined'
+      : r.result === 'no-answer' ? 'No answer' : `${r.dir === 'in' ? 'Incoming' : 'Outgoing'} · ${mmss(r.secs * 1000)}`
+    sub.append(icon(r.result === 'missed' ? 'missed' : r.dir), `${name !== r.number ? r.number + ' · ' : ''}${what}`)
+    who.append(Object.assign(document.createElement('div'), { textContent: name }), sub)
+    const t = Object.assign(document.createElement('time'), { textContent: dayOf(r.at), title: new Date(r.at).toLocaleString() })
+    const call = Object.assign(document.createElement('button'), { className: 'go', title: `Call ${r.number}` }); call.append(icon('call'))
+    call.onclick = (e) => { e.stopPropagation(); narrowClose(); dial(r.number) }
+    row.onclick = () => { if (!calls.length) { dialFromLink(r.number); narrowClose() } }   // into the dial box, ready to call
+    row.ondblclick = () => { narrowClose(); dial(r.number) }
+    row.append(av, who, t, call); return row
+  }))
+  if (!rows.length) $('recent').append(Object.assign(document.createElement('div'), { className: 'empty',
+    textContent: recentFilter === 'missed' ? 'No missed calls' : 'Calls you make and receive show here' }))
+  badge()
+}
+for (const b of document.querySelectorAll('.seg button')) b.onclick = () => {
+  recentFilter = b.dataset.f; for (const x of document.querySelectorAll('.seg button')) x.classList.toggle('sel', x === b); renderRecent()
+}
+$('s-clear-recent').onclick = () => { if (acc && confirm('Clear the recent calls list on this computer?')) { ls.set(recentKey(), []); renderRecent() } }
+
+// ---- Side bar: open or closed (remembered); on a narrow window it slides over the keypad ----
+const sideOpen = () => !document.body.classList.contains('side-closed')
+const narrow = () => innerWidth <= 720
+function setSide(open, remember = true) {
+  document.body.classList.toggle('side-closed', !open)
+  if (remember && !narrow()) ls.set('n2it.side', open)
+  if (open) { ls.set(`n2it.seen.${key(acc || { tenant: '', user: '' })}`, Date.now()); badge() }
+}
+const narrowClose = () => { if (narrow()) setSide(false, false) }
+/** Red count on the side bar button: missed calls since the list was last looked at. */
+function badge() {
+  if (!acc) return
+  if (sideOpen() && document.hasFocus()) ls.set(`n2it.seen.${key(acc)}`, Date.now())
+  const seen = ls.get(`n2it.seen.${key(acc)}`, 0), n = recent().filter((r) => r.result === 'missed' && r.at > seen).length
+  $('missed-badge').textContent = n > 9 ? '9+' : n; show('missed-badge', n > 0)
+}
+addEventListener('focus', badge)
+$('side-toggle').onclick = () => setSide(!sideOpen())
+$('side-close').onclick = () => setSide(false)
+document.querySelector('main').addEventListener('mousedown', narrowClose)
+setSide(narrow() ? false : ls.get('n2it.side', true), false)

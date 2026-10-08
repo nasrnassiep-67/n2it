@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Notification, safeStorage, session, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, session, shell, Tray } = require('electron')
 const { execFile } = require('child_process')
 const fs = require('fs')
 const path = require('path')
@@ -20,7 +20,7 @@ function dial(link) {
   if (!n) return
   if (win && !win.webContents.isLoading()) win.webContents.send('dial', n)
   else pendingDial = n
-  if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus() }
+  showWindow()
 }
 // One window only: a link clicked while the app runs comes here instead of starting a second copy.
 const primary = app.requestSingleInstanceLock()
@@ -32,10 +32,11 @@ app.on('second-instance', (_e, argv) => {
   if (act) {
     const what = act.replace(/^n2itphone:(\/\/)?/i, '').replace(/\/$/, '').toLowerCase()
     win?.webContents.send('call:action', what)
-    if (win && (what === 'answer' || what === 'open')) { if (win.isMinimized()) win.restore(); win.show(); win.focus() }
+    if (what === 'answer' || what === 'open') showWindow()
     return
   }
-  dial(linkIn(argv)); if (win) { if (win.isMinimized()) win.restore(); win.focus() }
+  const l = linkIn(argv)
+  if (l) dial(l); else showWindow()   // started again from the Start menu: bring up the running one
 })
 app.on('open-url', (e, url) => { e.preventDefault(); dial(url) })   // macOS
 pendingDial = linkIn(process.argv) ? numberOf(linkIn(process.argv)) : null
@@ -89,7 +90,7 @@ ipcMain.handle('ring:start', (_e, { number, busy, silenced }) => {
   const opts = { title: number || 'Incoming call', body: busy ? 'Incoming call · you are on another call' : 'Incoming call', silent: true }
   if (process.platform === 'win32' && app.isPackaged) opts.toastXml = callToast(number || 'Incoming call', busy, silenced)
   ringNote = new Notification(opts)
-  ringNote.on('click', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus() } })
+  ringNote.on('click', showWindow)
   ringNote.show()
 })
 ipcMain.handle('ring:stop', () => { ringNote?.close(); ringNote = null; win?.flashFrame(false) })
@@ -155,16 +156,89 @@ ipcMain.handle('directory:load', async () => {
 // Windows PCs whose mic works in other apps; capture in the main process instead.
 app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess')
 app.setAppUserModelId('za.co.n2it.softphone.desktop')   // Windows notifications need the installer's app id
+// ---- Window + notification area (owner 2026-10-08: like other softphones, closing or minimising keeps the phone
+// running in the notification area's hidden icons, so calls still ring) ----
+const prefsFile = () => path.join(app.getPath('userData'), 'window.json')
+let prefs = {}
+const savePrefs = () => { try { fs.writeFileSync(prefsFile(), JSON.stringify(prefs)) } catch {} }
+let tray = null, quitting = false, appState = { status: 'Starting…', inCall: false }
+const startHidden = process.argv.includes('--hidden')   // started with Windows: straight to the notification area
+function showWindow() { if (!win) return; if (win.isMinimized()) win.restore(); win.show(); win.focus() }
+function toTray() {
+  if (!win) return
+  win.hide()
+  if (process.platform === 'win32' && tray && !prefs.trayTipShown) {   // once: say where it went
+    prefs.trayTipShown = true; savePrefs()
+    tray.displayBalloon({ iconType: 'info', title: 'N2IT Phone is still running',
+      content: 'Calls still ring. Open it again from the hidden icons (^) on the taskbar. Right-click > Quit to close it.' })
+  }
+}
+function quitApp() {
+  if (appState.inCall && dialog.showMessageBoxSync(win, { type: 'warning', buttons: ['Quit and hang up', 'Cancel'],
+    defaultId: 1, cancelId: 1, title: 'N2IT Phone', message: 'You are on a call. Quit N2IT Phone and end the call?' }) !== 0) return
+  quitting = true; app.quit()
+}
+function trayMenu() {
+  tray?.setToolTip(`N2IT Phone · ${appState.status}`)
+  tray?.setContextMenu(Menu.buildFromTemplate([
+    { label: `N2IT Phone · ${appState.status}`, enabled: false },
+    { type: 'separator' },
+    { label: 'Open N2IT Phone', click: showWindow },
+    { label: 'Quit', click: quitApp },
+  ]))
+}
+function makeTray() {
+  const img = nativeImage.createFromPath(path.join(__dirname, 'assets/icon.png'))
+  tray = new Tray(img.resize({ width: process.platform === 'darwin' ? 18 : 16, quality: 'best' }))
+  tray.on('click', () => (win?.isVisible() && win.isFocused() ? toTray() : showWindow()))
+  tray.on('double-click', showWindow)
+  trayMenu()
+}
+ipcMain.on('app:state', (_e, st) => {
+  const next = { ...appState, ...st }
+  if (next.status !== appState.status || next.inCall !== appState.inCall) { appState = next; trayMenu() }
+})
+// Start with Windows (in the notification area). On by default: a phone that is not running cannot ring.
+const startup = () => prefs.startup !== false
+ipcMain.handle('startup:get', () => startup())
+ipcMain.handle('startup:set', (_e, on) => { prefs.startup = !!on; savePrefs(); applyStartup() })
+function applyStartup() {
+  if (!app.isPackaged || process.platform === 'linux') return
+  app.setLoginItemSettings({ openAtLogin: startup(), args: ['--hidden'] })
+}
+/** Last size and place, if it is still on a screen (a monitor may have been unplugged). */
+function savedBounds() {
+  const b = prefs.bounds
+  if (!b) return { width: 980, height: 680 }
+  const on = screen.getAllDisplays().some(({ workArea: a }) =>
+    b.x < a.x + a.width - 80 && b.x + b.width > a.x + 80 && b.y >= a.y - 20 && b.y < a.y + a.height - 80)
+  return on ? b : { width: b.width, height: b.height }
+}
+
 app.whenReady().then(() => {
   if (!primary) return
-  registerLinksWindows()
+  try { prefs = JSON.parse(fs.readFileSync(prefsFile(), 'utf8')) } catch {}
+  registerLinksWindows(); applyStartup()
   // Microphone only; refuse every other permission request.
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media'))
   win = new BrowserWindow({
-    width: 380, height: 700, title: 'N2IT Phone', icon: path.join(__dirname, 'assets/icon.png'),
+    ...savedBounds(), minWidth: 360, minHeight: 560, show: false, title: 'N2IT Phone',
+    backgroundColor: require('electron').nativeTheme.shouldUseDarkColors ? '#14171c' : '#f3f5f9',
+    icon: path.join(__dirname, 'assets/icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
   })
   win.setMenuBarVisibility(false)
+  win.once('ready-to-show', () => { if (!startHidden) { if (prefs.maximized) win.maximize(); win.show() } })
+  const remember = () => { if (!win.isMaximized() && !win.isMinimized() && !win.isFullScreen()) prefs.bounds = win.getBounds() }
+  win.on('resize', remember); win.on('move', remember)
+  win.on('minimize', (e) => { e.preventDefault(); toTray() })
+  win.on('close', (e) => {
+    prefs.maximized = win.isMaximized(); savePrefs()
+    if (!quitting) { e.preventDefault(); toTray() }
+  })
+  win.on('session-end', () => { quitting = true })   // Windows shutting down / signing out
+  makeTray()
   win.loadFile(path.join(__dirname, 'index.html'))
 })
+app.on('before-quit', () => { quitting = true })
 app.on('window-all-closed', () => app.quit())
