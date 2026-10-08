@@ -14,6 +14,8 @@
   #dnd-banner{background:#e65100;color:#fff;padding:8px 10px;border-radius:8px;margin-bottom:8px;font-size:13px}
   #dnd-banner button{background:#fff;color:#e65100;padding:4px 10px;margin:4px 0 0}button.dndon{background:#e65100;color:#fff}
   .contact{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee}
+  #waiting{background:#fff4e5;border:1px solid #f0b357;border-radius:8px;padding:8px;margin-bottom:8px}
+  #other-note{background:#eef3fb;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;color:#0f3d80}
   .contact small{color:#666}.contact button{margin:0}#c-list{max-height:480px;overflow-y:auto}.hidden{display:none}#num{font-size:22px;text-align:center}
 </style></head><body>
 <div id="status">Not registered</div>
@@ -38,12 +40,20 @@
     <button class="go" id="call">Call</button><button id="contacts-open">Contacts</button><button id="vm">Voicemail</button><button id="cfg">Settings</button><button id="dnd">Do Not Disturb</button>
   </div>
   <div id="incall" class="hidden">
+    <div id="waiting" class="hidden"><b id="w-who"></b><br>
+      <button class="go" id="w-answer">Answer (current call on hold)</button><button class="end" id="w-decline">Decline</button><button id="w-silence">Silence</button></div>
+    <div id="other-note" class="hidden"></div>
     <h2 id="who"></h2><div id="state"></div>
     <button id="mute">Mute</button><button id="hold">Hold</button><button id="xfer">Transfer</button><button id="add">Add</button><button id="audio">Audio</button>
     <div id="audio-pick" class="hidden">
       <label>Microphone <select id="a-mic"></select></label>
       <label>Speaker <select id="a-spk"></select></label>
     </div>
+    <div id="xfer-pick" class="hidden">
+      <input id="x-num" placeholder="Transfer to extension or number">
+      <button id="x-blind">Transfer now</button><button class="go" id="x-ask">Ask first</button><button id="x-cancel">Cancel</button>
+    </div>
+    <button class="go hidden" id="x-complete">Complete transfer</button>
     <button class="go hidden" id="merge">Merge calls</button>
     <div class="pad" id="dpad"></div>
     <button class="go hidden" id="answer">Answer</button><button class="end" id="hang">Hang up</button>

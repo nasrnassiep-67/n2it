@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, safeStorage, session, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, Notification, safeStorage, session, shell } = require('electron')
 const { execFile } = require('child_process')
 const fs = require('fs')
 const path = require('path')
@@ -25,7 +25,18 @@ function dial(link) {
 // One window only: a link clicked while the app runs comes here instead of starting a second copy.
 const primary = app.requestSingleInstanceLock()
 if (!primary) app.quit()
-app.on('second-instance', (_e, argv) => { dial(linkIn(argv)); if (win) { if (win.isMinimized()) win.restore(); win.focus() } })
+// Buttons on the incoming-call notification come back as n2itphone:answer / :decline / :silence / :open
+const actionIn = (argv) => argv.find((a) => /^n2itphone:/i.test(a))
+app.on('second-instance', (_e, argv) => {
+  const act = actionIn(argv)
+  if (act) {
+    const what = act.replace(/^n2itphone:(\/\/)?/i, '').replace(/\/$/, '').toLowerCase()
+    win?.webContents.send('call:action', what)
+    if (win && (what === 'answer' || what === 'open')) { if (win.isMinimized()) win.restore(); win.show(); win.focus() }
+    return
+  }
+  dial(linkIn(argv)); if (win) { if (win.isMinimized()) win.restore(); win.focus() }
+})
 app.on('open-url', (e, url) => { e.preventDefault(); dial(url) })   // macOS
 pendingDial = linkIn(process.argv) ? numberOf(linkIn(process.argv)) : null
 
@@ -47,8 +58,64 @@ function registerLinksWindows() {
     reg('HKCU\\Software\\RegisteredApplications', 'N2IT Phone', 'Software\\N2IT\\N2ITPhone\\Capabilities'),
   ]).then(() => {
     for (const s of SCHEMES) if (!app.getApplicationNameForProtocol(`${s}:`)) app.setAsDefaultProtocolClient(s)
+    app.setAsDefaultProtocolClient('n2itphone')   // our own: the incoming-call notification's buttons
   })
 }
+
+// ---- Incoming calls (owner 2026-10-08: calls were only shown in the window, with no sound or pop-up) ----
+// The page rings (WebAudio); here: bring the window up (unless another call is going on: then only flash it) and a
+// Windows call notification with Answer / Decline / Silence that stays until the call is answered or ends.
+let ringNote = null
+const xml = (t) => String(t).replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]))
+function callToast(number, busy, silenced) {
+  const line = silenced ? 'Incoming call · silenced' : busy ? 'Incoming call · you are on another call' : 'Incoming call'
+  return `<toast launch="n2itphone:open" activationType="protocol" scenario="incomingCall"><visual><binding template="ToastGeneric">`
+    + `<text>${xml(number)}</text><text>${xml(line)}</text></binding></visual><audio silent="true"/><actions>`
+    + `<action content="Answer" arguments="n2itphone:answer" activationType="protocol"/>`
+    + `<action content="Decline" arguments="n2itphone:decline" activationType="protocol"/>`
+    + (silenced ? '' : `<action content="Silence" arguments="n2itphone:silence" activationType="protocol"/>`)
+    + `</actions></toast>`
+}
+ipcMain.handle('ring:start', (_e, { number, busy, silenced }) => {
+  if (!win) return
+  if (!busy && !silenced) {   // pop up, the way a phone call does
+    if (win.isMinimized()) win.restore()
+    win.show(); win.setAlwaysOnTop(true); win.focus()
+    setTimeout(() => win?.setAlwaysOnTop(false), 1500)
+  }
+  if (!win.isFocused()) win.flashFrame(true)
+  if (!Notification.isSupported()) return
+  ringNote?.close()
+  const opts = { title: number || 'Incoming call', body: busy ? 'Incoming call · you are on another call' : 'Incoming call', silent: true }
+  if (process.platform === 'win32' && app.isPackaged) opts.toastXml = callToast(number || 'Incoming call', busy, silenced)
+  ringNote = new Notification(opts)
+  ringNote.on('click', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus() } })
+  ringNote.show()
+})
+ipcMain.handle('ring:stop', () => { ringNote?.close(); ringNote = null; win?.flashFrame(false) })
+
+// ---- Another app's call (Teams, Zoom, WhatsApp, Skype…): which other apps are using the microphone right now ----
+// Windows records every app's microphone use (what lights the taskbar's microphone icon): a LastUsedTimeStop of 0
+// means "in use now". Packaged apps (Teams, WhatsApp) and desktop programs (NonPackaged) are both listed. Our own
+// entry is left out. Returns the apps' names; empty when none (or not Windows).
+const MIC_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone'
+ipcMain.handle('mic:others', () => new Promise((ok) => {
+  if (process.platform !== 'win32') { ok([]); return }
+  execFile('reg', ['query', MIC_KEY, '/s'], { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
+    if (err) { ok([]); return }
+    const apps = []
+    let key = null, start = false, stop = null
+    const flush = () => {
+      if (key && start && stop === false && !/n2it|electron/i.test(key)) apps.push(key.split('\\').pop().split('#').pop())
+    }
+    for (const line of out.split(/\r?\n/)) {
+      if (line.startsWith('HKEY_')) { flush(); key = line.trim(); start = false; stop = null; continue }
+      const m = line.match(/^\s+(LastUsedTimeStart|LastUsedTimeStop)\s+REG_QWORD\s+0x([0-9a-f]+)/i)
+      if (m) { const nonZero = /[1-9a-f]/i.test(m[2]); if (m[1] === 'LastUsedTimeStart') start = nonZero; else stop = nonZero }
+    }
+    flush(); ok(apps)
+  })
+}))
 // The page asks for a number from a link that started the app once it is listening.
 ipcMain.handle('links:pending', () => { const n = pendingDial; pendingDial = null; return n })
 ipcMain.handle('links:settings', () => {
@@ -87,6 +154,7 @@ ipcMain.handle('directory:load', async () => {
 // Chromium's separate audio process is a known cause of "NotReadableError: Could not start audio source" on some
 // Windows PCs whose mic works in other apps; capture in the main process instead.
 app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess')
+app.setAppUserModelId('za.co.n2it.softphone.desktop')   // Windows notifications need the installer's app id
 app.whenReady().then(() => {
   if (!primary) return
   registerLinksWindows()

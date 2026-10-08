@@ -37,9 +37,10 @@ function connect() {
   ua.on('newRTCSession', ({ session: s, originator }) => {
     // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none). Other phones still ring.
     if (originator === 'remote' && dndUntil()) { s.terminate({ status_code: 486, reason_phrase: 'Busy Here' }); return }
-    if (originator === 'remote' && calls.length) { s.terminate({ status_code: 486 }); return }   // busy while in a call
+    // A call coming in while on a call waits (call-waiting beep, Answer / Decline) instead of being refused as busy
+    const waiting = originator === 'remote' && calls.length > 0
     if (!calls.length) muted = false
-    calls.push(s); session = s
+    calls.push(s); if (!waiting) session = s
     s._audio = document.body.appendChild(Object.assign(document.createElement('audio'), { autoplay: true }))
     // JsSIP sends the INVITE / 200 OK only when ICE gathering ends; a dead interface (VPN, 169.254 adapter) or an
     // unreachable STUN server stalls that for ~40 s. Go once candidates have been quiet for 1 s.
@@ -67,19 +68,22 @@ function connect() {
       status(`Call failed: ${e.cause}`); setTimeout(() => { if ($('status').textContent.startsWith('Call failed')) status(was) }, 6000)
     })
     s._incoming = originator === 'remote'
-    show('idle', false); show('incall', true); show('answer', s._incoming); refresh()
+    show('idle', false); show('incall', true); refresh()
+    if (s._incoming) { s._silenced = false; checkOtherCall().then(updateRinging) }
   })
   ua.start()
 }
 
 function end(s) {
+  if (xferFrom === s) xferFrom = null
   s._audio.srcObject = null; s._audio.remove()
   s._stream?.getTracks().forEach((t) => t.stop())
   calls = calls.filter((c) => c !== s)
   if (mix) buildMix()   // rebuild for whoever is left (tears down below two calls)
-  if (!calls.length) { session = null; show('incall', false); show('audio-pick', false); show('idle', true); return }
-  if (session === s) session = calls[calls.length - 1]
-  show('answer', false); refresh()
+  updateRinging()
+  if (!calls.length) { session = null; show('incall', false); show('audio-pick', false); show('xfer-pick', false); show('idle', true); return }
+  if (session === s) session = calls.find((c) => c.isEstablished()) || calls[calls.length - 1]
+  refresh()
 }
 const user = (s) => s.remote_identity.uri.user
 function refresh() {
@@ -92,7 +96,85 @@ function refresh() {
     : session.isEstablished() ? (held ? 'On hold' : 'Connected') : session._incoming ? 'Incoming call' : 'Calling…'
   show('hold', !inConf); show('xfer', !inConf)
   show('merge', calls.length > 1 && calls.filter((c) => c.isEstablished()).length > (mix?.calls.length || 1))
+  const ringingFront = session._incoming && !session.isEstablished() && !session.isEnded()
+  show('answer', ringingFront)
+  const w = waitingCall()
+  show('waiting', !!w)
+  if (w) $('w-who').textContent = `${user(w)} is calling` + (w._silenced ? ' (silenced)' : '')
+  show('other-note', !!otherApps.length && calls.some((c) => c._autoHeld))
+  if (otherApps.length) $('other-note').textContent = `On hold while ${otherApps.join(', ')} uses the microphone (another call). It comes back when that call ends, or press Hold to resume now.`
+  show('x-complete', !!xferFrom && !xferFrom.isEnded() && session !== xferFrom && session.isEstablished())
 }
+
+// ---- Ringing (owner 2026-10-08): a ringtone, the window popping up and a Windows call notification. While another
+// call is going on (ours, or Teams / Zoom / WhatsApp / Skype…) a quiet call-waiting beep instead, and no pop-up. ----
+const waitingCall = () => calls.find((c) => c !== session && c._incoming && !c.isEstablished() && !c.isEnded())
+const ringingCall = () => calls.find((c) => c._incoming && !c.isEstablished() && !c.isEnded() && !c._answering)
+let ringCtx = null, ringTimer = null, ringMode = null, ringFor = null, ringNoted = ''
+function startTone(mode) {   // 'ring': South African double ring (400+450 Hz); 'beep': one short 440 Hz beep every 4 s
+  if (ringMode === mode) return
+  stopTone(); ringMode = mode
+  ringCtx = new AudioContext()
+  if (cfg().spkId && ringCtx.setSinkId) ringCtx.setSinkId(cfg().spkId).catch(() => {})
+  const burst = (freqs, dur, vol, at) => { for (const f of freqs) {
+    const o = ringCtx.createOscillator(), g = ringCtx.createGain()
+    o.frequency.value = f; g.gain.value = vol; o.connect(g).connect(ringCtx.destination); o.start(at); o.stop(at + dur) } }
+  const cycle = () => {
+    if (!ringCtx) return
+    const t = ringCtx.currentTime + 0.05
+    if (mode === 'ring') { burst([400, 450], 0.4, 0.12, t); burst([400, 450], 0.4, 0.12, t + 0.6) }
+    else burst([440], 0.3, 0.05, t)
+  }
+  cycle(); ringTimer = setInterval(cycle, mode === 'ring' ? 3000 : 4000)
+}
+function stopTone() { clearInterval(ringTimer); ringTimer = null; ringCtx?.close().catch(() => {}); ringCtx = null; ringMode = null }
+function updateRinging() {
+  const r = ringingCall()
+  if (!r) { stopTone(); if (ringFor) { ringFor = null; ringNoted = ''; callUi.ringStop() }; return }
+  const busy = calls.some((c) => c !== r && c.isEstablished()) || otherApps.length > 0
+  if (r._silenced) stopTone(); else startTone(busy ? 'beep' : 'ring')
+  const note = `${user(r)}|${busy}|${r._silenced}`
+  if (ringFor !== r || ringNoted !== note) { ringFor = r; ringNoted = note; callUi.ringStart({ number: user(r), busy, silenced: r._silenced }) }
+  refresh()
+}
+async function answerCall(s) {
+  if (!s || s.isEnded() || s.isEstablished()) return
+  s._answering = true; updateRinging()
+  const stream = await openMic()
+  if (!stream) { s._answering = false; updateRinging(); return }   // keeps ringing: free the mic and press Answer again
+  if (s.isEnded()) { stream.getTracks().forEach((t) => t.stop()); return }
+  // the call in progress waits on hold (in a conference the new call simply joins the list; Merge adds it)
+  if (!mix) for (const c of calls) if (c !== s && c.isEstablished() && !c.isOnHold().local) c.hold()
+  session = s
+  own(s, stream).answer({ mediaStream: stream, pcConfig: pcConfig() }); refresh()
+}
+function declineCall(s) { if (s && !s.isEnded() && !s.isEstablished()) s.terminate({ status_code: 486, reason_phrase: 'Busy Here' }) }
+function silenceCall(s) { if (s) { s._silenced = true; updateRinging() } }
+callUi.onAction((a) => {
+  const r = ringingCall()
+  if (a === 'answer') answerCall(r); else if (a === 'decline') declineCall(r); else if (a === 'silence') silenceCall(r)
+})
+
+// ---- Another app's call (Teams, Zoom, WhatsApp, Skype…): Windows says which other apps use the microphone. While
+// one does, our calls go on hold (the other side hears hold music) and come back when it stops; a call coming in
+// beeps instead of ringing. Pressing Hold resumes anyway (e.g. an app that keeps the microphone open). ----
+let otherApps = [], userResumed = false
+async function checkOtherCall() {
+  if (!calls.length) { otherApps = []; userResumed = false; return }
+  try { otherApps = await callUi.micOthers() } catch { otherApps = [] }
+  if (!otherApps.length) {
+    userResumed = false
+    for (const c of calls) if (c._autoHeld) { c._autoHeld = false; if (!c.isEnded() && c.isOnHold().local && !mix) c.unhold() }
+    if (mixAutoMuted && mix) { mix.mic.gain.value = muted ? 0 : 1 }
+    mixAutoMuted = false
+  } else if (!userResumed) {
+    for (const c of calls) if (c.isEstablished() && !c.isOnHold().local && !mix) { c._autoHeld = true; c.hold() }
+    if (mix && !mixAutoMuted) { mixAutoMuted = true; mix.mic.gain.value = 0; for (const c of mix.calls) c._autoHeld = true }
+  }
+  refresh()
+}
+let mixAutoMuted = false
+setInterval(() => { if (calls.length) checkOtherCall().then(updateRinging) }, 1500)
 
 // ---- Conference: mixed here, so the PBX needs nothing ----
 // Each call gets its own WebAudio mix (my mic + every other caller) in place of the mic on its sender;
@@ -280,13 +362,12 @@ $('contacts-open').onclick = async () => {
 $('c-search').oninput = () => { $('c-msg').textContent = ''; renderContacts() }
 $('c-back').onclick = () => { show('contacts', false); show('phone', true) }
 $('vm').onclick = () => dial(cfg().voicemail)
-$('answer').onclick = async () => {
-  const s = session, stream = s && await openMic()
-  if (!stream) return   // keeps ringing: free the mic and press Answer again
-  if (s.isEnded()) { stream.getTracks().forEach((t) => t.stop()); return }
-  own(s, stream).answer({ mediaStream: stream, pcConfig: pcConfig() }); show('answer', false)
-}
+$('answer').onclick = () => answerCall(session)
+$('w-answer').onclick = () => answerCall(waitingCall())
+$('w-decline').onclick = () => declineCall(waitingCall())
+$('w-silence').onclick = () => silenceCall(waitingCall())
 $('hang').onclick = () => {   // in a conference, hang up on everyone; otherwise the call in front
+  if (session && session._incoming && !session.isEstablished()) { declineCall(session); return }
   if (mix && !mix.calls.includes(session)) session.terminate()
   else if (mix) [...calls].forEach((c) => c.terminate())
   else session?.terminate()
@@ -297,7 +378,14 @@ $('mute').onclick = () => {
   else muted ? session?.mute({ audio: true }) : session?.unmute({ audio: true })
   refresh()
 }
-$('hold').onclick = () => { session?.isOnHold().local ? session.unhold() : session?.hold() }
+$('hold').onclick = () => {
+  if (!session) return
+  if (session.isOnHold().local) {
+    if (session._autoHeld) { session._autoHeld = false; userResumed = true }   // resume although another app has the mic
+    for (const c of calls) if (c !== session && c.isEstablished() && !c.isOnHold().local && !mix) c.hold()
+    session.unhold()
+  } else session.hold()
+}
 $('add').onclick = () => {   // hold the call (unless in a conference) and ring the new person; Merge joins them
   const n = prompt(mix ? 'Add to conference: extension or number' : 'Add participant: extension or number\n(the current call goes on hold; press Merge when they answer)')
   if (!n) return
@@ -305,8 +393,29 @@ $('add').onclick = () => {   // hold the call (unless in a conference) and ring 
   dial(n.trim())
 }
 $('merge').onclick = merge
-$('xfer').onclick = () => {   // blind transfer via SIP REFER
-  const n = prompt('Transfer to extension or number'); if (n) session?.refer(`sip:${n}@${domain(acc.tenant)}`)
+// ---- Transfer: "Transfer now" (blind, SIP REFER) or "Ask first" (attended: the caller waits on hold while you talk to
+// the new person, then Complete transfer joins them: REFER with Replaces; the PBX connects them and drops us) ----
+let xferFrom = null
+$('xfer').onclick = () => { $('x-num').value = ''; show('xfer-pick', true); $('x-num').focus() }
+$('x-cancel').onclick = () => show('xfer-pick', false)
+$('x-blind').onclick = () => {
+  const n = $('x-num').value.trim(); if (!n || !session) return
+  show('xfer-pick', false); session.refer(`sip:${n}@${domain(acc.tenant)}`)
+}
+$('x-ask').onclick = () => {
+  const n = $('x-num').value.trim(); if (!n || !session) return
+  show('xfer-pick', false)
+  xferFrom = session
+  if (!session.isOnHold().local) session.hold()
+  dial(n)
+}
+$('x-complete').onclick = () => {
+  const from = xferFrom, to = session
+  if (!from || from.isEnded() || !to || to === from) return
+  xferFrom = null
+  from.refer(to.remote_identity.uri.toString(), { replaces: to })
+  setTimeout(() => { for (const c of [from, to]) if (!c.isEnded()) c.terminate() }, 4000)   // normally the PBX ends both first
+  refresh()
 }
 
 // ---- Audio during a call: switch microphone and speaker (headset, Bluetooth, laptop) without hanging up ----
