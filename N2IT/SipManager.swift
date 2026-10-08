@@ -7,6 +7,8 @@ struct CallInfo: Identifiable {
     let number: String
     let state: Call.State
     let incoming: Bool
+    /// Caller ID name from the PBX, or the contact's name; nil when unknown.
+    var name: String? = nil
 }
 
 /// Where the call is heard and spoken: the iPhone itself, its loudspeaker, Bluetooth (car kit, headset) or a wired headset.
@@ -36,6 +38,7 @@ struct RecentCall: Identifiable, Codable {
     let date: Date
     let incoming: Bool
     let missed: Bool
+    var name: String? = nil
 }
 
 final class SipManager: ObservableObject {
@@ -136,6 +139,32 @@ final class SipManager: ObservableObject {
         setDnd(savedDnd > 0 ? Date(timeIntervalSince1970: savedDnd) : nil)   // survives restarts; clears itself if expired
         configure(Account.load())
         PushManager.shared.start()
+    }
+
+    // MARK: Caller names
+
+    /// Contact names by number (company contacts from the PBX and the phone's own), filled by ContactsStore.
+    private var knownNames: [String: String] = [:]
+
+    /// Digits only; long numbers by their last 9 digits so "+27 82 123 4567" and "082 123 4567" match.
+    private static func numberKey(_ n: String) -> String {
+        let d = n.filter(\.isNumber)
+        return d.count >= 9 ? String(d.suffix(9)) : d
+    }
+
+    func learnNames(_ contacts: [PhoneContact]) {
+        for c in contacts where !c.name.isEmpty {
+            for n in c.numbers { let k = Self.numberKey(n); if !k.isEmpty && knownNames[k] == nil { knownNames[k] = c.name } }
+        }
+    }
+
+    func name(for number: String) -> String? { knownNames[Self.numberKey(number)] }
+
+    /// The caller ID name the PBX sends (the extension's name for internal calls), else the contact's name.
+    private func name(of call: Call) -> String? {
+        let number = call.remoteAddress?.username ?? ""
+        if let d = call.remoteAddress?.displayName?.trimmingCharacters(in: .whitespaces), !d.isEmpty, d != number { return d }
+        return name(for: number)
     }
 
     // MARK: Do Not Disturb
@@ -446,6 +475,7 @@ final class SipManager: ObservableObject {
         DispatchQueue.main.async {
             let number = call.remoteAddress?.username ?? "Unknown"
             let incoming = call.dir == .Incoming
+            let name = self.name(of: call)
             switch state {
             case .IncomingReceived:
                 self.checkDnd()
@@ -456,8 +486,8 @@ final class SipManager: ObservableObject {
                     try? call.decline(reason: .Busy)
                     return
                 }
-                CallKitManager.shared.sipIncoming(caller: number)
-                self.activeCall = CallInfo(number: number, state: state, incoming: true)
+                CallKitManager.shared.sipIncoming(caller: number, name: name)
+                self.activeCall = CallInfo(number: number, state: state, incoming: true, name: name)
             case .End, .Error, .Released:
                 self.userHeld.removeAll { $0 === call }
                 // Another call may still be up (held caller after a consult, or the rest of a conference).
@@ -467,7 +497,7 @@ final class SipManager: ObservableObject {
                     if state == .Released { self.dndRefused.removeAll { $0 === call } }
                 } else if let other = self.core.currentCall ?? self.liveCalls(except: call).first {
                     self.activeCall = CallInfo(number: other.remoteAddress?.username ?? "Unknown", state: other.state,
-                                               incoming: other.dir == .Incoming)
+                                               incoming: other.dir == .Incoming, name: self.name(of: other))
                 } else {
                     CallKitManager.shared.sipEnded()
                     self.activeCall = nil
@@ -477,19 +507,19 @@ final class SipManager: ObservableObject {
                 }
                 if state == .End || state == .Error {
                     let missed = incoming && (call.callLog?.status == .Missed || refused)
-                    self.recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed), at: 0)
+                    self.recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed, name: name), at: 0)
                 }
             case .StreamsRunning:
                 if !incoming { CallKitManager.shared.sipConnected() }
                 if self.routePending { self.routePending = false; self.applyRoute() }
-                self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
+                self.activeCall = CallInfo(number: number, state: state, incoming: incoming, name: name)
             default:
-                self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
+                self.activeCall = CallInfo(number: number, state: state, incoming: incoming, name: name)
             }
             let live = self.liveCalls()
             let members = live.filter { $0.conference != nil }
             self.inConference = !members.isEmpty
-            self.participants = members.map { $0.remoteAddress?.username ?? "Unknown" }
+            self.participants = members.map { self.name(of: $0) ?? $0.remoteAddress?.username ?? "Unknown" }
             if self.inConference {
                 self.activeCall = CallInfo(number: self.participants.joined(separator: ", "), state: .StreamsRunning, incoming: false)
                 self.onHold = false

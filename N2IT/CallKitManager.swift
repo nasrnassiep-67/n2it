@@ -52,22 +52,31 @@ final class CallKitManager: NSObject, CXProviderDelegate {
     }
 
     /// Called when Linphone sees the INVITE. Reuses the push's CallKit call if there is one.
-    func sipIncoming(caller: String) {
+    func sipIncoming(caller: String, name: String?) {
         pendingTimeout?.cancel()
         if uuid == nil {
             let id = UUID()
             uuid = id
-            report(id, caller: caller, completion: nil)
-        } else if answerWhenInvite {
+            report(id, caller: caller, name: name, completion: nil)
+            return
+        }
+        // Rung by a push first: the INVITE has the caller's name, the push may not.
+        if let id = uuid {
+            let u = CXCallUpdate()
+            u.remoteHandle = CXHandle(type: .generic, value: caller)
+            u.localizedCallerName = name ?? caller
+            provider.reportCall(with: id, updated: u)
+        }
+        if answerWhenInvite {
             answerWhenInvite = false
             SipManager.shared.answerSip()
         }
     }
 
-    private func report(_ id: UUID, caller: String, completion: (() -> Void)?) {
+    private func report(_ id: UUID, caller: String, name: String? = nil, completion: (() -> Void)?) {
         let u = CXCallUpdate()
         u.remoteHandle = CXHandle(type: .generic, value: caller)
-        u.localizedCallerName = caller
+        u.localizedCallerName = name ?? SipManager.shared.name(for: caller) ?? caller
         u.hasVideo = false
         u.supportsHolding = true
         provider.reportNewIncomingCall(with: id, update: u) { _ in completion?() }
@@ -117,6 +126,7 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: nil)
         let u = CXCallUpdate()
         u.remoteHandle = action.handle
+        u.localizedCallerName = SipManager.shared.name(for: action.handle.value)
         u.hasVideo = false
         u.supportsHolding = true   // lets iOS offer "Hold & Accept" when a GSM/WhatsApp call comes in
         provider.reportCall(with: action.callUUID, updated: u)

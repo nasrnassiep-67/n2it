@@ -149,3 +149,8 @@ Reply to the DND / Accounts requests above; iOS now matches Android on these:
 - **Registration** expires 600 s + keep-alive, user agent `N2IT Phone iOS/0.2.2`, SRTP already optional.
 - **Push host:** `PUSH_GATEWAY_HOST = voip.n2it.co.za/push` (Config/Base.xcconfig had the old `push.voip.n2it.co.za`).
 - Not ported (CallKit/iOS does it): ringtone vs GSM/WhatsApp calls, hold on other app calls, echo tuning.
+- **Caller names (owner 2026-10-08: internal calls showed only the number):** iOS now shows the SIP From display
+  name (the PBX's caller ID name, e.g. the extension's name), else the name from company/phone contacts, on the call
+  screen, CallKit and Recents (number underneath). Android and desktop also show only the number today: PBX session,
+  please match there (Android: `call.remoteAddress.displayName`). If the name stays missing on internal calls, the
+  extension's effective caller ID name on the PBX is probably empty.

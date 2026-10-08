@@ -189,7 +189,8 @@ struct RecentsView: View {
                         Image(systemName: r.incoming ? "phone.arrow.down.left" : "phone.arrow.up.right")
                             .foregroundStyle(r.missed ? .red : .secondary)
                         VStack(alignment: .leading) {
-                            Text(r.number).foregroundStyle(r.missed ? .red : .primary)
+                            Text(r.name ?? r.number).foregroundStyle(r.missed ? .red : .primary)
+                            if r.name != nil { Text(r.number).font(.caption).foregroundStyle(.secondary) }
                             Text(r.date, style: .relative).font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -212,7 +213,10 @@ struct CallView: View {
     var body: some View {
         VStack(spacing: 28) {
             Spacer()
-            Text(sip.activeCall?.number ?? "").font(.largeTitle)
+            Text(sip.activeCall?.name ?? sip.activeCall?.number ?? "").font(.largeTitle).multilineTextAlignment(.center)
+            if let name = sip.activeCall?.name, !sip.inConference, name != sip.activeCall?.number {
+                Text(sip.activeCall?.number ?? "").font(.title3).foregroundStyle(.secondary)
+            }
             Text(label).foregroundStyle(.secondary)
             Spacer()
             // While dialling: mute and the audio button already, so the user can pick the car or speaker before they answer.
