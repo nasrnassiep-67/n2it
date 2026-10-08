@@ -361,7 +361,11 @@ object SipManager {
         // so their voice coming out of the speaker is not sent back to them (speakerphone works a little like a
         // walkie-talkie when both talk at once). Earpiece, headset and Bluetooth do not need it.
         val limiter = _route.value == AudioRoute.Speaker
-        liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter }
+        // Bluetooth earbuds and car kits cancel echo themselves; our canceller on top, tuned for this phone's own speaker
+        // and not the Bluetooth delay, adds crackle (owner 2026-10-08: static on calls only with his earbuds).
+        val ownAec = _route.value != AudioRoute.Bluetooth
+        liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter
+            c.isEchoCancellationEnabled = ownAec }
         conference()?.let { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
     }
 
