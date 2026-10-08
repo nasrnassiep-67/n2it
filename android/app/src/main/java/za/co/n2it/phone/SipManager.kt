@@ -1,7 +1,11 @@
 package za.co.n2it.phone
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.Ringtone
+import android.media.RingtoneManager
+import android.os.Build
 import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
@@ -242,22 +246,43 @@ object SipManager {
 
     private val main = Handler(Looper.getMainLooper())
     private var tone: ToneGenerator? = null
+    private var ringtone: Ringtone? = null
+    private var beepTick = 0
     private val beep = object : Runnable {
         override fun run() {
             if (ringingCall() == null || _silenced.value) { stopQuietRing(); return }
+            // The other call ended while ours still rings: ring properly from now on (owner 2026-10-08)
+            if (!PhoneService.otherAppInCall(appContext)) { ringNormally(); return }
             core.stopRinging()   // Linphone's ringtone, should it have started after us
-            try {
+            if (beepTick++ % 4 == 0) try {   // a beep every 4 s, the other call checked every second
                 if (tone == null) tone = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 70)
                 tone?.startTone(ToneGenerator.TONE_SUP_CALL_WAITING, 500)
             } catch (e: RuntimeException) { /* no tone available: stay silent rather than ring */ }
-            main.postDelayed(this, 4000)
+            main.postDelayed(this, 1000)
         }
     }
+
+    /** Linphone's own ringtone cannot be restarted once stopped: play the phone's ringtone until answered, declined,
+     *  silenced or the caller gives up. */
+    private fun ringNormally() {
+        main.removeCallbacks(beep); tone?.release(); tone = null
+        PhoneService.ringAgain(appContext)
+        try {
+            val uri = RingtoneManager.getActualDefaultRingtoneUri(appContext, RingtoneManager.TYPE_RINGTONE) ?: return
+            ringtone = RingtoneManager.getRingtone(appContext, uri)?.apply {
+                audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isLooping = true
+                play()
+            }
+        } catch (e: RuntimeException) { /* no ringtone: the notification still shows the call */ }
+    }
     /** Call-waiting beep instead of the ringtone while another app's call is up. */
-    private fun quietRing() { main.removeCallbacks(beep); core.stopRinging(); main.postDelayed(beep, 200) }
+    private fun quietRing() { main.removeCallbacks(beep); beepTick = 0; core.stopRinging(); main.postDelayed(beep, 200) }
     private fun stopQuietRing() {
         main.removeCallbacks(beep)
         tone?.release(); tone = null
+        ringtone?.stop(); ringtone = null
     }
     /** Ends the call in front of the user; in a conference with nobody else ringing, ends it for everyone. */
     fun hangup() {

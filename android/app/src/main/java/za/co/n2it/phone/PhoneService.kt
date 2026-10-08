@@ -205,6 +205,9 @@ class PhoneService : Service() {
             nm.notify(ID_CALL, b.build())
         }
 
+        /** The other call ended while ours still rings: the normal incoming-call notification (full screen if locked). */
+        fun ringAgain(c: Context) { if (lastCaller.isNotEmpty()) notifyIncoming(c, lastCaller, busy = false) }
+
         fun silenceIncoming(c: Context) { if (lastCaller.isNotEmpty()) notifyIncoming(c, lastCaller, lastBusy, silenced = true) }
 
         fun clearIncoming(c: Context) {
