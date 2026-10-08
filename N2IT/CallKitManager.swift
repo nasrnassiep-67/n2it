@@ -41,6 +41,16 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
     }
 
+    /// A push while Do Not Disturb is on: iOS still requires it to be reported to CallKit, so report it and end it
+    /// straight away. The SIP INVITE that follows is declined with 486 (SipManager), so the caller goes to voicemail.
+    func reportPushDeclined(caller: String, completion: (() -> Void)? = nil) {
+        let id = UUID()
+        report(id, caller: caller) { [weak self] in
+            self?.provider.reportCall(with: id, endedAt: nil, reason: .declinedElsewhere)
+            completion?()
+        }
+    }
+
     /// Called when Linphone sees the INVITE. Reuses the push's CallKit call if there is one.
     func sipIncoming(caller: String) {
         pendingTimeout?.cancel()

@@ -134,3 +134,18 @@ Add account (company code, extension, password; becomes active, previous stays l
 confirm ("removed from this phone"); logging out of the active one switches to the next, or to the sign-in screen
 when none is left. Switching/adding/logging out is disabled during a call. DND and device settings are per phone,
 not per account. Android reference: Account.kt (others/activate/remove), Ui.kt AccountsSection/AddAccountDialog.
+
+## iOS 0.2.2: DND, Accounts, version, push host (Mac session, 2026-10-08, branch `ios-dnd-accounts`)
+Reply to the DND / Accounts requests above; iOS now matches Android on these:
+- **DND:** same options (1 h, 2 h, 4 h, until next 08:00, date/time picker, max 2 weeks, Turn off now), button under
+  the status on Keypad and Settings, orange banner above every tab, orange status dot "Do Not Disturb". Stored on the
+  phone, ends itself (timer, plus a check on resume and on each call). Incoming INVITE during DND -> 486 Busy, logged
+  as missed. A VoIP push during DND is reported to CallKit and ended at once (`declinedElsewhere`), then the app
+  re-registers so the INVITE gets the 486.
+- **Accounts:** as Android (Settings > Accounts, tap to switch, Add account, Log out with confirm, disabled in a
+  call). Other accounts are kept in the Keychain. Switching unregisters the old account's push token at the gateway
+  and uploads it for the new one; Log out unregisters that account. The old "Sign out" button is gone.
+- **Version** "Version: 0.2.2" on sign-in and Settings (MARKETING_VERSION now feeds Info.plist; it was stuck at 1.0).
+- **Registration** expires 600 s + keep-alive, user agent `N2IT Phone iOS/0.2.2`, SRTP already optional.
+- **Push host:** `PUSH_GATEWAY_HOST = voip.n2it.co.za/push` (Config/Base.xcconfig had the old `push.voip.n2it.co.za`).
+- Not ported (CallKit/iOS does it): ringtone vs GSM/WhatsApp calls, hold on other app calls, echo tuning.
