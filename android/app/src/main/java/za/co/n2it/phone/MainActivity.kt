@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
                         SipManager.reloadSoundDevices()
                         // The foreground service needs the mic permission decision first.
                         if (Account.load(ctx).isConfigured) PhoneService.start(ctx)
+                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) SipManager.tuneEchoOnce()
                         askBatteryExemption()
                     }
                     LaunchedEffect(Unit) {

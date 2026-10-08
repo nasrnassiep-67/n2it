@@ -400,8 +400,25 @@ fun SettingsTab(onSignOut: () -> Unit) {
         Button(onClick = { Account.save(ctx, acc); SipManager.configure(acc) }, modifier = Modifier.fillMaxWidth()) { Text("Save & Register") }
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
         AccountsSection(onActiveChanged = { acc = it }, onNoneLeft = onSignOut)
+        HorizontalDivider(Modifier.padding(vertical = 16.dp))
+        EchoSection()
         Spacer(Modifier.height(16.dp))
         VersionText()
+    }
+}
+
+/** Echo on speakerphone: the result of this phone's tuning and a button to tune again (e.g. after a phone update). */
+@Composable
+private fun EchoSection() {
+    val echo by SipManager.echo.collectAsState()
+    val call by SipManager.call.collectAsState()
+    Text("Echo cancellation", style = MaterialTheme.typography.titleSmall)
+    Text(echo.ifEmpty { "Not tuned yet on this phone" }, style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("If people hear themselves when you are on speaker, tune again in a quiet room. It plays a few beeps.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    OutlinedButton({ SipManager.tuneEcho() }, enabled = call == null && !echo.startsWith("Tuning…"), modifier = Modifier.padding(top = 6.dp)) {
+        Text("Tune echo cancellation")
     }
 }
 

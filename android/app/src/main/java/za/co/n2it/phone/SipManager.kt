@@ -39,6 +39,9 @@ object SipManager {
     private val _silenced = MutableStateFlow(false)
     /** The ringing call was silenced (Silence button, volume key): it keeps ringing for the caller, quietly here. */
     val silenced: StateFlow<Boolean> = _silenced
+    private val _echo = MutableStateFlow("")
+    /** Echo tuning result for the Settings screen ("" = not tuned yet on this phone). */
+    val echo: StateFlow<String> = _echo
     val registered: StateFlow<Boolean> = _registered
     val status: StateFlow<String> = _status
     val call: StateFlow<CallInfo?> = _call
@@ -112,6 +115,20 @@ object SipManager {
             }
         }
 
+        // Echo tuning (owner 2026-10-08: callers heard themselves when this phone was on speaker). Linphone plays a few
+        // beeps and measures how long this phone's speaker takes to reach its microphone, which its echo canceller needs;
+        // without it the canceller guesses and on some phones (HONOR 90) lets the caller's voice back through.
+        override fun onEcCalibrationResult(core: Core, status: EcCalibratorStatus, delayMs: Int) {
+            val text = when (status) {
+                EcCalibratorStatus.Done -> "Tuned for this phone (${delayMs} ms)"
+                EcCalibratorStatus.DoneNoEcho -> "Tuned: this phone cancels echo itself"
+                EcCalibratorStatus.Failed -> "Tuning failed: try again in a quiet room"
+                else -> return
+            }
+            _echo.value = text
+            appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).edit().putString("result", text).apply()
+        }
+
         // PBX NOTIFY for message-summary: "Messages-Waiting: yes" / "Voice-Message: 2/0 (0/0)"
         // Bluetooth or a headset connected/disconnected (e.g. the car's hands-free picks up the phone mid-call).
         override fun onAudioDevicesListUpdated(core: Core) {
@@ -162,6 +179,7 @@ object SipManager {
         core = Factory.instance().createCore(null, null, appContext)
         core.addListener(listener)
         core.isEchoCancellationEnabled = true   // without AEC, speakerphone audio loops back into the mic
+        _echo.value = context.applicationContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getString("result", "") ?: ""
         // Shows on the PBX (registrations, logs) instead of "Unknown".
         core.setUserAgent("N2IT Phone Android", BuildConfig.VERSION_NAME)
         // STUN puts the phone's public address in the SDP, so the PBX can send audio before the phone does.
@@ -329,9 +347,22 @@ object SipManager {
         val mic = recorder(_route.value)
         // A running call keeps its own devices; the core setting only applies to calls started afterwards.
         core.outputAudioDevice = out; mic?.let { core.inputAudioDevice = it }
-        liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
+        // On the loudspeaker also the echo limiter: it turns this phone's microphone down while the other side talks,
+        // so their voice coming out of the speaker is not sent back to them (speakerphone works a little like a
+        // walkie-talkie when both talk at once). Earpiece, headset and Bluetooth do not need it.
+        val limiter = _route.value == AudioRoute.Speaker
+        liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter }
         conference()?.let { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
     }
+
+    /** Tune the echo canceller for this phone (a few seconds of beeps on the loudspeaker); not during a call. */
+    fun tuneEcho() {
+        if (!started || liveCalls().isNotEmpty()) return
+        _echo.value = "Tuning… (keep the phone still and quiet)"
+        if (core.startEchoCancellerCalibration() != 0) _echo.value = "Tuning failed: try again"
+    }
+    /** First start with the microphone allowed: tune once, so nobody has to know about it. */
+    fun tuneEchoOnce() { if (_echo.value.isEmpty() || _echo.value.startsWith("Tuning…")) tuneEcho() }
 
     fun setAudioRoute(r: AudioRoute) {
         if (!started || player(r) == null) return
