@@ -74,6 +74,7 @@ function connect() {
 
 function end(s) {
   s._audio.srcObject = null; s._audio.remove()
+  s._stream?.getTracks().forEach((t) => t.stop())
   calls = calls.filter((c) => c !== s)
   if (mix) buildMix()   // rebuild for whoever is left (tears down below two calls)
   if (!calls.length) { session = null; show('incall', false); show('audio-pick', false); show('idle', true); return }
@@ -136,7 +137,30 @@ const media = () => {
 }
 const pcConfig = () => ({ iceServers: cfg().stun ? [{ urls: cfg().stun }] : [] })
 const applySink = () => { const id = cfg().spkId; for (const s of calls) s._audio?.setSinkId?.(id || '').catch(() => {}) }
-const dial = (n) => n && ua?.call(`sip:${n}@${domain(acc.tenant)}`, { mediaConstraints: media(), pcConfig: pcConfig() })
+/** The microphone for a call. Windows can refuse the chosen one ("NotReadableError: Could not start audio source":
+ *  held by another app, antivirus mic protection, a format it cannot open), so fall back: saved settings -> plain
+ *  default -> each other microphone. null (and a clear message) when none starts. */
+async function openMic() {
+  const tries = [media(), { audio: true, video: false }]
+  try {
+    for (const d of await navigator.mediaDevices.enumerateDevices())
+      if (d.kind === 'audioinput' && !['default', 'communications'].includes(d.deviceId)) tries.push({ audio: { deviceId: { exact: d.deviceId } }, video: false })
+  } catch {}
+  let err
+  for (const c of tries) {
+    try { return await navigator.mediaDevices.getUserMedia(c) } catch (e) { err = e; console.warn('mic', JSON.stringify(c), e.name, e.message); if (e.name === 'NotAllowedError') break }
+  }
+  status(err?.name === 'NotAllowedError' ? 'Microphone blocked: allow apps to use it in Windows Settings > Privacy > Microphone'
+    : 'Microphone busy or blocked: close apps using it, check antivirus microphone protection, then try again')
+  return null
+}
+/** JsSIP leaves a stream it was given running, so stop it when the call ends. */
+const own = (s, stream) => { s._stream = stream; return s }
+async function dial(n) {
+  if (!n || !ua) return
+  const stream = await openMic()
+  if (stream) own(ua.call(`sip:${n}@${domain(acc.tenant)}`, { mediaStream: stream, pcConfig: pcConfig() }), stream)
+}
 
 // ---- Accounts: several saved, one active (acc); the others are kept in acc.saved ----
 let adding = false
@@ -256,7 +280,12 @@ $('contacts-open').onclick = async () => {
 $('c-search').oninput = () => { $('c-msg').textContent = ''; renderContacts() }
 $('c-back').onclick = () => { show('contacts', false); show('phone', true) }
 $('vm').onclick = () => dial(cfg().voicemail)
-$('answer').onclick = () => { session?.answer({ mediaConstraints: media(), pcConfig: pcConfig() }); show('answer', false) }
+$('answer').onclick = async () => {
+  const s = session, stream = s && await openMic()
+  if (!stream) return   // keeps ringing: free the mic and press Answer again
+  if (s.isEnded()) { stream.getTracks().forEach((t) => t.stop()); return }
+  own(s, stream).answer({ mediaStream: stream, pcConfig: pcConfig() }); show('answer', false)
+}
 $('hang').onclick = () => {   // in a conference, hang up on everyone; otherwise the call in front
   if (mix && !mix.calls.includes(session)) session.terminate()
   else if (mix) [...calls].forEach((c) => c.terminate())
@@ -299,7 +328,9 @@ $('a-spk').onchange = async () => { await saveAudio({ spkId: $('a-spk').value })
 async function switchMic() {
   if (!calls.length) return
   let track
-  try { track = (await navigator.mediaDevices.getUserMedia(media())).getAudioTracks()[0] } catch (e) { status(`Microphone: ${e.message}`); return }
+  const stream = await openMic()
+  if (!stream) return
+  track = stream.getAudioTracks()[0]
   track.enabled = mix ? true : !muted   // in a conference, muting is the mix gain
   const old = new Set()
   for (const s of calls) {

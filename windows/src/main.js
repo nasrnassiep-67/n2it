@@ -84,6 +84,9 @@ ipcMain.handle('directory:load', async () => {
   } catch (e) { return { error: `Cannot reach ${host}` } }
 })
 
+// Chromium's separate audio process is a known cause of "NotReadableError: Could not start audio source" on some
+// Windows PCs whose mic works in other apps; capture in the main process instead.
+app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess')
 app.whenReady().then(() => {
   if (!primary) return
   registerLinksWindows()
