@@ -420,6 +420,15 @@ private fun EchoSection() {
     OutlinedButton({ SipManager.tuneEcho() }, enabled = call == null && !echo.startsWith("Tuning…"), modifier = Modifier.padding(top = 6.dp)) {
         Text("Tune echo cancellation")
     }
+    val gate by SipManager.backgroundFilter.collectAsState()
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Filter out background voices")
+            Text("Keeps people talking nearby out of your calls, mostly on speaker. Turn off if the other side says your voice cuts out. Applies from the next call.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(gate, { SipManager.setBackgroundFilter(it) })
+    }
 }
 
 @Composable

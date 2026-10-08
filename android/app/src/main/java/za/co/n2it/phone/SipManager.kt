@@ -43,6 +43,9 @@ object SipManager {
     private val _echo = MutableStateFlow("")
     /** Echo tuning result for the Settings screen ("" = not tuned yet on this phone). */
     val echo: StateFlow<String> = _echo
+    private val _gate = MutableStateFlow(true)
+    /** "Filter out background voices" (Settings): Linphone's noise gate on the microphone. */
+    val backgroundFilter: StateFlow<Boolean> = _gate
     val registered: StateFlow<Boolean> = _registered
     val status: StateFlow<String> = _status
     val call: StateFlow<CallInfo?> = _call
@@ -185,6 +188,8 @@ object SipManager {
         core.addListener(listener)
         core.isEchoCancellationEnabled = true   // without AEC, speakerphone audio loops back into the mic
         _echo.value = context.applicationContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getString("result", "") ?: ""
+        _gate.value = context.applicationContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getBoolean("gate", true)
+        applyGate()
         // Shows on the PBX (registrations, logs) instead of "Unknown".
         core.setUserAgent("N2IT Phone Android", BuildConfig.VERSION_NAME)
         // STUN puts the phone's public address in the SDP, so the PBX can send audio before the phone does.
@@ -358,6 +363,21 @@ object SipManager {
         val limiter = _route.value == AudioRoute.Speaker
         liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter }
         conference()?.let { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
+    }
+
+    // Background voices (owner 2026-10-08: on speaker, people talking a few paces away came through to the other side).
+    // The noise gate turns the microphone down to 3% whenever the sound is quieter than someone speaking into the
+    // phone, so the room only gets through while you talk. Read when a call's audio starts: a change applies to the
+    // next call.
+    private fun applyGate() {
+        core.config.setInt("sound", "noisegate", if (_gate.value) 1 else 0)
+        core.config.setFloat("sound", "ng_thres", 0.03f)
+        core.config.setFloat("sound", "ng_floorgain", 0.03f)
+    }
+    fun setBackgroundFilter(on: Boolean) {
+        _gate.value = on
+        appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).edit().putBoolean("gate", on).apply()
+        if (started) applyGate()
     }
 
     /** Tune the echo canceller for this phone (a few seconds of beeps on the loudspeaker); not during a call. */
