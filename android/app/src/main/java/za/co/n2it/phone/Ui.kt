@@ -531,12 +531,14 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
             }
             if (pad) { Spacer(Modifier.height(12.dp)); Pad { SipManager.sendDigit(it[0]) } }
         }
+        val silenced by SipManager.silenced.collectAsState()
+        if (ringingIn && !silenced) { Spacer(Modifier.height(16.dp)); TextButton({ SipManager.silence() }) { Text("Silence") } }
         Spacer(Modifier.height(32.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(56.dp)) {
             if (ringingIn) FilledIconButton({ SipManager.answer() }, Modifier.size(76.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Green)) {
                 Icon(Icons.Default.Call, "Answer", tint = Color.White)
             }
-            FilledIconButton({ SipManager.hangup() }, Modifier.size(76.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Red)) {
+            FilledIconButton({ if (ringingIn) SipManager.decline() else SipManager.hangup() }, Modifier.size(76.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Red)) {
                 Icon(Icons.Default.CallEnd, "Hang up", tint = Color.White)
             }
         }

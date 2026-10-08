@@ -1,6 +1,10 @@
 package za.co.n2it.phone
 
 import android.content.Context
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.linphone.core.*
@@ -28,6 +32,9 @@ object SipManager {
     private val _routes = MutableStateFlow<List<AudioOption>>(emptyList())
     private val _recents = MutableStateFlow<List<RecentCall>>(emptyList())
     private val _voicemail = MutableStateFlow(false)
+    private val _silenced = MutableStateFlow(false)
+    /** The ringing call was silenced (Silence button, volume key): it keeps ringing for the caller, quietly here. */
+    val silenced: StateFlow<Boolean> = _silenced
     val registered: StateFlow<Boolean> = _registered
     val status: StateFlow<String> = _status
     val call: StateFlow<CallInfo?> = _call
@@ -59,6 +66,7 @@ object SipManager {
                         _recents.value = listOf(RecentCall(number, System.currentTimeMillis(), incoming, missed)) + _recents.value
                     }
                     PhoneService.clearIncoming(appContext)
+                    if (core.calls.none { it !== call && it.state == Call.State.IncomingReceived }) stopQuietRing()
                     userHeld.remove(call)
                     // Another call may still be up (held caller after a consult, or the rest of a conference).
                     if (liveCalls(except = call).isEmpty()) {
@@ -75,10 +83,16 @@ object SipManager {
                         call.decline(Reason.Busy)
                         return
                     }
+                    // On a GSM / WhatsApp call: no ringtone over that call, a call-waiting beep in the earpiece instead
+                    // (owner 2026-10-08). The notification still offers Answer, Decline and Silence.
+                    val busy = PhoneService.otherAppInCall(appContext)
+                    _silenced.value = false
                     _call.value = CallInfo(number, state, true)
-                    PhoneService.notifyIncoming(appContext, number)
+                    PhoneService.notifyIncoming(appContext, number, busy)
+                    if (busy) quietRing()
                 }
                 else -> {
+                    if (state != Call.State.IncomingReceived && core.calls.none { it.state == Call.State.IncomingReceived }) stopQuietRing()
                     // Outgoing call placed, or incoming call answered: the user is in the app right now,
                     // so this is when Android lets the service take the microphone.
                     if (state == Call.State.OutgoingInit || state == Call.State.Connected) {
@@ -212,7 +226,39 @@ object SipManager {
         core.invite(if ('@' in number) "sip:$number" else "sip:$number@$domain")
     }
 
-    fun answer() { core.currentCall?.accept(); PhoneService.clearIncoming(appContext) }
+    fun answer() { (ringingCall() ?: core.currentCall)?.accept(); stopQuietRing(); PhoneService.clearIncoming(appContext) }
+    private fun ringingCall() = core.calls.firstOrNull { it.state == Call.State.IncomingReceived }
+    /** Decline the ringing call: the PBX carries on (other phones of the extension, voicemail). */
+    fun decline() { ringingCall()?.decline(Reason.Declined); stopQuietRing(); PhoneService.clearIncoming(appContext) }
+
+    /** Stop the ringtone (or call-waiting beep) of the ringing call; it keeps ringing for the caller until answered,
+     *  declined or the PBX moves on (voicemail). */
+    fun silence() {
+        if (ringingCall() == null) return
+        core.stopRinging(); stopQuietRing(); _silenced.value = true
+        PhoneService.silenceIncoming(appContext)
+    }
+    fun isRinging() = started && ringingCall() != null && !_silenced.value
+
+    private val main = Handler(Looper.getMainLooper())
+    private var tone: ToneGenerator? = null
+    private val beep = object : Runnable {
+        override fun run() {
+            if (ringingCall() == null || _silenced.value) { stopQuietRing(); return }
+            core.stopRinging()   // Linphone's ringtone, should it have started after us
+            try {
+                if (tone == null) tone = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 70)
+                tone?.startTone(ToneGenerator.TONE_SUP_CALL_WAITING, 500)
+            } catch (e: RuntimeException) { /* no tone available: stay silent rather than ring */ }
+            main.postDelayed(this, 4000)
+        }
+    }
+    /** Call-waiting beep instead of the ringtone while another app's call is up. */
+    private fun quietRing() { main.removeCallbacks(beep); core.stopRinging(); main.postDelayed(beep, 200) }
+    private fun stopQuietRing() {
+        main.removeCallbacks(beep)
+        tone?.release(); tone = null
+    }
     /** Ends the call in front of the user; in a conference with nobody else ringing, ends it for everyone. */
     fun hangup() {
         val c = core.currentCall

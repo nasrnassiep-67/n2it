@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.view.KeyEvent
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -60,6 +61,23 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onResume() { super.onResume(); SipManager.checkDnd(); SipManager.refresh() }
+
+    // Answer from the incoming-call notification
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleAnswer(intent) }
+    override fun onPostCreate(savedInstanceState: Bundle?) { super.onPostCreate(savedInstanceState); handleAnswer(intent) }
+    private fun handleAnswer(i: Intent?) {
+        if (i?.action != PhoneService.ACTION_ANSWER) return
+        i.action = null
+        SipManager.answer()
+    }
+
+    // Volume keys silence a ringing call, as for normal phone calls
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) && SipManager.isRinging()) {
+            SipManager.silence(); return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
 
     /**
      * Battery optimisation (Doze, and makers like Honor/Huawei/Xiaomi) stops the app in the background, so calls stop

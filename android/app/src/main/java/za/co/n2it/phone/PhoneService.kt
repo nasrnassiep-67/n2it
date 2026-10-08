@@ -51,6 +51,8 @@ class PhoneService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_HANGUP) { SipManager.hangup(); return START_STICKY }
         if (intent?.action == ACTION_DND_OFF) { SipManager.setDnd(null); return START_STICKY }
+        if (intent?.action == ACTION_DECLINE) { SipManager.decline(); return START_STICKY }
+        if (intent?.action == ACTION_SILENCE) { SipManager.silence(); return START_STICKY }
         val inCall = intent?.action == ACTION_IN_CALL
         fgTypes = types(inCall)
         try {
@@ -63,15 +65,7 @@ class PhoneService : Service() {
         return START_STICKY
     }
 
-    /** True while another app has a call. A ringing GSM call (audio mode RINGTONE) is skipped, so an ignored ring
-     *  does not hold ours; our own calls are not Telecom calls, so they never count. */
-    private fun otherAppInCall(): Boolean {
-        if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return false
-        return try {
-            getSystemService(TelecomManager::class.java).isInCall &&
-                getSystemService(AudioManager::class.java).mode != AudioManager.MODE_RINGTONE
-        } catch (e: SecurityException) { false }
-    }
+    private fun otherAppInCall() = otherAppInCall(this)
 
     private fun refreshNotification() {
         val n = buildNotification()
@@ -138,6 +132,30 @@ class PhoneService : Service() {
         private const val ACTION_IDLE = "za.co.n2it.phone.IDLE"
         private const val ACTION_HANGUP = "za.co.n2it.phone.HANGUP"
         private const val ACTION_DND_OFF = "za.co.n2it.phone.DND_OFF"
+        private const val ACTION_DECLINE = "za.co.n2it.phone.DECLINE"
+        private const val ACTION_SILENCE = "za.co.n2it.phone.SILENCE"
+        const val ACTION_ANSWER = "za.co.n2it.phone.ANSWER"
+
+        /** True while another app has a call (GSM, WhatsApp and other apps that use Android's call system). A ringing
+         *  GSM call (audio mode RINGTONE) is skipped, so an ignored ring does not hold ours; our own calls are not
+         *  Telecom calls, so they never count. */
+        fun otherAppInCall(c: Context): Boolean {
+            if (c.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return false
+            return try {
+                c.getSystemService(TelecomManager::class.java).isInCall &&
+                    c.getSystemService(AudioManager::class.java).mode != AudioManager.MODE_RINGTONE
+            } catch (e: SecurityException) { false }
+        }
+
+        private fun action(c: Context, code: Int, what: String) = PendingIntent.getService(
+            c, code, Intent(c, PhoneService::class.java).setAction(what),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        /** Answer opens the app (Android only gives a call the microphone from the screen) and answers there. */
+        private fun answerIntent(c: Context) = PendingIntent.getActivity(
+            c, 3, Intent(c, MainActivity::class.java).setAction(ACTION_ANSWER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        private var lastCaller = ""; private var lastBusy = false
 
         private fun dndOff(c: Context) = PendingIntent.getService(
             c, 2, Intent(c, PhoneService::class.java).setAction(ACTION_DND_OFF),
@@ -163,15 +181,31 @@ class PhoneService : Service() {
             }
         }
 
-        fun notifyIncoming(c: Context, caller: String) {
+        /**
+         * Ringing call: Android's incoming-call notification with Decline and Answer, plus Silence. While another app's
+         * call is up ([busy]) it makes no sound of its own (the earpiece beeps instead) and says so.
+         */
+        fun notifyIncoming(c: Context, caller: String, busy: Boolean, silenced: Boolean = false) {
+            lastCaller = caller; lastBusy = busy
             val nm = c.getSystemService(NotificationManager::class.java)
-            nm.notify(ID_CALL, NotificationCompat.Builder(c, CH_CALL)
+            val person = Person.Builder().setName(caller.ifBlank { "Unknown" }).setImportant(true).build()
+            val b = NotificationCompat.Builder(c, CH_CALL)
                 .setSmallIcon(R.drawable.ic_stat_n2it)
-                .setContentTitle("Incoming call").setContentText(caller)
+                .setContentTitle(caller)
+                .setContentText(when { silenced -> "Incoming call · silenced"; busy -> "Incoming call · you're on another call"; else -> "Incoming call" })
                 .setCategory(NotificationCompat.CATEGORY_CALL).setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setFullScreenIntent(open(c), true).setContentIntent(open(c))
-                .setAutoCancel(true).setTimeoutAfter(45_000).build())
+                .setStyle(NotificationCompat.CallStyle.forIncomingCall(person, action(c, 4, ACTION_DECLINE), answerIntent(c)))
+                .setContentIntent(open(c)).setOngoing(true).setOnlyAlertOnce(true).setTimeoutAfter(45_000)
+            if (!silenced) b.addAction(0, "Silence", action(c, 5, ACTION_SILENCE))
+            // Android requires a full-screen intent for a call-style notification; while the phone is in use (e.g. on
+            // another call) it shows as a heads-up banner instead of taking over the screen. Over another call or once
+            // silenced it makes no sound of its own.
+            b.setFullScreenIntent(open(c), true)
+            if (busy || silenced) b.setSilent(true)
+            nm.notify(ID_CALL, b.build())
         }
+
+        fun silenceIncoming(c: Context) { if (lastCaller.isNotEmpty()) notifyIncoming(c, lastCaller, lastBusy, silenced = true) }
 
         fun clearIncoming(c: Context) {
             c.getSystemService(NotificationManager::class.java).cancel(ID_CALL)
