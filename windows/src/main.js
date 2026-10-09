@@ -153,8 +153,9 @@ ipcMain.handle('directory:load', async () => {
 })
 
 // Chromium's separate audio process is a known cause of "NotReadableError: Could not start audio source" on some
-// Windows PCs whose mic works in other apps; capture in the main process instead.
-app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess')
+// Windows PCs whose mic works in other apps; capture in the main process instead. Windows only: on Linux an audio
+// fault then takes the whole app down (main-thread crash on Omarchy/Hyprland, 2026-10-09).
+if (process.platform === 'win32') app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess')
 app.setAppUserModelId('za.co.n2it.softphone.desktop')   // Windows notifications need the installer's app id
 // ---- Window + notification area (owner 2026-10-08: like other softphones, closing or minimising keeps the phone
 // running in the notification area's hidden icons, so calls still ring) ----
