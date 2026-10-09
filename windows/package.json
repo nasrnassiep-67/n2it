@@ -1,6 +1,6 @@
 {
   "name": "n2it-phone-desktop",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "N2IT Phone desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
@@ -10,7 +10,7 @@
     "predist": "npm run bundle",
     "dist": "electron-builder --win nsis",
     "predist:linux": "npm run bundle",
-    "dist:linux": "electron-builder --linux AppImage deb",
+    "dist:linux": "electron-builder --linux AppImage deb pacman",
     "predist:mac": "npm run bundle",
     "dist:mac": "electron-builder --mac dmg --arm64 --x64"
   },
@@ -27,7 +27,7 @@
     "files": [
       "src/**"
     ],
-    "afterPack": "build/adhoc-sign.js",
+    "afterPack": "build/after-pack.js",
     "win": {
       "target": "nsis"
     },
@@ -51,7 +51,8 @@
     "linux": {
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "pacman"
       ],
       "category": "Telephony",
       "maintainer": "N2IT <support@n2it.co.za>"
@@ -68,6 +69,20 @@
     ],
     "nsis": {
       "include": "build/installer.nsh"
+    },
+    "pacman": {
+      "depends": [
+        "gtk3",
+        "nss",
+        "alsa-lib",
+        "libxss",
+        "libxtst",
+        "libnotify",
+        "libsecret",
+        "at-spi2-core",
+        "xdg-utils",
+        "util-linux-libs"
+      ]
     }
   },
   "author": {
