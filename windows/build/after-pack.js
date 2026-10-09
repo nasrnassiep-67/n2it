@@ -2,8 +2,9 @@
 // macOS: ad-hoc sign (adhoc-sign.js). Linux: put a small start script in front of the Electron binary, because
 // Chromium reads these switches before our main.js runs:
 //  - native Wayland when the desktop is Wayland (Omarchy/Hyprland, recent GNOME/KDE); X11 otherwise.
-//  - AppImage on Ubuntu 23.10+ (AppArmor blocks unprivileged user namespaces, and an AppImage can't ship a setuid
-//    chrome-sandbox): run without Chromium's sandbox instead of crashing at start. The .deb/.pacman keep the sandbox.
+//  - Ubuntu 23.10+ blocks unprivileged user namespaces (AppArmor). Chromium then needs a setuid chrome-sandbox, which
+//    an AppImage can't ship and the .deb install doesn't set (it tests namespaces as root, where they always work).
+//    In that case only, run without Chromium's sandbox instead of crashing at start. Arch/Omarchy are unaffected.
 const fs = require('fs')
 const path = require('path')
 const adhocSign = require('./adhoc-sign').default
@@ -12,7 +13,7 @@ const wrapper = (bin) => `#!/bin/bash
 HERE="$(dirname "$(readlink -f "$0")")"
 ARGS=()
 if [ -n "$WAYLAND_DISPLAY" ]; then ARGS+=(--ozone-platform-hint=auto --enable-wayland-ime); fi
-if [ -n "$APPIMAGE" ] && [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ]; then
+if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ] && [ ! -u "$HERE/chrome-sandbox" ]; then
   ARGS+=(--no-sandbox)
 fi
 exec "$HERE/${bin}" "\${ARGS[@]}" "$@"
