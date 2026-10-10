@@ -380,6 +380,13 @@ object SipManager {
         liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter
             c.isEchoCancellationEnabled = ownAec }
         conference()?.let { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
+        // A conference is mixed on this phone and its microphone/speaker run in the conference's own audio stream, which
+        // takes the limiter from the core setting, not from the calls (owner 2026-10-10: on speaker in a 3-way call
+        // both other parties heard themselves). Set it on the core, and rebuild that stream if it changed mid-conference.
+        if (core.isEchoLimiterEnabled != limiter) {
+            core.isEchoLimiterEnabled = limiter
+            conference()?.takeIf { it.isIn }?.let { c -> c.leave(); c.enter() }
+        }
         updateProximity()
     }
 
