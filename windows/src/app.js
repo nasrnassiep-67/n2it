@@ -19,13 +19,26 @@ const domain = (t) => (t ? `${t.trim().toLowerCase()}.${BASE}` : '')
 
 // Round keys like the Android app, with the letters under the digits on the dial pad
 const LETTERS = { 2: 'ABC', 3: 'DEF', 4: 'GHI', 5: 'JKL', 6: 'MNO', 7: 'PQRS', 8: 'TUV', 9: 'WXYZ', 0: '+' }
-for (const [padId, onKey] of [['pad', (k) => { $('num').value += k; $('num').focus() }], ['dpad', (k) => session?.sendDTMF(k)]]) {
+for (const [padId, onKey] of [['pad', (k) => { $('num').value += k; $('num').focus() }], ['dpad', (k) => sendDigit(k)]]) {
   for (const k of '123456789*0#') {
     const b = document.createElement('button'); b.textContent = k; b.onclick = () => onKey(k)
     if (padId === 'pad') b.append(Object.assign(document.createElement('small'), { textContent: LETTERS[k] || '' }))
     $(padId).append(b)
   }
 }
+/** Keypad digits during a call go INSIDE the audio (RFC 2833 / RTP telephone-event), like desk phones: JsSIP's
+ *  default (SIP INFO) is ignored by FreeSWITCH, so PIN prompts and IVR menus never heard the keys (2026-10-10). */
+function sendDigit(k) {
+  if (!session) return
+  try { session.sendDTMF(k, { transportType: 'RFC2833', duration: 160, interToneGap: 80 }) }
+  catch { try { session.sendDTMF(k) } catch {} }
+}
+// Typing digits on the computer keyboard during a call sends them too (e.g. a PIN), unless typing in a text field
+document.addEventListener('keydown', (e) => {
+  if (!session || e.ctrlKey || e.altKey || e.metaKey || !/^[0-9*#]$/.test(e.key)) return
+  if (e.target instanceof HTMLInputElement && e.target.id !== 'num') return
+  e.preventDefault(); sendDigit(e.key)
+})
 $('back').onclick = () => { $('num').value = $('num').value.slice(0, -1); $('num').focus() }
 $('num').onkeydown = (e) => { if (e.key === 'Enter') $('call').click() }
 $('keys').onclick = () => { const open = $('dpad').classList.contains('hidden'); show('dpad', open); $('keys').classList.toggle('on', open) }
