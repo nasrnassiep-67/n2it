@@ -1,6 +1,6 @@
 {
   "name": "n2it-phone-desktop",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "N2IT Phone desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {

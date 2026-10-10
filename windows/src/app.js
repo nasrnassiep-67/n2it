@@ -19,13 +19,26 @@ const domain = (t) => (t ? `${t.trim().toLowerCase()}.${BASE}` : '')
 
 // Round keys like the Android app, with the letters under the digits on the dial pad
 const LETTERS = { 2: 'ABC', 3: 'DEF', 4: 'GHI', 5: 'JKL', 6: 'MNO', 7: 'PQRS', 8: 'TUV', 9: 'WXYZ', 0: '+' }
-for (const [padId, onKey] of [['pad', (k) => { $('num').value += k; $('num').focus() }], ['dpad', (k) => session?.sendDTMF(k)]]) {
+for (const [padId, onKey] of [['pad', (k) => { $('num').value += k; $('num').focus() }], ['dpad', (k) => sendDigit(k)]]) {
   for (const k of '123456789*0#') {
     const b = document.createElement('button'); b.textContent = k; b.onclick = () => onKey(k)
     if (padId === 'pad') b.append(Object.assign(document.createElement('small'), { textContent: LETTERS[k] || '' }))
     $(padId).append(b)
   }
 }
+/** Keypad digits during a call go INSIDE the audio (RFC 2833 / RTP telephone-event), like desk phones: JsSIP's
+ *  default (SIP INFO) is ignored by FreeSWITCH, so PIN prompts and IVR menus never heard the keys (2026-10-10). */
+function sendDigit(k) {
+  if (!session) return
+  try { session.sendDTMF(k, { transportType: 'RFC2833', duration: 160, interToneGap: 80 }) }
+  catch { try { session.sendDTMF(k) } catch {} }
+}
+// Typing digits on the computer keyboard during a call sends them too (e.g. a PIN), unless typing in a text field
+document.addEventListener('keydown', (e) => {
+  if (!session || e.ctrlKey || e.altKey || e.metaKey || !/^[0-9*#]$/.test(e.key)) return
+  if (e.target instanceof HTMLInputElement && e.target.id !== 'num') return
+  e.preventDefault(); sendDigit(e.key)
+})
 $('back').onclick = () => { $('num').value = $('num').value.slice(0, -1); $('num').focus() }
 $('num').onkeydown = (e) => { if (e.key === 'Enter') $('call').click() }
 $('keys').onclick = () => { const open = $('dpad').classList.contains('hidden'); show('dpad', open); $('keys').classList.toggle('on', open) }
@@ -37,9 +50,23 @@ function signedIn(on) {
 }
 $('tenant').oninput = () => ($('domain').textContent = domain($('tenant').value))
 
+/** Retire a UA the user switched away from (or logged out of): de-register it first so the PBX stops sending its
+ *  calls here, then stop it. Its listeners are removed first, so its shutdown ("disconnected") can no longer
+ *  overwrite the new account's status line or touch the screen. */
+function retire(old) {
+  if (!old) return
+  try { old.removeAllListeners() } catch {}
+  let done = false
+  const stop = () => { if (done) return; done = true; try { old.stop() } catch {} }
+  try {
+    if (old.isRegistered()) { old.once('unregistered', stop); old.once('registrationFailed', stop); old.unregister(); setTimeout(stop, 3000) }
+    else stop()
+  } catch { stop() }
+}
+
 function connect() {
   const d = domain(acc.tenant)
-  ua?.stop()
+  retire(ua); ua = null
   if (typeof JsSIP === 'undefined') { status('Error: SIP library missing (reinstall the app)'); return }
   status('Connecting…')
   try { ua = new JsSIP.UA({
@@ -301,7 +328,7 @@ async function logOut(a) {
   if (key(a) !== key(acc)) { acc.saved = acc.saved.filter((x) => key(x) !== key(a)); await store.save(acc); renderAccounts(); return }
   const [next, ...rest] = acc.saved || []
   if (next) { await activate(next, rest); return }
-  ua?.stop(); await store.clear(); acc = null; directory = []
+  retire(ua); ua = null; await store.clear(); acc = null; directory = []
   show('settings', false); show('login', true); status('Not registered'); signedIn(false)
 }
 function renderAccounts() {
