@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.2.6**, **desktop 0.2.4** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
+Current versions: **Android 0.2.7**, **desktop 0.2.4** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
 
 | Feature | Android | Desktop | iOS |
 |---|:-:|:-:|:-:|
@@ -24,7 +24,7 @@ Current versions: **Android 0.2.6**, **desktop 0.2.4** (Windows, Mac, Linux), iO
 | Do Not Disturb, app only, always timed (1 h to 2 weeks), orange banner (0.1.8) | ✓ | ✓ | ✗ |
 | **Audio** | | | |
 | One audio button: phone / speaker / Bluetooth / headset, auto Bluetooth (car) | ✓ | mic + speaker panel | CallKit |
-| Echo cancellation tuned per phone, echo limiter on speaker | ✓ | browser AEC | ✓ |
+| Echo cancellation tuned per phone, strong echo limiter on speaker, also in conferences (0.2.7) | ✓ | browser AEC | ✓ |
 | Background voices filter (noise gate), Settings switch | ✓ | ✗ | ✗ |
 | Bluetooth: own echo canceller off (no static with earbuds) | ✓ | – | ✗ |
 | **Phone behaviour** | | | |
@@ -37,6 +37,8 @@ Current versions: **Android 0.2.6**, **desktop 0.2.4** (Windows, Mac, Linux), iO
 | Dark mode | system | ✓ | system |
 
 ## History (newest first)
+- Android 0.2.7 (2026-10-10): strong echo limiter on speaker (Linphone speakerphone values), also applied to a
+  conference mixed on the phone (3-way call on speaker: the others heard themselves).
 - Android 0.2.6 (2026-10-10): screen off at the ear (proximity wake lock) while a call is on the earpiece.
 - Android 0.2.5 (2026-10-10): Add participant / Transfer search company + phone contacts; numbers with spaces
   now ring (before, nothing rang and the first call stayed on hold); second call waits until the hold is done.
