@@ -79,6 +79,7 @@ object SipManager {
                     PhoneService.clearIncoming(appContext)
                     if (core.calls.none { it !== call && it.state == Call.State.IncomingReceived }) stopQuietRing()
                     userHeld.remove(call)
+                    consultHoldDone(call)
                     // Another call may still be up (held caller after a consult, or the rest of a conference).
                     if (liveCalls(except = call).isEmpty()) {
                         _call.value = null; _muted.value = false; routeChosen = false
@@ -104,6 +105,7 @@ object SipManager {
                     if (busy) quietRing()
                 }
                 else -> {
+                    if (state == Call.State.Paused) consultHoldDone(call)
                     if (state != Call.State.IncomingReceived && core.calls.none { it.state == Call.State.IncomingReceived }) stopQuietRing()
                     // Outgoing call placed, or incoming call answered: the user is in the app right now,
                     // so this is when Android lets the service take the microphone.
@@ -252,11 +254,21 @@ object SipManager {
         _registered.value = false; _status.value = "Not registered"; _recents.value = emptyList(); _voicemail.value = false
     }
 
-    fun call(number: String) {
-        if (!started || number.isBlank()) return
-        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
-        core.invite(if ('@' in number) "sip:$number" else "sip:$number@$domain")
+    /** Rings [number]; false when it could not be dialled (not registered, or not a valid number). */
+    fun call(number: String): Boolean {
+        val n = cleanNumber(number)
+        if (!started || n.isBlank()) return false
+        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return false
+        return core.invite(if ('@' in n) "sip:$n" else "sip:$n@$domain") != null
     }
+
+    /** "082 123-4567", "(012) 345 6789" → digits; a typed SIP address (with @) is only trimmed. */
+    fun cleanNumber(number: String) = number.trim().let { n -> if ('@' in n) n.filterNot { it.isWhitespace() } else n.filter { it in "+0123456789*#" } }
+
+    private val _notice = MutableStateFlow<String?>(null)
+    /** A short message for the call screen (e.g. the second call could not be placed); cleared by the screen. */
+    val notice: StateFlow<String?> = _notice
+    fun clearNotice() { _notice.value = null }
 
     fun answer() { (ringingCall() ?: core.currentCall)?.accept(); stopQuietRing(); PhoneService.clearIncoming(appContext) }
     private fun ringingCall() = core.calls.firstOrNull { it.state == Call.State.IncomingReceived }
@@ -479,14 +491,38 @@ object SipManager {
     fun blindTransfer(number: String) {
         val c = core.currentCall ?: core.calls.firstOrNull() ?: return
         val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
-        val target = Factory.instance().createAddress(if ('@' in number) "sip:$number" else "sip:$number@$domain") ?: return
+        val n = cleanNumber(number)
+        val target = n.takeIf { it.isNotBlank() }?.let { Factory.instance().createAddress(if ('@' in it) "sip:$it" else "sip:$it@$domain") }
+        if (target == null) { _notice.value = "Not a valid number"; return }
         c.transferTo(target)
     }
 
-    /** Attended transfer, step 1: put the caller on hold and ring [number]. */
+    /** Attended transfer, step 1: put the caller on hold and ring [number]. The second call is placed once the hold
+     *  has gone through (dialling while the first call is still "Pausing" could leave it on hold with nothing ringing);
+     *  if it cannot be placed the caller is taken off hold again and the screen says why. */
     fun consult(number: String) {
-        core.currentCall?.pause()
-        call(number)
+        val n = cleanNumber(number)
+        if (n.isBlank()) { _notice.value = "Not a valid number"; return }
+        val c = core.currentCall
+        if (c == null || c.state == Call.State.Paused) { placeConsult(n, null); return }
+        c.pause()
+        pendingConsult = n to c
+        main.postDelayed(consultFallback, 3000)   // the hold never confirmed: dial anyway
+    }
+    private var pendingConsult: Pair<String, Call>? = null
+    private val consultFallback = Runnable { pendingConsult?.let { (n, held) -> pendingConsult = null; placeConsult(n, held) } }
+    /** Called from onCallStateChanged: the held call reached Paused (or ended). */
+    private fun consultHoldDone(call: Call) {
+        val (n, held) = pendingConsult ?: return
+        if (held !== call) return
+        pendingConsult = null; main.removeCallbacks(consultFallback)
+        if (call.state in ended) return
+        placeConsult(n, held)
+    }
+    private fun placeConsult(n: String, held: Call?) {
+        if (call(n)) return
+        _notice.value = "Could not call $n"
+        if (held != null && held.state == Call.State.Paused && held !in userHeld) held.resume()
     }
 
     /** Add participant, step 1: in a conference, invite [number] straight in; otherwise hold the call and ring
@@ -495,7 +531,9 @@ object SipManager {
         val conf = conference()
         val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
         if (conf != null) {
-            val target = Factory.instance().createAddress(if ('@' in number) "sip:$number" else "sip:$number@$domain") ?: return
+            val n = cleanNumber(number)
+            val target = n.takeIf { it.isNotBlank() }?.let { Factory.instance().createAddress(if ('@' in it) "sip:$it" else "sip:$it@$domain") }
+            if (target == null) { _notice.value = "Not a valid number"; return }
             conf.addParticipant(target)
         } else consult(number)
     }

@@ -326,7 +326,10 @@ fun ContactsTab() {
     val ctx = LocalContext.current
     val all = remember { loadContacts(ctx) }
     var company by remember { mutableStateOf(emptyList<PhoneContact>()) }
-    LaunchedEffect(Unit) { company = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { loadCompanyContacts(ctx) } }
+    LaunchedEffect(Unit) {
+        company = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { loadCompanyContacts(ctx) }
+        companyCache = company
+    }
     var q by remember { mutableStateOf("") }
     fun matches(l: List<PhoneContact>) = l.filter { q.isBlank() || it.name.contains(q, true) || it.number.contains(q) }
     val companyList = matches(company)
@@ -574,6 +577,11 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
         onDismiss = { transferTo = null },
         onBlind = { SipManager.blindTransfer(it); transferTo = null },
         onConsult = { SipManager.consult(it); transferTo = null })
+    val notice by SipManager.notice.collectAsState()
+    val ctx = LocalContext.current
+    LaunchedEffect(notice) {
+        notice?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show(); SipManager.clearNotice() }
+    }
     if (adding) AddParticipantDialog(call.conference, onDismiss = { adding = false }, onAdd = { SipManager.addParticipant(it); adding = false })
 }
 
@@ -615,32 +623,69 @@ private fun AudioRouteButton() {
     }
 }
 
+/**
+ * Number box for Add participant and Transfer: type an extension or number, or search by name; the company address
+ * book and the phone's contacts that match are listed under it and a tap fills in the number.
+ */
+@Composable
+private fun NumberOrContact(target: String, onChange: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val phone = remember { loadContacts(ctx) }
+    var company by remember { mutableStateOf(companyCache) }
+    LaunchedEffect(Unit) {
+        if (companyCache.isEmpty()) {
+            company = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { loadCompanyContacts(ctx) }
+            companyCache = company
+        }
+    }
+    val q = target.trim()
+    val digits = q.filter { it.isDigit() }
+    fun matches(c: PhoneContact) = q.isBlank() || c.name.contains(q, true) ||
+        (digits.length >= 2 && c.number.filter { it.isDigit() }.contains(digits))
+    val list = (company.filter(::matches).map { it to true } + phone.filter(::matches).map { it to false }).take(60)
+    Column {
+        OutlinedTextField(target, onChange, label = { Text("Name, extension or number") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth())
+        if (list.isNotEmpty()) LazyColumn(Modifier.heightIn(max = 260.dp).padding(top = 4.dp)) {
+            items(list) { (c, isCompany) ->
+                ListItem(modifier = Modifier.clickable { onChange(SipManager.cleanNumber(c.number)) },
+                    leadingContent = { Icon(if (isCompany) Icons.Default.Business else Icons.Default.Person, null) },
+                    headlineContent = { Text(c.name) }, supportingContent = { Text(c.number) })
+            }
+        }
+    }
+}
+/** The company address book, loaded once per app run (the PBX is asked again after a restart). */
+private var companyCache: List<PhoneContact> = emptyList()
+/** What the Call / Transfer buttons dial: the typed number, or nothing when the box holds a name search. */
+private fun dialable(target: String) = SipManager.cleanNumber(target).takeIf { n -> n.isNotBlank() && target.none { it.isLetter() } || '@' in target }
+
 @Composable
 private fun AddParticipantDialog(inConference: Boolean, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
     var target by remember { mutableStateOf("") }
+    val number = dialable(target)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add participant") },
         text = { Column {
-            OutlinedTextField(target, { target = it }, label = { Text("Extension or number") }, singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+            NumberOrContact(target) { target = it }
             Spacer(Modifier.height(8.dp))
             Text(if (inConference) "They join the conference when they answer."
                 else "The current call goes on hold. Tap Merge calls once they answer.", style = MaterialTheme.typography.bodySmall)
         } },
-        confirmButton = { TextButton({ onAdd(target) }, enabled = target.isNotBlank()) { Text("Call") } },
+        confirmButton = { TextButton({ number?.let(onAdd) }, enabled = number != null) { Text("Call") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
 
 @Composable
 private fun TransferDialog(onDismiss: () -> Unit, onBlind: (String) -> Unit, onConsult: (String) -> Unit) {
     var target by remember { mutableStateOf("") }
+    val number = dialable(target)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Transfer to") },
-        text = { OutlinedTextField(target, { target = it }, label = { Text("Extension or number") }, singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)) },
-        confirmButton = { TextButton({ onBlind(target) }, enabled = target.isNotBlank()) { Text("Blind") } },
-        dismissButton = { Row { TextButton({ onConsult(target) }, enabled = target.isNotBlank()) { Text("Consult first") }
+        text = { NumberOrContact(target) { target = it } },
+        confirmButton = { TextButton({ number?.let(onBlind) }, enabled = number != null) { Text("Blind") } },
+        dismissButton = { Row { TextButton({ number?.let(onConsult) }, enabled = number != null) { Text("Consult first") }
             TextButton(onDismiss) { Text("Cancel") } } })
 }
