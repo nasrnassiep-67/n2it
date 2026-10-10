@@ -83,7 +83,7 @@ object SipManager {
                     // Another call may still be up (held caller after a consult, or the rest of a conference).
                     if (liveCalls(except = call).isEmpty()) {
                         _call.value = null; _muted.value = false; routeChosen = false
-                        releaseFocus()
+                        releaseFocus(); updateProximity()
                         if (core.callsNb == 0) PhoneService.setInCall(appContext, false)
                     } else publish()
                 }
@@ -167,6 +167,7 @@ object SipManager {
 
     /** Mirror the calls into UI state: one call, a held call plus a consult call, or a conference. */
     private fun publish() {
+        updateProximity()
         val calls = liveCalls()
         val conf = conference()
         if (conf != null) {
@@ -379,6 +380,23 @@ object SipManager {
         liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter
             c.isEchoCancellationEnabled = ownAec }
         conference()?.let { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
+        updateProximity()
+    }
+
+    // Phone at the ear: screen off and touch ignored, so the cheek cannot press Hang up, Hold or Add participant
+    // (owner 2026-10-10). Only on the earpiece while a call is up or being dialled; on speaker, Bluetooth or a headset
+    // the screen stays usable. Android's proximity wake lock switches the screen back on when the phone moves away.
+    private var proximity: android.os.PowerManager.WakeLock? = null
+    private fun updateProximity() {
+        val want = started && _route.value == AudioRoute.Earpiece &&
+            liveCalls().any { it.state != Call.State.IncomingReceived }
+        val lock = proximity ?: appContext.getSystemService(android.os.PowerManager::class.java)
+            ?.takeIf { it.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK) }
+            ?.newWakeLock(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "n2it:proximity")
+            ?.apply { setReferenceCounted(false) }
+            ?.also { proximity = it } ?: return
+        if (want && !lock.isHeld) lock.acquire(4 * 3600 * 1000L)   // safety cap; released when the call ends
+        else if (!want && lock.isHeld) lock.release(android.os.PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
     }
 
     // Background voices (owner 2026-10-08: on speaker, people talking a few paces away came through to the other side).
