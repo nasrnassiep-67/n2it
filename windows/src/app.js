@@ -37,9 +37,23 @@ function signedIn(on) {
 }
 $('tenant').oninput = () => ($('domain').textContent = domain($('tenant').value))
 
+/** Retire a UA the user switched away from (or logged out of): de-register it first so the PBX stops sending its
+ *  calls here, then stop it. Its listeners are removed first, so its shutdown ("disconnected") can no longer
+ *  overwrite the new account's status line or touch the screen. */
+function retire(old) {
+  if (!old) return
+  try { old.removeAllListeners() } catch {}
+  let done = false
+  const stop = () => { if (done) return; done = true; try { old.stop() } catch {} }
+  try {
+    if (old.isRegistered()) { old.once('unregistered', stop); old.once('registrationFailed', stop); old.unregister(); setTimeout(stop, 3000) }
+    else stop()
+  } catch { stop() }
+}
+
 function connect() {
   const d = domain(acc.tenant)
-  ua?.stop()
+  retire(ua); ua = null
   if (typeof JsSIP === 'undefined') { status('Error: SIP library missing (reinstall the app)'); return }
   status('Connecting…')
   try { ua = new JsSIP.UA({
@@ -301,7 +315,7 @@ async function logOut(a) {
   if (key(a) !== key(acc)) { acc.saved = acc.saved.filter((x) => key(x) !== key(a)); await store.save(acc); renderAccounts(); return }
   const [next, ...rest] = acc.saved || []
   if (next) { await activate(next, rest); return }
-  ua?.stop(); await store.clear(); acc = null; directory = []
+  retire(ua); ua = null; await store.clear(); acc = null; directory = []
   show('settings', false); show('login', true); status('Not registered'); signedIn(false)
 }
 function renderAccounts() {
