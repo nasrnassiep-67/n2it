@@ -134,3 +134,21 @@ Add account (company code, extension, password; becomes active, previous stays l
 confirm ("removed from this phone"); logging out of the active one switches to the next, or to the sign-in screen
 when none is left. Switching/adding/logging out is disabled during a call. DND and device settings are per phone,
 not per account. Android reference: Account.kt (others/activate/remove), Ui.kt AccountsSection/AddAccountDialog.
+
+## Android 0.2.5 + 0.2.6 (voip-server session, 2026-10-10): please check / match on iOS
+Feature list for all platforms now in FEATURES.md (update it with each release).
+- **Screen off at the ear (0.2.6).** Owner: with the phone at his ear the touchscreen stayed on and his cheek
+  pressed buttons (calls held / hung up / Add participant). Android now holds a proximity wake lock while a call is
+  up or dialling on the earpiece (not on speaker, Bluetooth or headset). On iOS, calls reported to CallKit normally
+  get this from the system, but check on a real iPhone during a call in OUR app's call screen: hold the phone to
+  your ear and see if the screen goes black. If it does not, set `UIDevice.current.isProximityMonitoringEnabled =
+  true` when a call connects on the receiver and `false` when it ends or the route changes to speaker/Bluetooth.
+  Android reference: SipManager.kt updateProximity().
+- **Add participant / Transfer (0.2.5).** The number box also searches the company address book and phone contacts
+  (tap one to fill in the number). Numbers are cleaned before dialling (spaces broke the SIP address on Android:
+  nothing rang and the first call stayed on hold). The second call is placed only after the hold has gone through;
+  if it cannot be placed the first call is resumed and a message shows. Android reference: Ui.kt NumberOrContact,
+  SipManager.kt consult()/cleanNumber().
+- **1002 iPhone does not ring (2026-10-10).** The PBX had no registration from the iPhone app (last REGISTER 12:09
+  from 197.245.66.36), only the Snom and the desktop app, even with the app said to be open. Please check the app
+  stays registered while in the foreground. Push stays parked until Monday (APNs key + enable-push.sh 1002).
