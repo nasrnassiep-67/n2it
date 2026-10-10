@@ -407,6 +407,17 @@ object SipManager {
         core.config.setInt("sound", "noisegate", if (_gate.value) 1 else 0)
         core.config.setFloat("sound", "ng_thres", 0.03f)
         core.config.setFloat("sound", "ng_floorgain", 0.03f)
+        // Echo limiter strength for the loudspeaker (owner 2026-10-10: on speaker the other side still heard
+        // themselves). Without these the limiter runs on mediastreamer's mild defaults and hardly turns the microphone
+        // down. Values recommended by Linphone for speakerphone: while the other side's voice plays (el_thres), the
+        // microphone drops hard (el_force) and stays down for 600 ms after they stop (el_sustain), so the tail of their
+        // voice in the room is not sent back. Only used on calls with the limiter on, i.e. on Speaker (applyRoute).
+        core.config.setString("sound", "el_type", "mic")
+        core.config.setFloat("sound", "el_thres", 0.03f)
+        core.config.setFloat("sound", "el_force", 100000f)
+        core.config.setFloat("sound", "el_speed", 0.03f)
+        core.config.setInt("sound", "el_sustain", 600)
+        core.config.setFloat("sound", "el_transmit_thres", 1.7f)
     }
     fun setBackgroundFilter(on: Boolean) {
         _gate.value = on
