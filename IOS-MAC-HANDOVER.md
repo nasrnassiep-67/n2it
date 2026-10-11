@@ -152,3 +152,23 @@ Feature list for all platforms now in FEATURES.md (update it with each release).
 - **1002 iPhone does not ring (2026-10-10).** The PBX had no registration from the iPhone app (last REGISTER 12:09
   from 197.245.66.36), only the Snom and the desktop app, even with the app said to be open. Please check the app
   stays registered while in the foreground. Push stays parked until Monday (APNs key + enable-push.sh 1002).
+
+## Conference cards, Android 0.2.8 + desktop 0.2.5 (voip-server session, 2026-10-11, branch `conference-cards`): please match on iOS and Mac
+Owner's screenshot (Android 0.2.7, 3-way call): the call screen showed "1002, +27735779444" as one 34sp line that
+wrapped over itself. Owner wants the screen split per caller. **iPhone and Mac are parked for now (owner): build this
+when the owner asks.**
+- **Conference screen.** Keep the "Conference · N people" line; in place of the big name/number, one card per other
+  person. Up to 4 people the cards share the space between that line and the buttons evenly ("split screen"); more
+  than 4, or while the keypad is open, a scrolling list of short cards.
+- **Each card:** round badge with the first letter of the name (person icon for a bare number), the name (company
+  address book first, then phone contacts), the number underneath in local form, a status (Talking green /
+  Ringing… amber / On hold grey), and a small red hang-up that drops **only that person**. Everyone else stays on;
+  the big red button still ends the whole conference.
+- **Number format:** +27735779444 / 27735779444 -> `073 577 9444`; 10-digit 0-numbers the same; extensions as they are.
+- **Desk phones are not affected:** the conference is mixed in our app; other people's phones just see one normal call.
+- iOS today: `Views.swift` shows `sip.participants` joined (line ~188 label); `SipManager.swift` ~415 builds
+  `participants` from `remoteAddress.username`. Needs per-call state + Call-ID to drop one person (`call.terminate()`
+  on that participant's call; Linphone keeps the rest of the local conference).
+- Android reference: Ui.kt ConferenceCards / ParticipantCard / displayNumber / rememberContactName,
+  SipManager.kt Participant + dropParticipant(). Desktop (Windows/Linux, and the Mac .dmg when it is next built):
+  windows/src/app.js renderConf() / displayNumber() / confName(), styles `.pcard` in index.html.

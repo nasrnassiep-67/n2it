@@ -16,7 +16,11 @@ import org.linphone.core.*
 import org.linphone.core.Account as LpAccount
 
 data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false,
-                    val conference: Boolean = false, val participants: List<String> = emptyList())
+                    val conference: Boolean = false, val participants: List<Participant> = emptyList())
+/** One other person in a conference (the conference screen gives each one a card). [id] is the SIP Call-ID. */
+data class Participant(val id: String, val number: String, val status: Status) {
+    enum class Status { Talking, Ringing, OnHold }
+}
 data class RecentCall(val number: String, val time: Long, val incoming: Boolean, val missed: Boolean)
 
 /** Where call audio goes: the phone's earpiece, the loudspeaker, a Bluetooth device (car kit, headset) or a wired headset. */
@@ -171,9 +175,15 @@ object SipManager {
         val calls = liveCalls()
         val conf = conference()
         if (conf != null) {
-            val names = calls.filter { it.conference != null }.map { it.remoteAddress.username ?: "Unknown" }
-            _call.value = CallInfo(names.joinToString(", "), Call.State.StreamsRunning, false,
-                consulting = calls.any { it.conference == null }, conference = true, participants = names)
+            val people = calls.filter { it.conference != null }.map { c ->
+                Participant(c.callLog.callId ?: c.remoteAddress.asStringUriOnly(), c.remoteAddress.username ?: "Unknown", when (c.state) {
+                    Call.State.OutgoingInit, Call.State.OutgoingProgress, Call.State.OutgoingRinging, Call.State.OutgoingEarlyMedia -> Participant.Status.Ringing
+                    Call.State.Paused, Call.State.Pausing, Call.State.PausedByRemote -> Participant.Status.OnHold
+                    else -> Participant.Status.Talking
+                })
+            }
+            _call.value = CallInfo(people.joinToString(", ") { it.number }, Call.State.StreamsRunning, false,
+                consulting = calls.any { it.conference == null }, conference = true, participants = people)
             return
         }
         val call = core.currentCall ?: calls.firstOrNull() ?: return
@@ -330,6 +340,10 @@ object SipManager {
         val c = core.currentCall
         if (c != null && c.conference == null) { c.terminate(); return }
         conference()?.terminate() ?: liveCalls().firstOrNull()?.terminate()
+    }
+    /** Conference: hang up on one person ([Participant.id]); everyone else stays connected. */
+    fun dropParticipant(id: String) {
+        liveCalls().firstOrNull { it.conference != null && (it.callLog.callId ?: it.remoteAddress.asStringUriOnly()) == id }?.terminate()
     }
     fun sendDigit(d: Char) { core.currentCall?.sendDtmf(d) }
     fun toggleMute() { core.isMicEnabled = !core.isMicEnabled; _muted.value = !core.isMicEnabled }

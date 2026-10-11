@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.2.7**, **desktop 0.2.4** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
+Current versions: **Android 0.2.8**, **desktop 0.2.5** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
 
 | Feature | Android | Desktop | iOS |
 |---|:-:|:-:|:-:|
@@ -17,6 +17,7 @@ Current versions: **Android 0.2.7**, **desktop 0.2.4** (Windows, Mac, Linux), iO
 | Hold, mute, keypad during a call (RFC 2833 digits) | ✓ | ✓ | ✓ |
 | Blind and attended transfer | ✓ | ✓ | ✓ |
 | Add participant + merge into a conference (mixed on the phone) | ✓ | ✓ | ✓ |
+| Conference screen: one card per person (name, number, status), drop one person (0.2.8 / desktop 0.2.5) | ✓ | ✓ | ✗ |
 | Add participant / Transfer: pick from company and phone contacts, typed numbers cleaned (0.2.5) | ✓ | ✗ | ✗ |
 | Call waiting: second call beeps instead of ringing over the current call | ✓ | ✓ | CallKit |
 | Auto hold while a GSM / WhatsApp / Teams call is up, resume after | ✓ | ✓ (mic in use) | CallKit |

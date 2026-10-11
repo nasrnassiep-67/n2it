@@ -147,8 +147,12 @@ function refresh() {
   const held = session.isOnHold().local
   $('hold').classList.toggle('on', held); $('mute').classList.toggle('on', muted)
   const inConf = mix?.calls.length > 1
-  $('who').textContent = inConf ? mix.calls.map(user).join(', ') : nameOf(user(session), session.remote_identity.display_name)
-  $('who-av').textContent = inConf ? mix.calls.length + 1 : initial($('who').textContent)
+  show('who', !inConf); show('who-av', !inConf); show('conf', inConf)
+  if (inConf) renderConf()
+  else {
+    $('who').textContent = nameOf(user(session), session.remote_identity.display_name)
+    $('who-av').textContent = initial($('who').textContent)
+  }
   appShell.state({ inCall: true })
   tick()
   $('state').textContent = inConf ? `Conference · ${mix.calls.length + 1} people` + (calls.length > mix.calls.length ? ' (+1 ringing)' : '')
@@ -584,6 +588,44 @@ store.load().then(async (a) => {
   if (a) { acc = a; show('login', false); show('phone', true); connect(); renderDnd(); signedIn(true) }
   dialFromLink(await links.pending())
 })
+
+// ---- Conference cards: one per person, with a hang-up for that person only ----
+/** South African numbers as people write them: +27735779444 -> 073 577 9444. Extensions unchanged. */
+function displayNumber(n) {
+  const d = n.replace(/\D/g, '')
+  const local = d.length === 11 && d.startsWith('27') && /^\+?27/.test(n) ? '0' + d.slice(2) : d.length === 10 && d.startsWith('0') && !/[a-z]/i.test(n) ? d : null
+  return local ? `${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}` : n
+}
+/** Company-book name for a number, trying the +27 / 27 / 0 spellings. */
+function confName(n) {
+  const d = n.replace(/[^0-9]/g, ''), local = d.length === 11 && d.startsWith('27') ? '0' + d.slice(2) : d
+  const tries = [n, d, local, local.startsWith('0') ? '+27' + local.slice(1) : null, local.startsWith('0') ? '27' + local.slice(1) : null]
+  for (const t of tries) if (t && names.get(t)) return names.get(t)
+  return null
+}
+function renderConf() {
+  const box = $('conf'), people = [...mix.calls, ...calls.filter((c) => !mix.calls.includes(c))]
+  box.classList.toggle('few', people.length <= 3)
+  box.replaceChildren(...people.map((s) => {
+    const num = user(s), name = confName(num) || (s.remote_identity.display_name && s.remote_identity.display_name !== num ? s.remote_identity.display_name : null)
+    const title = name || displayNumber(num)
+    const st = mix.calls.includes(s) ? ['talking', 'Talking'] : s.isEstablished() ? ['', 'Waiting · press Merge'] : ['ringing', 'Ringing…']
+    const card = document.createElement('div'); card.className = 'pcard'
+    const av = document.createElement('div'); av.className = 'pav'
+    if (/[a-z]/i.test(title)) av.textContent = initial(title); else av.innerHTML = '<svg class="i"><use href="#i-person"/></svg>'
+    const info = document.createElement('div'); info.className = 'pinfo'
+    const nm = document.createElement('div'); nm.className = 'pname'; nm.textContent = title
+    const sub = document.createElement('div'); sub.className = 'psub'
+    if (name) sub.append(displayNumber(num) + ' · ')
+    const stEl = document.createElement('span'); stEl.className = 'pst ' + st[0]; stEl.textContent = st[1]; sub.append(stEl)
+    info.append(nm, sub)
+    const drop = document.createElement('button'); drop.className = 'end pdrop'; drop.title = 'Hang up on ' + title
+    drop.innerHTML = '<svg class="i"><use href="#i-end"/></svg>'
+    drop.onclick = () => { if (!s.isEnded()) s.terminate() }   // 'ended' -> end(s) rebuilds the mix for whoever is left
+    card.append(av, info, drop)
+    return card
+  }))
+}
 
 // ---- Call timer and caller names ----
 const initial = (t) => (/[a-z]/i.test(t) ? t.trim()[0].toUpperCase() : '#')
