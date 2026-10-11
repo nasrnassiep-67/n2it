@@ -1,0 +1,129 @@
+/* N2IT services panel - standalone styles (pair with n2it-services.js).
+   The panel is self-contained; placing it beside the site's login card is done per site (see README.md).
+   Colours: navy #0f3d80, hover #145ab6, accent #8db8ff. */
+
+/* Services panel (html.n2it-ads is set by N2ITServices.mount) */
+#n2it_services {
+	box-sizing: border-box;
+	width: min(420px, calc(100vw - 32px));
+	margin: 24px auto 8px;
+	padding: 24px;
+	text-align: start;
+	color: #ffffff;
+	background: rgba(10, 42, 90, 0.62);
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	border-radius: 6px;
+	box-shadow: 0 1px 20px rgba(0, 0, 0, 0.25);
+	-webkit-backdrop-filter: blur(6px);
+	backdrop-filter: blur(6px);
+}
+#n2it_services .n2it-svc-kicker {
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: #8db8ff;
+}
+#n2it_services .n2it-svc-title {
+	margin: 6px 0 6px;
+	font-size: 22px;
+	line-height: 1.25;
+	font-weight: 700;
+	color: #ffffff;
+}
+#n2it_services .n2it-svc-text {
+	margin: 0 0 18px;
+	font-size: 14px;
+	line-height: 1.5;
+	color: rgba(255, 255, 255, 0.78);
+}
+#n2it_services .n2it-svc-badges {
+	list-style: none;
+	margin: -4px 0 18px;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+#n2it_services .n2it-svc-badges li {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px 6px 10px;
+	background: #ffffff;
+	color: #0f3d80;
+	border-radius: 999px;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+#n2it_services .n2it-svc-badges svg { width: 16px; height: 16px; stroke-width: 2.6; color: #1a8a4a; }
+#n2it_services .n2it-svc-grid {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+#n2it_services .n2it-svc-grid li {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 12px;
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 6px;
+}
+/* Odd number of services: the last tile spans both columns so the grid ends square */
+#n2it_services .n2it-svc-grid li:last-child:nth-child(odd) { grid-column: 1 / -1; }
+#n2it_services .n2it-svc-icon {
+	flex: none;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 8px;
+	background: rgba(141, 184, 255, 0.16);
+	color: #8db8ff;
+}
+#n2it_services .n2it-svc-icon svg { width: 22px; height: 22px; }
+#n2it_services .n2it-svc-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#n2it_services .n2it-svc-body strong { font-size: 13.5px; line-height: 1.3; font-weight: 700; color: #ffffff; }
+#n2it_services .n2it-svc-body > span { font-size: 12.5px; line-height: 1.4; color: rgba(255, 255, 255, 0.72); }
+#n2it_services .n2it-svc-cta {
+	display: inline-block;
+	margin-top: 18px;
+	padding: 10px 18px;
+	background: #ffffff;
+	color: #0f3d80 !important;
+	border-radius: 3px;
+	font-weight: 700;
+	text-decoration: none !important;
+	transition: background .12s;
+}
+#n2it_services .n2it-svc-cta:hover { background: #e6edf7; }
+
+/* Wide panel (beside the card): bigger padding and title. Add class n2it-svc-wide to the aside, or
+   wrap in your own media query - see README.md. */
+#n2it_services.n2it-svc-wide { width: auto; margin: 0; padding: 30px; }
+#n2it_services.n2it-svc-wide .n2it-svc-title { font-size: 26px; }
+
+/* Very wide screens: wider panel, three columns, so 12 services fit in four rows without scrolling */
+@media (min-width: 1500px) {
+	#n2it_services.n2it-svc-wide { flex-basis: 860px; max-width: 860px; }
+	#n2it_services.n2it-svc-wide .n2it-svc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+	#n2it_services.n2it-svc-wide .n2it-svc-grid li:last-child:nth-child(odd) { grid-column: auto; }
+}
+
+/* Phones: titles only, so the list stays short */
+@media (max-width: 480px) {
+	#n2it_services { padding: 18px; }
+	#n2it_services .n2it-svc-title { font-size: 19px; }
+	#n2it_services .n2it-svc-grid li { padding: 10px; gap: 10px; align-items: center; }
+	#n2it_services .n2it-svc-icon { width: 30px; height: 30px; }
+	#n2it_services .n2it-svc-icon svg { width: 18px; height: 18px; }
+	#n2it_services .n2it-svc-body > span { display: none; }
+	#n2it_services .n2it-svc-body strong { font-size: 12.5px; }
+}

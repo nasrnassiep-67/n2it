@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <!-- N2IT UniFi sign-in artwork (same style as voip.n2it.co.za / Webuzo): cloud, WiFi signal, network switch (left),
+       access point, network topology, laptop on WiFi (right), linked towards the sign-in box by dashed network lines. -->
+  <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <!-- network lines -->
+    <g stroke-opacity="0.13" stroke-width="2" stroke-dasharray="2 10">
+      <path d="M345 185 C 450 190, 520 260, 580 330"/>
+      <path d="M300 600 C 420 600, 500 560, 580 520"/>
+      <path d="M414 425 C 480 425, 530 425, 580 425"/>
+      <path d="M1255 215 C 1150 220, 1080 270, 1020 330"/>
+      <path d="M1330 600 C 1200 600, 1100 560, 1020 520"/>
+      <path d="M1166 425 C 1110 425, 1060 425, 1020 425"/>
+    </g>
+    <g fill="#ffffff" fill-opacity="0.18" stroke="none">
+      <circle cx="580" cy="330" r="5"/><circle cx="580" cy="520" r="5"/><circle cx="580" cy="425" r="5"/>
+      <circle cx="1020" cy="330" r="5"/><circle cx="1020" cy="520" r="5"/><circle cx="1020" cy="425" r="5"/>
+    </g>
+
+    <g stroke-opacity="0.2" stroke-width="3.5">
+      <!-- cloud with up/down sync arrows -->
+      <path d="M170 235 H320 A45 45 0 0 0 322 145 A65 65 0 0 0 200 125 A60 60 0 0 0 170 235 Z"/>
+      <path d="M220 200 l15 -15 l15 15 M235 185 v32 M262 186 l15 15 l15 -15 M277 201 v-32" stroke-opacity="0.16"/>
+
+      <!-- WiFi signal -->
+      <path d="M300 418 A94 94 0 0 1 432 418"/>
+      <path d="M322 442 A62 62 0 0 1 410 442" stroke-opacity="0.18"/>
+      <path d="M344 466 A31 31 0 0 1 388 466" stroke-opacity="0.16"/>
+      <circle cx="366" cy="488" r="7" fill="#ffffff" fill-opacity="0.2" stroke="none"/>
+
+      <!-- network switch with patch cables -->
+      <rect x="100" y="560" width="210" height="64" rx="9"/>
+      <g stroke-opacity="0.16">
+        <rect x="120" y="580" width="18" height="16" rx="2"/><rect x="146" y="580" width="18" height="16" rx="2"/>
+        <rect x="172" y="580" width="18" height="16" rx="2"/><rect x="198" y="580" width="18" height="16" rx="2"/>
+        <rect x="224" y="580" width="18" height="16" rx="2"/><rect x="250" y="580" width="18" height="16" rx="2"/>
+      </g>
+      <g fill="#ffffff" fill-opacity="0.2" stroke="none">
+        <circle cx="290" cy="584" r="4"/><circle cx="290" cy="598" r="4"/>
+      </g>
+      <path d="M129 624 v40 q0 14 14 14 h40 M181 624 v70 M233 624 v40 q0 14 -14 14 h-10" stroke-opacity="0.14"/>
+
+      <!-- ceiling access point (round puck) radiating signal -->
+      <circle cx="1355" cy="205" r="62"/>
+      <circle cx="1355" cy="205" r="40" stroke-opacity="0.14"/>
+      <circle cx="1355" cy="205" r="7" fill="#ffffff" fill-opacity="0.22" stroke="none"/>
+      <path d="M1262 150 A108 108 0 0 0 1262 260 M1448 150 A108 108 0 0 1 1448 260" stroke-opacity="0.16"/>
+      <path d="M1236 128 A140 140 0 0 0 1236 282 M1474 128 A140 140 0 0 1 1474 282" stroke-opacity="0.12"/>
+
+      <!-- network topology: gateway linked to three nodes -->
+      <path d="M1250 425 L1320 372 M1250 425 L1330 440 M1250 425 L1300 492" stroke-opacity="0.16"/>
+      <path d="M1320 372 L1330 440 L1300 492" stroke-opacity="0.12"/>
+      <rect x="1214" y="401" width="72" height="48" rx="10"/>
+      <circle cx="1320" cy="372" r="15"/>
+      <circle cx="1330" cy="440" r="15"/>
+      <circle cx="1300" cy="492" r="15"/>
+
+      <!-- laptop on WiFi -->
+      <rect x="1318" y="590" width="150" height="96" rx="8"/>
+      <path d="M1296 704 h194 l-14 -18 h-166 z"/>
+      <path d="M1368 640 A38 38 0 0 1 1418 640 M1380 654 A20 20 0 0 1 1406 654" stroke-opacity="0.16"/>
+      <circle cx="1393" cy="666" r="4" fill="#ffffff" fill-opacity="0.2" stroke="none"/>
+    </g>
+  </g>
+</svg>
