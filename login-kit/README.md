@@ -31,7 +31,7 @@ The main piece is the **services panel**: 12 N2IT services, "Resellers welcome" 
    ```
 3. Lay the card and panel out like the Nextcloud page:
    - **≥ 1100px wide:** side by side, card 420px, 48px gap, panel `flex: 0 1 620px; min-width: 520px`. Add class `n2it-svc-wide` to the panel at this size.
-   - **≥ 1500px:** the CSS widens a `.n2it-svc-wide` panel to 860px with 3 columns, so the 12 services fit in 4 rows.
+   - **≥ 1500px:** the CSS widens a `.n2it-svc-wide` panel to 860px with 3 columns, so the 15 services fit in 5 rows (tiles are a little tighter there so the panel still fits a 1080p screen).
    - **Narrower:** the panel stacks under the card at the card's width (default CSS). On phones it shows titles only.
 
    The usual way: turn the common parent of card and panel into a wrapping flex row, and give the footer `flex-basis: 100%`. See `#body-login.n2it-ads` in `nextcloud/n2itlogin/css/n2it-login.css`.

@@ -115,6 +115,11 @@
 	#n2it_services.n2it-svc-wide { flex-basis: 860px; max-width: 860px; }
 	#n2it_services.n2it-svc-wide .n2it-svc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 	#n2it_services.n2it-svc-wide .n2it-svc-grid li:last-child:nth-child(odd) { grid-column: auto; }
+	/* 15 services = 5 rows: slightly tighter tiles so the panel still fits a 1080p screen */
+	#n2it_services.n2it-svc-wide { padding-block: 24px; }
+	#n2it_services.n2it-svc-wide .n2it-svc-text { margin-bottom: 14px; }
+	#n2it_services.n2it-svc-wide .n2it-svc-grid { gap: 8px; }
+	#n2it_services.n2it-svc-wide .n2it-svc-grid li { padding: 10px 12px; }
 }
 
 /* Phones: titles only, so the list stays short */
