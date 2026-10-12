@@ -200,3 +200,21 @@ only re-registered at the next 10 min refresh, so the PBX had no live contact. 0
 REGISTER should show on the PBX within seconds of opening the app. Installed on the owner's iPhone 17.
 While the app is in the background or the phone is locked, iOS will not keep a SIP connection open: the iPhone can
 only ring then through VoIP push (APNs key + enable-push.sh 1002, still parked). Team ID is now 8URJCQ48GM (PR #13).
+
+## Android 0.2.10 ring vibration + Snom SRTP calls (voip-server session, 2026-10-12, branch `ring-vibrate`): please CHECK on iOS
+Owner on 1000 (n2it): calls "only reached the phone on Sound", never on Vibrate / Silent. Two separate causes found:
+- **Vibration (Android bug, fixed in 0.2.10):** the Android app played a ringtone but never used the vibration motor (no
+  VIBRATE permission), so on Vibrate it gave no sign apart from the screen. 0.2.10 vibrates like the dialler: Vibrate mode
+  always, Sound mode only with "Vibrate for calls", Silent never; stops on answer / decline / Silence / answered elsewhere.
+  **iOS should not have this bug:** every incoming call goes through CallKit (SipManager.swift `sipIncoming` ->
+  CallKitManager `reportNewIncomingCall`), and CallKit rings and vibrates per Settings > Sounds & Haptics.
+  Please confirm on a device, app in background AND in foreground: Ring mode rings (+ haptics if "Play Haptics in Ring
+  Mode"); Silent switch on: no sound, vibrates only if "Play Haptics in Silent Mode" is on. Nothing to port if so.
+- **Calls from Snom desk phones (server log, not a phone setting):** a Snom (n2it 1002, Snom 715) offers RTP/SAVP with SRTP
+  mandatory, so the PBX rings the other extension with RTP/SAVP + 11 a=crypto lines (AEAD_AES_256_GCM_8 first,
+  AES_CM_128_HMAC_SHA1_80 further down). Android 0.2.6 answered those with **488** (12:52-13:00, never rang); 0.2.9 accepts
+  the identical offer (test 13:14: 180 in 0.3 s, answered). iOS has the same setting (SRTP preferred, not mandatory,
+  SipManager.swift ~223). **Please test an iPhone against a mandatory-SRTP call:** have a Snom (or the server, see
+  HANDOVER.md "ANDROID MISSED INTERNAL CALLS" for the originate command) call the iPhone's extension. Expected: rings. If the
+  iPhone answers 488 the server log shows `[terminated][488]` / INCOMPATIBLE_DESTINATION on its leg; tell the voip-server
+  session and we fix it on whichever side it needs.
