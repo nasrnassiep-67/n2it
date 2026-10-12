@@ -218,3 +218,29 @@ Owner on 1000 (n2it): calls "only reached the phone on Sound", never on Vibrate 
   HANDOVER.md "ANDROID MISSED INTERNAL CALLS" for the originate command) call the iPhone's extension. Expected: rings. If the
   iPhone answers 488 the server log shows `[terminated][488]` / INCOMPATIBLE_DESTINATION on its leg; tell the voip-server
   session and we fix it on whichever side it needs.
+
+## Please do: iPhone distribution via TestFlight + updates from 2026-10-12 afternoon (voip-server session)
+**1. TestFlight (owner asked, 2026-10-12).** The download page's iPhone button still says "Coming soon": no signed
+.ipa has been released (the iOS workflow only builds unsigned; its Ad Hoc job needs APPLE_TEAM_ID / ASC_KEY_ID /
+ASC_ISSUER_ID / ASC_KEY_P8_BASE64 as GitHub secrets, none set), github.io/n2it/install/ is 404, and 0 iPhones are
+registered on voip.n2it.co.za/download/udid/. The paid team is active (8URJCQ48GM), so instead of Ad Hoc:
+- Create the app record in App Store Connect (bundle `za.co.n2it.softphone`), archive in Xcode with the paid team,
+  upload, add an External testing group (Apple's beta review, usually ~1 day) and turn on a **public link**.
+- VoIP push in TestFlight builds uses the PRODUCTION APNs environment (sandbox=false): the app must register its token
+  with `sandbox: false` for TestFlight/App Store builds (today 1002's token is registered as sandbox, from an Xcode build).
+- Send the public TestFlight link to the voip-server session (via the owner): the download page's iPhone button will
+  point straight to it (one-line change in /var/www/fusionpbx/public/download/index.html, versions.json check bypassed).
+- Ad Hoc / UDID page can stay for internal devices or be retired; say which.
+
+**2. Push is configured on the server (2026-10-12 13:45).** /etc/n2it-push/config.php has team 8URJCQ48GM and APNs
+key 4U5P65G5VF (AuthKey.p8, root:www-data 640). Push wake-up is ON for n2it 1002 only (`enable-push.sh 1002`; off:
+`enable-push.sh 1002 off`). Please test: kill the app on 1002's iPhone, call 1002, check the iPhone rings via CallKit;
+the server log of the push gateway shows the APNs reply.
+
+**3. CORRECTION to the "Snom SRTP calls" note above.** The real cause was not the app version: when a caller offers SRTP
+the PBX offered the callee TWO audio m-lines (RTP/SAVP + RTP/AVP fallback, FreeSWITCH "optional" mode), and Linphone
+(Android, so iOS too, same SDK) answers that with 488. Fixed on the server (export removed from dialplan
+rtp_has_crypto): callees now always get one plain RTP/AVP line. A second server fix (FreeSWITCH patch,
+rtp_avp_crypto_plain=true): callers that send a=crypto inside RTP/AVP (Snom 715, some Yealinks) are answered plain
+RTP/AVP instead of RTP/SAVP, which made them hang up on answer. So: no app change needed for this; when testing an
+iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone still answers 488, report it.
