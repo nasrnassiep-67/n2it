@@ -57,6 +57,8 @@ jobs:
 
   mac:
     runs-on: macos-15
+    env:
+      MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
     defaults:
       run:
         working-directory: windows
@@ -65,11 +67,36 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: npm, cache-dependency-path: windows/package-lock.json }
       - run: npm ci
+      # With the Developer ID secrets set (see windows/build/notarise.js), the .dmg files are signed, notarised and
+      # stapled, so client Macs open them without "Apple could not verify…". Without them: ad-hoc signed as before.
+      - name: Import the Developer ID certificate
+        if: env.MAC_CERT_P12_BASE64 != ''
+        env:
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"; KP="$(uuidgen)"
+          security create-keychain -p "$KP" "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p "$KP" "$KC"
+          echo "$MAC_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KP" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "SIGNED=1" >> "$GITHUB_ENV"
+      - name: Build .dmg for Apple Silicon and Intel (Developer ID, notarised)
+        if: env.SIGNED == '1'
+        run: npm run dist:mac && node build/notarise.js
+        env:
+          CSC_NAME: Nasr Nassiep (8URJCQ48GM)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       - name: Build .dmg for Apple Silicon and Intel (ad-hoc signed, not notarised)
+        if: env.SIGNED != '1'
         run: npm run dist:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      # First open: macOS says it can't verify the developer; System Settings > Privacy & Security > Open Anyway.
+      # Ad-hoc only: first open says it can't verify the developer; System Settings > Privacy & Security > Open Anyway.
       - uses: actions/upload-artifact@v4
         with:
           name: n2it-phone-mac
