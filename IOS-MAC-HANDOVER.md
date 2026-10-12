@@ -26,10 +26,9 @@ Registered as 1002 over TLS 5061; calls both ways; Add participant + Merge calls
 WhatsApp/GSM call (hold music heard, audio back after resume); keypad paste.
 Fixed on the way (all merged): optional SRTP (`mediaEncryptionMandatory = false`, PR #1); stray spaces in company
 code/extension broke the SIP URI, now trimmed, and config errors name the failing step (PR #2).
-Signing: the owner's paid Apple membership (individual, Nasr Nassiep) is still pending, and team 69Y3USPRR5 isn't
-in Xcode on the Mac. Test builds use the owner's free Personal Team (8URJCQ48GM) with push removed through local
-build settings only (repo unchanged); they expire after 7 days. Once the membership is active, confirm its Team ID
-and update `project.yml` if it isn't 69Y3USPRR5.
+Signing: the owner's paid Apple membership (individual, Nasr Nassiep) is active since 2026-10-12. Team ID is
+8URJCQ48GM (Apple kept the ID of the former free Personal Team; 69Y3USPRR5 was wrong). Builds now carry push
+(aps-environment) and the development profile lasts a year; the free-team workaround is no longer needed.
 
 ## Request for the voip-server session: company contacts endpoint (2026-10-06)
 The iOS and Android apps now show a "Company" section in Contacts from FusionPBX > Apps > Contacts. They need
@@ -60,7 +59,7 @@ does the CI register/build/publish and the GitHub Pages install page once the Ap
 1. Xcode installed and signed in with the N2IT Apple developer account (Xcode > Settings > Accounts).
 2. `brew install xcodegen`
 3. `git clone https://github.com/nasrnassiep-67/n2it && cd n2it && xcodegen generate`
-4. Open `N2IT.xcodeproj`. Signing is preset in `project.yml` (team 69Y3USPRR5, automatic); check Signing &
+4. Open `N2IT.xcodeproj`. Signing is preset in `project.yml` (team 8URJCQ48GM, automatic); check Signing &
    Capabilities shows that team with no errors.
 5. Plug in the iPhone (Developer Mode on), run. Test: call 1002 <-> another extension, then Add participant,
    Merge calls, hang up.
