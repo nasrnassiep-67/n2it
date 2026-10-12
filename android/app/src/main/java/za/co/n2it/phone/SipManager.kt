@@ -316,10 +316,15 @@ object SipManager {
             // The other call ended while ours still rings: ring properly from now on (owner 2026-10-08)
             if (!PhoneService.otherAppInCall(appContext)) { ringNormally(); return }
             core.stopRinging()   // Linphone's ringtone, should it have started after us
-            if (beepTick++ % 4 == 0) try {   // a beep every 4 s, the other call checked every second
-                if (tone == null) tone = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 70)
-                tone?.startTone(ToneGenerator.TONE_SUP_CALL_WAITING, 500)
-            } catch (e: RuntimeException) { /* no tone available: stay silent rather than ring */ }
+            if (beepTick++ % 4 == 0) {   // every 4 s (the other call is checked every second)
+                // The beep plays into the call audio, which another app's call (WhatsApp) may not let through, so a
+                // double buzz goes with it (owner 2026-10-12: "I would not have known my extension was ringing").
+                callWaitingBuzz()
+                try {
+                    if (tone == null) tone = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 70)
+                    tone?.startTone(ToneGenerator.TONE_SUP_CALL_WAITING, 500)
+                } catch (e: RuntimeException) { /* no tone available: the buzz still tells the user */ }
+            }
             main.postDelayed(this, 1000)
         }
     }
@@ -371,6 +376,18 @@ object SipManager {
             else @Suppress("DEPRECATION") v.vibrate(pattern, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
             vibrating = true
         } catch (e: RuntimeException) { /* no vibration: the ringtone and notification still show the call */ }
+    }
+    /** Call waiting while another app's call is up: a short double buzz (the beep alone may not get through). Silent
+     *  mode stays silent; Sound and Vibrate both buzz. */
+    private fun callWaitingBuzz() {
+        try {
+            if (appContext.getSystemService(AudioManager::class.java)?.ringerMode == AudioManager.RINGER_MODE_SILENT) return
+            val v = vibrator() ?: return
+            if (!v.hasVibrator()) return
+            val buzz = VibrationEffect.createWaveform(longArrayOf(0, 180, 140, 180), -1)
+            if (Build.VERSION.SDK_INT >= 33) v.vibrate(buzz, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_COMMUNICATION_REQUEST))
+            else @Suppress("DEPRECATION") v.vibrate(buzz, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_REQUEST).build())
+        } catch (e: RuntimeException) { }
     }
     private fun stopVibrate() {
         if (!vibrating) return
