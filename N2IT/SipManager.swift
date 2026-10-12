@@ -106,6 +106,9 @@ final class SipManager: ObservableObject {
         if let d = UserDefaults.standard.data(forKey: "recents"),
            let r = try? JSONDecoder().decode([RecentCall].self, from: d) { recents = r }
         try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth])
+        #if DEBUG
+        LoggingService.Instance.logLevel = .Message   // SIP messages on the Xcode / devicectl console
+        #endif
         guard let c = try? Factory.Instance.createCore(configPath: "", factoryConfigPath: "", systemContext: nil) else { return }
         core = c
         core.pushNotificationEnabled = false   // we use our own PushKit gateway, not Linphone's flexisip push
