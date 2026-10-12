@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.2.8**, **desktop 0.2.5** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
+Current versions: **Android 0.2.9**, **desktop 0.2.5** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
 
 | Feature | Android | Desktop | iOS |
 |---|:-:|:-:|:-:|
@@ -38,6 +38,8 @@ Current versions: **Android 0.2.8**, **desktop 0.2.5** (Windows, Mac, Linux), iO
 | Dark mode | system | ✓ | system |
 
 ## History (newest first)
+- Android 0.2.9 (2026-10-12): calls show the caller's name: phone contact or company book, else the caller ID name
+  the PBX sends ("Nasr" for 1002), number underneath; also on conference cards, the green bar and notifications.
 - Android 0.2.7 (2026-10-10): strong echo limiter on speaker (Linphone speakerphone values), also applied to a
   conference mixed on the phone (3-way call on speaker: the others heard themselves).
 - Android 0.2.6 (2026-10-10): screen off at the ear (proximity wake lock) while a call is on the earpiece.

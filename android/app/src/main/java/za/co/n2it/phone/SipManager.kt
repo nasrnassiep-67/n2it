@@ -16,9 +16,10 @@ import org.linphone.core.*
 import org.linphone.core.Account as LpAccount
 
 data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false,
-                    val conference: Boolean = false, val participants: List<Participant> = emptyList())
+                    val conference: Boolean = false, val participants: List<Participant> = emptyList(), val name: String? = null)
 /** One other person in a conference (the conference screen gives each one a card). [id] is the SIP Call-ID. */
-data class Participant(val id: String, val number: String, val status: Status) {
+/** [name] is the caller ID name the PBX sent (e.g. "Nasr" for 1002), when there is one. */
+data class Participant(val id: String, val number: String, val status: Status, val name: String? = null) {
     enum class Status { Talking, Ringing, OnHold }
 }
 data class RecentCall(val number: String, val time: Long, val incoming: Boolean, val missed: Boolean)
@@ -104,8 +105,9 @@ object SipManager {
                     // (owner 2026-10-08). The notification still offers Answer, Decline and Silence.
                     val busy = PhoneService.otherAppInCall(appContext)
                     _silenced.value = false
-                    _call.value = CallInfo(number, state, true)
-                    PhoneService.notifyIncoming(appContext, number, busy)
+                    val name = sipName(call)
+                    _call.value = CallInfo(number, state, true, name = name)
+                    PhoneService.notifyIncoming(appContext, name?.let { "$it ($number)" } ?: number, busy)
                     if (busy) quietRing()
                 }
                 else -> {
@@ -180,7 +182,7 @@ object SipManager {
                     Call.State.OutgoingInit, Call.State.OutgoingProgress, Call.State.OutgoingRinging, Call.State.OutgoingEarlyMedia -> Participant.Status.Ringing
                     Call.State.Paused, Call.State.Pausing, Call.State.PausedByRemote -> Participant.Status.OnHold
                     else -> Participant.Status.Talking
-                })
+                }, sipName(c))
             }
             _call.value = CallInfo(people.joinToString(", ") { it.number }, Call.State.StreamsRunning, false,
                 consulting = calls.any { it.conference == null }, conference = true, participants = people)
@@ -189,8 +191,12 @@ object SipManager {
         val call = core.currentCall ?: calls.firstOrNull() ?: return
         val held = call.state == Call.State.Paused || call.state == Call.State.Pausing
         _call.value = CallInfo(call.remoteAddress.username ?: "Unknown", call.state, call.dir == Call.Dir.Incoming,
-            held, calls.size > 1)
+            held, calls.size > 1, name = sipName(call))
     }
+
+    /** The caller ID name the other side sent, if it is a real name and not just the number again. */
+    private fun sipName(c: Call): String? =
+        c.remoteAddress.displayName?.trim()?.takeIf { it.isNotEmpty() && it != c.remoteAddress.username }
 
     /** Safe to call repeatedly; the service and the activity both call it. */
     @Synchronized

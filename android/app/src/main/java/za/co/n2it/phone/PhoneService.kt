@@ -98,7 +98,7 @@ class PhoneService : Service() {
             }
             return b.setContentTitle("N2IT Phone").setContentText("Ready to receive calls").build()
         }
-        val who = if (call.conference) "Conference: " + call.participants.joinToString(", ") { displayNumber(it.number) } else call.number
+        val who = if (call.conference) "Conference: " + call.participants.joinToString(", ") { it.name ?: displayNumber(it.number) } else call.name ?: call.number
         val status = when {
             call.conference -> "Conference · ${call.participants.size + 1} people"
             call.onHold -> "On hold"
