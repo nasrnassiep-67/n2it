@@ -4,6 +4,7 @@ import android.content.Context
 import android.provider.ContactsContract
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -24,6 +26,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -527,9 +530,17 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
         if (!ringingIn) Row(Modifier.fillMaxWidth()) {
             IconButton(onMinimise) { Icon(Icons.Default.KeyboardArrowDown, "Minimise call") }
         }
-        Spacer(Modifier.weight(1f))
-        Text(call.number, fontSize = 34.sp); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.weight(1f))
+        if (call.conference) {
+            // One card per person, sharing the screen (owner 2026-10-11: one long line of numbers wrapped over itself)
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(12.dp))
+            ConferenceCards(call.participants, compact = pad, modifier = Modifier.weight(1f).fillMaxWidth())
+            Spacer(Modifier.height(20.dp))
+        } else {
+            Spacer(Modifier.weight(1f))
+            Text(call.number, fontSize = 34.sp); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
+        }
         // While dialling: mute and speaker/Bluetooth already, so the user can pick the car or speaker before they answer.
         if (!connected && !ringingIn) Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             FilledTonalIconToggleButton(muted, { SipManager.toggleMute() }, Modifier.size(64.dp)) { Icon(Icons.Default.MicOff, "Mute") }
@@ -583,6 +594,101 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
         notice?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show(); SipManager.clearNotice() }
     }
     if (adding) AddParticipantDialog(call.conference, onDismiss = { adding = false }, onAdd = { SipManager.addParticipant(it); adding = false })
+}
+
+/** Conference: the space between the status line and the buttons, split evenly between the people (up to 4);
+ *  with more people, or while the keypad is open, a scrolling list of short cards. */
+@Composable
+private fun ConferenceCards(people: List<Participant>, compact: Boolean, modifier: Modifier) {
+    val split = !compact && people.size <= 4
+    Column(if (split) modifier else modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        people.forEach { p ->
+            key(p.id) { ParticipantCard(p, if (split) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().height(76.dp)) }
+        }
+    }
+}
+
+/** Name, number, status and a hang-up for this person only. Tall cards stack it centred; short ones in a row. */
+@Composable
+private fun ParticipantCard(p: Participant, modifier: Modifier) {
+    val name = rememberContactName(p.number)
+    val title = name ?: displayNumber(p.number)
+    val number = if (name != null) displayNumber(p.number) else null
+    val (status, statusColor) = when (p.status) {
+        Participant.Status.Talking -> "Talking" to Green
+        Participant.Status.Ringing -> "Ringing…" to Color(0xFFE0A030)
+        Participant.Status.OnHold -> "On hold" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val drop: @Composable () -> Unit = {
+        FilledIconButton({ SipManager.dropParticipant(p.id) }, Modifier.size(44.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(containerColor = Red)) { Icon(Icons.Default.CallEnd, "Hang up on $title", tint = Color.White) }
+    }
+    Surface(modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        BoxWithConstraints(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            if (maxHeight >= 150.dp) Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Initial(title, 64.dp)
+                Spacer(Modifier.height(10.dp))
+                Text(title, fontSize = 22.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                number?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Text(status, color = statusColor, style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(10.dp))
+                drop()
+            } else Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                Initial(title, 44.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row {
+                        number?.let { Text("$it · ", color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, style = MaterialTheme.typography.bodySmall) }
+                        Text(status, color = statusColor, maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                drop()
+            }
+        }
+    }
+}
+
+/** Round badge with the first letter of a name, or a person icon for a bare number. */
+@Composable
+private fun Initial(title: String, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+        val letter = title.firstOrNull { it.isLetter() }?.uppercaseChar()
+        if (letter != null) Text("$letter", fontSize = (size.value * 0.42f).sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        else Icon(Icons.Default.Person, null, Modifier.size(size * 0.55f), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+    }
+}
+
+/** South African numbers as people write them: +27735779444 / 27735779444 -> 073 577 9444. Extensions unchanged. */
+fun displayNumber(n: String): String {
+    val d = n.filter { it.isDigit() }
+    val local = when {
+        d.length == 11 && d.startsWith("27") && (n.startsWith("+") || n.startsWith("27")) -> "0" + d.drop(2)
+        d.length == 10 && d.startsWith("0") && n.none { it.isLetter() } -> d
+        else -> return n
+    }
+    return "${local.take(3)} ${local.substring(3, 6)} ${local.drop(6)}"
+}
+
+/** Name for a number: the company address book first, then the phone's contacts (looked up off the main thread). */
+@Composable
+private fun rememberContactName(number: String): String? {
+    val ctx = LocalContext.current
+    return produceState<String?>(null, number) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { contactName(ctx, number) }
+    }.value
+}
+private fun contactName(c: Context, number: String): String? {
+    fun key(n: String) = n.filter { it.isDigit() }.let { if (it.length == 11 && it.startsWith("27")) "0" + it.drop(2) else it }
+    val k = key(number)
+    if (k.isEmpty()) return null
+    companyCache.firstOrNull { it.name.isNotBlank() && key(it.number) == k }?.let { return it.name }
+    if (k.length < 7) return null   // extensions: only the company book knows them
+    return try {
+        c.contentResolver.query(android.net.Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, android.net.Uri.encode(number)),
+            arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
+    } catch (e: Exception) { null }   // no Contacts permission
 }
 
 private fun AudioRoute.icon() = when (this) {
