@@ -9,19 +9,64 @@ let calls = [], mix = null, merging = false   // all live calls; mix = conferenc
 const cfg = () => ({ ...DEFAULTS, ...(acc?.settings || {}) })
 
 const show = (id, on) => $(id).classList.toggle('hidden', !on)
-const status = (t) => ($('status').textContent = t)
+/** Status text in the top bar, a green / red dot, and the tray icon's tooltip. */
+function status(t) {
+  $('status').textContent = t
+  $('status-pill').dataset.s = t === 'Registered' ? 'ok' : /^(Failed|Cannot|Error|Microphone|Call failed)/.test(t) ? 'bad' : ''
+  appShell.state({ status: t })
+}
 const domain = (t) => (t ? `${t.trim().toLowerCase()}.${BASE}` : '')
 
-for (const [padId, onKey] of [['pad', (k) => ($('num').value += k)], ['dpad', (k) => session?.sendDTMF(k)]]) {
+// Round keys like the Android app, with the letters under the digits on the dial pad
+const LETTERS = { 2: 'ABC', 3: 'DEF', 4: 'GHI', 5: 'JKL', 6: 'MNO', 7: 'PQRS', 8: 'TUV', 9: 'WXYZ', 0: '+' }
+for (const [padId, onKey] of [['pad', (k) => { $('num').value += k; $('num').focus() }], ['dpad', (k) => sendDigit(k)]]) {
   for (const k of '123456789*0#') {
-    const b = document.createElement('button'); b.textContent = k; b.onclick = () => onKey(k); $(padId).append(b)
+    const b = document.createElement('button'); b.textContent = k; b.onclick = () => onKey(k)
+    if (padId === 'pad') b.append(Object.assign(document.createElement('small'), { textContent: LETTERS[k] || '' }))
+    $(padId).append(b)
   }
+}
+/** Keypad digits during a call go INSIDE the audio (RFC 2833 / RTP telephone-event), like desk phones: JsSIP's
+ *  default (SIP INFO) is ignored by FreeSWITCH, so PIN prompts and IVR menus never heard the keys (2026-10-10). */
+function sendDigit(k) {
+  if (!session) return
+  try { session.sendDTMF(k, { transportType: 'RFC2833', duration: 160, interToneGap: 80 }) }
+  catch { try { session.sendDTMF(k) } catch {} }
+}
+// Typing digits on the computer keyboard during a call sends them too (e.g. a PIN), unless typing in a text field
+document.addEventListener('keydown', (e) => {
+  if (!session || e.ctrlKey || e.altKey || e.metaKey || !/^[0-9*#]$/.test(e.key)) return
+  if (e.target instanceof HTMLInputElement && e.target.id !== 'num') return
+  e.preventDefault(); sendDigit(e.key)
+})
+$('back').onclick = () => { $('num').value = $('num').value.slice(0, -1); $('num').focus() }
+$('num').onkeydown = (e) => { if (e.key === 'Enter') $('call').click() }
+$('keys').onclick = () => { const open = $('dpad').classList.contains('hidden'); show('dpad', open); $('keys').classList.toggle('on', open) }
+/** Signed in or not: the top bar's buttons and the recent-calls side bar only make sense signed in. */
+function signedIn(on) {
+  document.body.classList.toggle('signed-out', !on)
+  $('me').textContent = on && acc ? `Ext ${acc.user} · ${acc.tenant}` : ''
+  if (on) { renderRecent(); loadNames() }
 }
 $('tenant').oninput = () => ($('domain').textContent = domain($('tenant').value))
 
+/** Retire a UA the user switched away from (or logged out of): de-register it first so the PBX stops sending its
+ *  calls here, then stop it. Its listeners are removed first, so its shutdown ("disconnected") can no longer
+ *  overwrite the new account's status line or touch the screen. */
+function retire(old) {
+  if (!old) return
+  try { old.removeAllListeners() } catch {}
+  let done = false
+  const stop = () => { if (done) return; done = true; try { old.stop() } catch {} }
+  try {
+    if (old.isRegistered()) { old.once('unregistered', stop); old.once('registrationFailed', stop); old.unregister(); setTimeout(stop, 3000) }
+    else stop()
+  } catch { stop() }
+}
+
 function connect() {
   const d = domain(acc.tenant)
-  ua?.stop()
+  retire(ua); ua = null
   if (typeof JsSIP === 'undefined') { status('Error: SIP library missing (reinstall the app)'); return }
   status('Connecting…')
   try { ua = new JsSIP.UA({
@@ -36,10 +81,15 @@ function connect() {
   ua.on('registrationFailed', (e) => status(`Failed: ${e.cause}`))
   ua.on('newRTCSession', ({ session: s, originator }) => {
     // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none). Other phones still ring.
-    if (originator === 'remote' && dndUntil()) { s.terminate({ status_code: 486, reason_phrase: 'Busy Here' }); return }
-    if (originator === 'remote' && calls.length) { s.terminate({ status_code: 486 }); return }   // busy while in a call
+    if (originator === 'remote' && dndUntil()) {
+      s.terminate({ status_code: 486, reason_phrase: 'Busy Here' })
+      addRecent({ number: user(s), name: s.remote_identity.display_name, dir: 'in', at: Date.now(), result: 'missed', dnd: true })
+      return
+    }
+    // A call coming in while on a call waits (call-waiting beep, Answer / Decline) instead of being refused as busy
+    const waiting = originator === 'remote' && calls.length > 0
     if (!calls.length) muted = false
-    calls.push(s); session = s
+    calls.push(s); if (!waiting) session = s
     s._audio = document.body.appendChild(Object.assign(document.createElement('audio'), { autoplay: true }))
     // JsSIP sends the INVITE / 200 OK only when ICE gathering ends; a dead interface (VPN, 169.254 adapter) or an
     // unreachable STUN server stalls that for ~40 s. Go once candidates have been quiet for 1 s.
@@ -67,19 +117,29 @@ function connect() {
       status(`Call failed: ${e.cause}`); setTimeout(() => { if ($('status').textContent.startsWith('Call failed')) status(was) }, 6000)
     })
     s._incoming = originator === 'remote'
-    show('idle', false); show('incall', true); show('answer', s._incoming); refresh()
+    s._log = { number: user(s), name: s.remote_identity.display_name, dir: s._incoming ? 'in' : 'out', at: Date.now() }
+    s.on('accepted', () => { s._log.answered ??= Date.now() })
+    s.on('confirmed', () => { s._log.answered ??= Date.now() })
+    show('idle', false); show('incall', true); refresh()
+    if (s._incoming) { s._silenced = false; checkOtherCall().then(updateRinging) }
   })
   ua.start()
 }
 
 function end(s) {
+  logCall(s)
+  if (xferFrom === s) xferFrom = null
   s._audio.srcObject = null; s._audio.remove()
   s._stream?.getTracks().forEach((t) => t.stop())
   calls = calls.filter((c) => c !== s)
   if (mix) buildMix()   // rebuild for whoever is left (tears down below two calls)
-  if (!calls.length) { session = null; show('incall', false); show('audio-pick', false); show('idle', true); return }
-  if (session === s) session = calls[calls.length - 1]
-  show('answer', false); refresh()
+  updateRinging()
+  if (!calls.length) {
+    session = null; show('incall', false); show('audio-pick', false); show('xfer-pick', false); show('dpad', false)
+    $('keys').classList.remove('on'); show('idle', true); appShell.state({ inCall: false }); return
+  }
+  if (session === s) session = calls.find((c) => c.isEstablished()) || calls[calls.length - 1]
+  refresh()
 }
 const user = (s) => s.remote_identity.uri.user
 function refresh() {
@@ -87,12 +147,100 @@ function refresh() {
   const held = session.isOnHold().local
   $('hold').classList.toggle('on', held); $('mute').classList.toggle('on', muted)
   const inConf = mix?.calls.length > 1
-  $('who').textContent = inConf ? mix.calls.map(user).join(', ') : user(session)
+  show('who', !inConf); show('who-av', !inConf); show('conf', inConf)
+  if (inConf) renderConf()
+  else {
+    $('who').textContent = nameOf(user(session), session.remote_identity.display_name)
+    $('who-av').textContent = initial($('who').textContent)
+  }
+  appShell.state({ inCall: true })
+  tick()
   $('state').textContent = inConf ? `Conference · ${mix.calls.length + 1} people` + (calls.length > mix.calls.length ? ' (+1 ringing)' : '')
     : session.isEstablished() ? (held ? 'On hold' : 'Connected') : session._incoming ? 'Incoming call' : 'Calling…'
   show('hold', !inConf); show('xfer', !inConf)
   show('merge', calls.length > 1 && calls.filter((c) => c.isEstablished()).length > (mix?.calls.length || 1))
+  const ringingFront = session._incoming && !session.isEstablished() && !session.isEnded()
+  show('answer', ringingFront)
+  const w = waitingCall()
+  show('waiting', !!w)
+  if (w) $('w-who').textContent = `${user(w)} is calling` + (w._silenced ? ' (silenced)' : '')
+  show('other-note', !!otherApps.length && calls.some((c) => c._autoHeld))
+  if (otherApps.length) $('other-note').textContent = `On hold while ${otherApps.join(', ')} uses the microphone (another call). It comes back when that call ends, or press Hold to resume now.`
+  show('x-complete', !!xferFrom && !xferFrom.isEnded() && session !== xferFrom && session.isEstablished())
 }
+
+// ---- Ringing (owner 2026-10-08): a ringtone, the window popping up and a Windows call notification. While another
+// call is going on (ours, or Teams / Zoom / WhatsApp / Skype…) a quiet call-waiting beep instead, and no pop-up. ----
+const waitingCall = () => calls.find((c) => c !== session && c._incoming && !c.isEstablished() && !c.isEnded())
+const ringingCall = () => calls.find((c) => c._incoming && !c.isEstablished() && !c.isEnded() && !c._answering)
+let ringCtx = null, ringTimer = null, ringMode = null, ringFor = null, ringNoted = ''
+function startTone(mode) {   // 'ring': South African double ring (400+450 Hz); 'beep': one short 440 Hz beep every 4 s
+  if (ringMode === mode) return
+  stopTone(); ringMode = mode
+  ringCtx = new AudioContext()
+  if (cfg().spkId && ringCtx.setSinkId) ringCtx.setSinkId(cfg().spkId).catch(() => {})
+  const burst = (freqs, dur, vol, at) => { for (const f of freqs) {
+    const o = ringCtx.createOscillator(), g = ringCtx.createGain()
+    o.frequency.value = f; g.gain.value = vol; o.connect(g).connect(ringCtx.destination); o.start(at); o.stop(at + dur) } }
+  const cycle = () => {
+    if (!ringCtx) return
+    const t = ringCtx.currentTime + 0.05
+    if (mode === 'ring') { burst([400, 450], 0.4, 0.12, t); burst([400, 450], 0.4, 0.12, t + 0.6) }
+    else burst([440], 0.3, 0.05, t)
+  }
+  cycle(); ringTimer = setInterval(cycle, mode === 'ring' ? 3000 : 4000)
+}
+function stopTone() { clearInterval(ringTimer); ringTimer = null; ringCtx?.close().catch(() => {}); ringCtx = null; ringMode = null }
+function updateRinging() {
+  const r = ringingCall()
+  if (!r) { stopTone(); if (ringFor) { ringFor = null; ringNoted = ''; callUi.ringStop() }; return }
+  const busy = calls.some((c) => c !== r && c.isEstablished()) || otherApps.length > 0
+  if (r._silenced) stopTone(); else startTone(busy ? 'beep' : 'ring')
+  const note = `${user(r)}|${busy}|${r._silenced}`
+  if (ringFor !== r || ringNoted !== note) { ringFor = r; ringNoted = note; callUi.ringStart({ number: user(r), busy, silenced: r._silenced }) }
+  refresh()
+}
+async function answerCall(s) {
+  if (!s || s.isEnded() || s.isEstablished()) return
+  s._answering = true; updateRinging()
+  const stream = await openMic()
+  if (!stream) { s._answering = false; updateRinging(); return }   // keeps ringing: free the mic and press Answer again
+  if (s.isEnded()) { stream.getTracks().forEach((t) => t.stop()); return }
+  // the call in progress waits on hold (in a conference the new call simply joins the list; Merge adds it)
+  if (!mix) for (const c of calls) if (c !== s && c.isEstablished() && !c.isOnHold().local) c.hold()
+  session = s
+  own(s, stream).answer({ mediaStream: stream, pcConfig: pcConfig() }); refresh()
+}
+function declineCall(s) {
+  if (!s || s.isEnded() || s.isEstablished()) return
+  s._declined = true; s.terminate({ status_code: 486, reason_phrase: 'Busy Here' })
+}
+function silenceCall(s) { if (s) { s._silenced = true; updateRinging() } }
+callUi.onAction((a) => {
+  const r = ringingCall()
+  if (a === 'answer') answerCall(r); else if (a === 'decline') declineCall(r); else if (a === 'silence') silenceCall(r)
+})
+
+// ---- Another app's call (Teams, Zoom, WhatsApp, Skype…): Windows says which other apps use the microphone. While
+// one does, our calls go on hold (the other side hears hold music) and come back when it stops; a call coming in
+// beeps instead of ringing. Pressing Hold resumes anyway (e.g. an app that keeps the microphone open). ----
+let otherApps = [], userResumed = false
+async function checkOtherCall() {
+  if (!calls.length) { otherApps = []; userResumed = false; return }
+  try { otherApps = await callUi.micOthers() } catch { otherApps = [] }
+  if (!otherApps.length) {
+    userResumed = false
+    for (const c of calls) if (c._autoHeld) { c._autoHeld = false; if (!c.isEnded() && c.isOnHold().local && !mix) c.unhold() }
+    if (mixAutoMuted && mix) { mix.mic.gain.value = muted ? 0 : 1 }
+    mixAutoMuted = false
+  } else if (!userResumed) {
+    for (const c of calls) if (c.isEstablished() && !c.isOnHold().local && !mix) { c._autoHeld = true; c.hold() }
+    if (mix && !mixAutoMuted) { mixAutoMuted = true; mix.mic.gain.value = 0; for (const c of mix.calls) c._autoHeld = true }
+  }
+  refresh()
+}
+let mixAutoMuted = false
+setInterval(() => { if (calls.length) checkOtherCall().then(updateRinging) }, 1500)
 
 // ---- Conference: mixed here, so the PBX needs nothing ----
 // Each call gets its own WebAudio mix (my mic + every other caller) in place of the mic on its sender;
@@ -175,7 +323,7 @@ async function activate(a, saved) {
   acc = { ...login(a), settings: acc?.settings, dndUntil: acc?.dndUntil, saved }
   await store.save(acc); directory = []
   for (const id of ['settings', 'login', 'contacts']) show(id, false)
-  show('phone', true); connect(); renderDnd()
+  show('phone', true); connect(); renderDnd(); signedIn(true)
 }
 /** Log [a] out and forget it; with no account left, back to the sign-in screen. */
 async function logOut(a) {
@@ -184,8 +332,8 @@ async function logOut(a) {
   if (key(a) !== key(acc)) { acc.saved = acc.saved.filter((x) => key(x) !== key(a)); await store.save(acc); renderAccounts(); return }
   const [next, ...rest] = acc.saved || []
   if (next) { await activate(next, rest); return }
-  ua?.stop(); await store.clear(); acc = null; directory = []
-  show('settings', false); show('login', true); status('Not registered')
+  retire(ua); ua = null; await store.clear(); acc = null; directory = []
+  show('settings', false); show('login', true); status('Not registered'); signedIn(false)
 }
 function renderAccounts() {
   $('s-accounts').replaceChildren(...[acc, ...(acc.saved || [])].map((a) => {
@@ -212,7 +360,7 @@ $('signin').onclick = async () => {
   if (!a.tenant.trim() || !a.user.trim() || !a.pass) return
   if (adding) { adding = false; show('login-cancel', false); await useAccount(a); return }
   acc = { ...login(a), saved: [] }
-  await store.save(acc); show('login', false); show('phone', true); connect(); renderDnd()
+  await store.save(acc); show('login', false); show('phone', true); connect(); renderDnd(); signedIn(true)
 }
 
 // ---- Settings ----
@@ -229,6 +377,8 @@ async function openSettings() {
   $('s-echo').checked = c.echo; $('s-noise').checked = c.noise; $('s-agc').checked = c.agc
   $('s-port').value = c.wssPort; $('s-vm').value = c.voicemail; $('s-stun').value = c.stun
   renderAccounts()
+  show('s-startup-row', navigator.userAgent.includes('Windows')); $('s-startup').checked = await appShell.startup()
+  for (const id of ['contacts', 'dnd-pick', 'login']) show(id, false)
   show('phone', false); show('settings', true)
 }
 $('cfg').onclick = async () => {
@@ -245,7 +395,7 @@ $('s-save').onclick = async () => {
   acc.settings = { micId: $('s-mic').value, spkId: $('s-spk').value, echo: $('s-echo').checked, noise: $('s-noise').checked,
     agc: $('s-agc').checked, wssPort: port > 0 && port < 65536 ? port : DEFAULTS.wssPort,
     voicemail: $('s-vm').value.trim() || DEFAULTS.voicemail, stun: $('s-stun').value.trim() }
-  await store.save(acc); applySink()
+  await store.save(acc); applySink(); appShell.setStartup($('s-startup').checked)
   if (cfg().wssPort !== old && !session) connect()   // new port: re-register (not mid-call)
   $('s-back').click()
 }
@@ -269,7 +419,7 @@ function renderContacts() {
   if (directory.length && !rows.length) $('c-msg').textContent = 'No matches'
 }
 $('contacts-open').onclick = async () => {
-  show('phone', false); show('contacts', true)
+  show('phone', false); show('contacts', true); $('c-search').focus()
   $('c-msg').textContent = directory.length ? '' : 'Loading…'
   const r = await store.directory()
   if (r.error) { $('c-msg').textContent = r.error; return }
@@ -280,13 +430,12 @@ $('contacts-open').onclick = async () => {
 $('c-search').oninput = () => { $('c-msg').textContent = ''; renderContacts() }
 $('c-back').onclick = () => { show('contacts', false); show('phone', true) }
 $('vm').onclick = () => dial(cfg().voicemail)
-$('answer').onclick = async () => {
-  const s = session, stream = s && await openMic()
-  if (!stream) return   // keeps ringing: free the mic and press Answer again
-  if (s.isEnded()) { stream.getTracks().forEach((t) => t.stop()); return }
-  own(s, stream).answer({ mediaStream: stream, pcConfig: pcConfig() }); show('answer', false)
-}
+$('answer').onclick = () => answerCall(session)
+$('w-answer').onclick = () => answerCall(waitingCall())
+$('w-decline').onclick = () => declineCall(waitingCall())
+$('w-silence').onclick = () => silenceCall(waitingCall())
 $('hang').onclick = () => {   // in a conference, hang up on everyone; otherwise the call in front
+  if (session && session._incoming && !session.isEstablished()) { declineCall(session); return }
   if (mix && !mix.calls.includes(session)) session.terminate()
   else if (mix) [...calls].forEach((c) => c.terminate())
   else session?.terminate()
@@ -297,7 +446,14 @@ $('mute').onclick = () => {
   else muted ? session?.mute({ audio: true }) : session?.unmute({ audio: true })
   refresh()
 }
-$('hold').onclick = () => { session?.isOnHold().local ? session.unhold() : session?.hold() }
+$('hold').onclick = () => {
+  if (!session) return
+  if (session.isOnHold().local) {
+    if (session._autoHeld) { session._autoHeld = false; userResumed = true }   // resume although another app has the mic
+    for (const c of calls) if (c !== session && c.isEstablished() && !c.isOnHold().local && !mix) c.hold()
+    session.unhold()
+  } else session.hold()
+}
 $('add').onclick = () => {   // hold the call (unless in a conference) and ring the new person; Merge joins them
   const n = prompt(mix ? 'Add to conference: extension or number' : 'Add participant: extension or number\n(the current call goes on hold; press Merge when they answer)')
   if (!n) return
@@ -305,8 +461,29 @@ $('add').onclick = () => {   // hold the call (unless in a conference) and ring 
   dial(n.trim())
 }
 $('merge').onclick = merge
-$('xfer').onclick = () => {   // blind transfer via SIP REFER
-  const n = prompt('Transfer to extension or number'); if (n) session?.refer(`sip:${n}@${domain(acc.tenant)}`)
+// ---- Transfer: "Transfer now" (blind, SIP REFER) or "Ask first" (attended: the caller waits on hold while you talk to
+// the new person, then Complete transfer joins them: REFER with Replaces; the PBX connects them and drops us) ----
+let xferFrom = null
+$('xfer').onclick = () => { $('x-num').value = ''; show('xfer-pick', true); $('x-num').focus() }
+$('x-cancel').onclick = () => show('xfer-pick', false)
+$('x-blind').onclick = () => {
+  const n = $('x-num').value.trim(); if (!n || !session) return
+  show('xfer-pick', false); session.refer(`sip:${n}@${domain(acc.tenant)}`)
+}
+$('x-ask').onclick = () => {
+  const n = $('x-num').value.trim(); if (!n || !session) return
+  show('xfer-pick', false)
+  xferFrom = session
+  if (!session.isOnHold().local) session.hold()
+  dial(n)
+}
+$('x-complete').onclick = () => {
+  const from = xferFrom, to = session
+  if (!from || from.isEnded() || !to || to === from) return
+  xferFrom = null
+  from.refer(to.remote_identity.uri.toString(), { replaces: to })
+  setTimeout(() => { for (const c of [from, to]) if (!c.isEnded()) c.terminate() }, 4000)   // normally the PBX ends both first
+  refresh()
 }
 
 // ---- Audio during a call: switch microphone and speaker (headset, Bluetooth, laptop) without hanging up ----
@@ -360,7 +537,7 @@ function dialFromLink(n) {
   if (!n) return
   $('num').value = n
   if (!acc) return   // not signed in: stays in the box for after sign-in
-  for (const id of ['contacts', 'settings']) show(id, false)
+  for (const id of ['contacts', 'settings', 'dnd-pick']) show(id, false)
   show('phone', true)
   if (!calls.length) $('num').focus()
 }
@@ -383,15 +560,17 @@ function renderDnd() {   // banner, button and status follow the end time; an ex
   const u = dndUntil()
   if (acc.dndUntil && !u) { acc.dndUntil = null; store.save(acc) }
   show('dnd-banner', !!u); $('dnd-until').textContent = u ? `Until ${when(u)}` : ''
-  $('dnd').textContent = u ? `DND until ${when(u)}` : 'Do Not Disturb'; $('dnd').classList.toggle('dndon', !!u)
-  $('status').classList.toggle('dnd', !!u)
+  $('dnd').title = u ? `Do Not Disturb until ${when(u)}` : 'Do Not Disturb'; $('dnd').classList.toggle('dndon', !!u)
+  $('status').classList.toggle('dnd', !!u); $('status-pill').classList.toggle('dnd', !!u)
 }
 setInterval(renderDnd, 15000)
 $('dnd').onclick = () => {
   const now = Date.now()
   $('dnd-morning').textContent = `Until ${when(nextMorning())}`
   Object.assign($('dnd-at'), { min: localInput(now), max: localInput(now + MAX_DND), value: localInput(now + 3600000) })
-  show('dnd-stop', !!dndUntil()); show('phone', false); show('dnd-pick', true)
+  show('dnd-stop', !!dndUntil())
+  for (const id of ['contacts', 'settings', 'login']) show(id, false)
+  show('phone', false); show('dnd-pick', true)
 }
 for (const b of document.querySelectorAll('#dnd-pick [data-hours]')) b.onclick = () => setDnd(Date.now() + b.dataset.hours * 3600000)
 $('dnd-morning').onclick = () => setDnd(nextMorning())
@@ -406,6 +585,131 @@ $('dnd-back').onclick = () => { show('dnd-pick', false); show('phone', true) }
 store.version().then((v) => { for (const e of document.querySelectorAll('.version')) e.textContent = `Version: ${v}` })
 
 store.load().then(async (a) => {
-  if (a) { acc = a; show('login', false); show('phone', true); connect(); renderDnd() }
+  if (a) { acc = a; show('login', false); show('phone', true); connect(); renderDnd(); signedIn(true) }
   dialFromLink(await links.pending())
 })
+
+// ---- Conference cards: one per person, with a hang-up for that person only ----
+/** South African numbers as people write them: +27735779444 -> 073 577 9444. Extensions unchanged. */
+function displayNumber(n) {
+  const d = n.replace(/\D/g, '')
+  const local = d.length === 11 && d.startsWith('27') && /^\+?27/.test(n) ? '0' + d.slice(2) : d.length === 10 && d.startsWith('0') && !/[a-z]/i.test(n) ? d : null
+  return local ? `${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}` : n
+}
+/** Company-book name for a number, trying the +27 / 27 / 0 spellings. */
+function confName(n) {
+  const d = n.replace(/[^0-9]/g, ''), local = d.length === 11 && d.startsWith('27') ? '0' + d.slice(2) : d
+  const tries = [n, d, local, local.startsWith('0') ? '+27' + local.slice(1) : null, local.startsWith('0') ? '27' + local.slice(1) : null]
+  for (const t of tries) if (t && names.get(t)) return names.get(t)
+  return null
+}
+function renderConf() {
+  const box = $('conf'), people = [...mix.calls, ...calls.filter((c) => !mix.calls.includes(c))]
+  box.classList.toggle('few', people.length <= 3)
+  box.replaceChildren(...people.map((s) => {
+    const num = user(s), name = confName(num) || (s.remote_identity.display_name && s.remote_identity.display_name !== num ? s.remote_identity.display_name : null)
+    const title = name || displayNumber(num)
+    const st = mix.calls.includes(s) ? ['talking', 'Talking'] : s.isEstablished() ? ['', 'Waiting · press Merge'] : ['ringing', 'Ringing…']
+    const card = document.createElement('div'); card.className = 'pcard'
+    const av = document.createElement('div'); av.className = 'pav'
+    if (/[a-z]/i.test(title)) av.textContent = initial(title); else av.innerHTML = '<svg class="i"><use href="#i-person"/></svg>'
+    const info = document.createElement('div'); info.className = 'pinfo'
+    const nm = document.createElement('div'); nm.className = 'pname'; nm.textContent = title
+    const sub = document.createElement('div'); sub.className = 'psub'
+    if (name) sub.append(displayNumber(num) + ' · ')
+    const stEl = document.createElement('span'); stEl.className = 'pst ' + st[0]; stEl.textContent = st[1]; sub.append(stEl)
+    info.append(nm, sub)
+    const drop = document.createElement('button'); drop.className = 'end pdrop'; drop.title = 'Hang up on ' + title
+    drop.innerHTML = '<svg class="i"><use href="#i-end"/></svg>'
+    drop.onclick = () => { if (!s.isEnded()) s.terminate() }   // 'ended' -> end(s) rebuilds the mix for whoever is left
+    card.append(av, info, drop)
+    return card
+  }))
+}
+
+// ---- Call timer and caller names ----
+const initial = (t) => (/[a-z]/i.test(t) ? t.trim()[0].toUpperCase() : '#')
+const mmss = (ms) => { const t = Math.round(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, x = String(t % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}` }
+function tick() { $('timer').textContent = session?._log?.answered && session.isEstablished() ? `· ${mmss(Date.now() - session._log.answered)}` : '' }
+setInterval(() => { if (session) tick() }, 1000)
+/** Names for numbers from the company contacts (loaded quietly after sign-in), else the caller ID name. */
+let names = new Map()
+async function loadNames() {
+  const r = await store.directory().catch(() => ({}))
+  if (!r?.contacts) return
+  names = new Map(r.contacts.flatMap((c) => c.numbers.map((n) => [n.number.replace(/[^+0-9*#]/g, ''), c.name])))
+  renderRecent()
+}
+const nameOf = (number, cid) => names.get(number) || (cid && cid !== number ? cid : number)
+
+// ---- Recent calls (owner 2026-10-08): kept on this computer per account, newest first, at most 300 ----
+const RECENT_MAX = 300
+const recentKey = () => acc && `n2it.recent.${key(acc)}`
+const ls = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} } }
+const recent = () => (acc ? ls.get(recentKey(), []) : [])
+function addRecent(r) { if (!acc) return; ls.set(recentKey(), [r, ...recent()].slice(0, RECENT_MAX)); renderRecent() }
+function logCall(s) {
+  if (!s._log || s._logged) return
+  s._logged = true
+  const l = s._log, answered = !!l.answered
+  addRecent({ number: l.number, name: l.name, dir: l.dir, at: l.at, secs: answered ? Math.round((Date.now() - l.answered) / 1000) : 0,
+    result: answered ? 'answered' : l.dir === 'out' ? 'no-answer' : s._declined ? 'declined' : 'missed' })
+}
+let recentFilter = 'all'
+const dayOf = (t) => { const d = new Date(t), now = new Date(), y = new Date(now); y.setDate(now.getDate() - 1)
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === y.toDateString()) return 'Yesterday'
+  return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) }
+const icon = (id) => { const ns = 'http://www.w3.org/2000/svg', v = document.createElementNS(ns, 'svg'), u = document.createElementNS(ns, 'use')
+  v.setAttribute('class', 'i'); u.setAttribute('href', `#i-${id}`); v.append(u); return v }
+function renderRecent() {
+  const all = recent(), rows = recentFilter === 'missed' ? all.filter((r) => r.result === 'missed') : all
+  $('recent').replaceChildren(...rows.map((r) => {
+    const row = document.createElement('div'); row.className = 'rc' + (r.result === 'missed' ? ' missed' : '')
+    const name = nameOf(r.number, r.name)
+    const av = Object.assign(document.createElement('div'), { className: 'av', textContent: initial(name) })
+    const who = document.createElement('div'); who.className = 'who'
+    const sub = document.createElement('small')
+    const what = r.result === 'missed' ? (r.dnd ? 'Missed (DND)' : 'Missed') : r.result === 'declined' ? 'Declined'
+      : r.result === 'no-answer' ? 'No answer' : `${r.dir === 'in' ? 'Incoming' : 'Outgoing'} · ${mmss(r.secs * 1000)}`
+    sub.append(icon(r.result === 'missed' ? 'missed' : r.dir), `${name !== r.number ? r.number + ' · ' : ''}${what}`)
+    who.append(Object.assign(document.createElement('div'), { textContent: name }), sub)
+    const t = Object.assign(document.createElement('time'), { textContent: dayOf(r.at), title: new Date(r.at).toLocaleString() })
+    const call = Object.assign(document.createElement('button'), { className: 'go', title: `Call ${r.number}` }); call.append(icon('call'))
+    call.onclick = (e) => { e.stopPropagation(); narrowClose(); dial(r.number) }
+    row.onclick = () => { if (!calls.length) { dialFromLink(r.number); narrowClose() } }   // into the dial box, ready to call
+    row.ondblclick = () => { narrowClose(); dial(r.number) }
+    row.append(av, who, t, call); return row
+  }))
+  if (!rows.length) $('recent').append(Object.assign(document.createElement('div'), { className: 'empty',
+    textContent: recentFilter === 'missed' ? 'No missed calls' : 'Calls you make and receive show here' }))
+  badge()
+}
+for (const b of document.querySelectorAll('.seg button')) b.onclick = () => {
+  recentFilter = b.dataset.f; for (const x of document.querySelectorAll('.seg button')) x.classList.toggle('sel', x === b); renderRecent()
+}
+$('s-clear-recent').onclick = () => { if (acc && confirm('Clear the recent calls list on this computer?')) { ls.set(recentKey(), []); renderRecent() } }
+
+// ---- Side bar: open or closed (remembered); on a narrow window it slides over the keypad ----
+const sideOpen = () => !document.body.classList.contains('side-closed')
+const narrow = () => innerWidth <= 720
+function setSide(open, remember = true) {
+  document.body.classList.toggle('side-closed', !open)
+  if (remember && !narrow()) ls.set('n2it.side', open)
+  if (open) { ls.set(`n2it.seen.${key(acc || { tenant: '', user: '' })}`, Date.now()); badge() }
+}
+const narrowClose = () => { if (narrow()) setSide(false, false) }
+/** Red count on the side bar button: missed calls since the list was last looked at. */
+function badge() {
+  if (!acc) return
+  if (sideOpen() && document.hasFocus()) ls.set(`n2it.seen.${key(acc)}`, Date.now())
+  const seen = ls.get(`n2it.seen.${key(acc)}`, 0), n = recent().filter((r) => r.result === 'missed' && r.at > seen).length
+  $('missed-badge').textContent = n > 9 ? '9+' : n; show('missed-badge', n > 0)
+}
+addEventListener('focus', badge)
+$('side-toggle').onclick = () => setSide(!sideOpen())
+$('side-close').onclick = () => setSide(false)
+document.querySelector('main').addEventListener('mousedown', narrowClose)
+setSide(narrow() ? false : ls.get('n2it.side', true), false)

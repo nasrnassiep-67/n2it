@@ -16,7 +16,11 @@ import org.linphone.core.*
 import org.linphone.core.Account as LpAccount
 
 data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false,
-                    val conference: Boolean = false, val participants: List<String> = emptyList())
+                    val conference: Boolean = false, val participants: List<Participant> = emptyList())
+/** One other person in a conference (the conference screen gives each one a card). [id] is the SIP Call-ID. */
+data class Participant(val id: String, val number: String, val status: Status) {
+    enum class Status { Talking, Ringing, OnHold }
+}
 data class RecentCall(val number: String, val time: Long, val incoming: Boolean, val missed: Boolean)
 
 /** Where call audio goes: the phone's earpiece, the loudspeaker, a Bluetooth device (car kit, headset) or a wired headset. */
@@ -43,6 +47,9 @@ object SipManager {
     private val _echo = MutableStateFlow("")
     /** Echo tuning result for the Settings screen ("" = not tuned yet on this phone). */
     val echo: StateFlow<String> = _echo
+    private val _gate = MutableStateFlow(true)
+    /** "Filter out background voices" (Settings): Linphone's noise gate on the microphone. */
+    val backgroundFilter: StateFlow<Boolean> = _gate
     val registered: StateFlow<Boolean> = _registered
     val status: StateFlow<String> = _status
     val call: StateFlow<CallInfo?> = _call
@@ -76,10 +83,11 @@ object SipManager {
                     PhoneService.clearIncoming(appContext)
                     if (core.calls.none { it !== call && it.state == Call.State.IncomingReceived }) stopQuietRing()
                     userHeld.remove(call)
+                    consultHoldDone(call)
                     // Another call may still be up (held caller after a consult, or the rest of a conference).
                     if (liveCalls(except = call).isEmpty()) {
                         _call.value = null; _muted.value = false; routeChosen = false
-                        releaseFocus()
+                        releaseFocus(); updateProximity()
                         if (core.callsNb == 0) PhoneService.setInCall(appContext, false)
                     } else publish()
                 }
@@ -101,6 +109,7 @@ object SipManager {
                     if (busy) quietRing()
                 }
                 else -> {
+                    if (state == Call.State.Paused) consultHoldDone(call)
                     if (state != Call.State.IncomingReceived && core.calls.none { it.state == Call.State.IncomingReceived }) stopQuietRing()
                     // Outgoing call placed, or incoming call answered: the user is in the app right now,
                     // so this is when Android lets the service take the microphone.
@@ -162,12 +171,19 @@ object SipManager {
 
     /** Mirror the calls into UI state: one call, a held call plus a consult call, or a conference. */
     private fun publish() {
+        updateProximity()
         val calls = liveCalls()
         val conf = conference()
         if (conf != null) {
-            val names = calls.filter { it.conference != null }.map { it.remoteAddress.username ?: "Unknown" }
-            _call.value = CallInfo(names.joinToString(", "), Call.State.StreamsRunning, false,
-                consulting = calls.any { it.conference == null }, conference = true, participants = names)
+            val people = calls.filter { it.conference != null }.map { c ->
+                Participant(c.callLog.callId ?: c.remoteAddress.asStringUriOnly(), c.remoteAddress.username ?: "Unknown", when (c.state) {
+                    Call.State.OutgoingInit, Call.State.OutgoingProgress, Call.State.OutgoingRinging, Call.State.OutgoingEarlyMedia -> Participant.Status.Ringing
+                    Call.State.Paused, Call.State.Pausing, Call.State.PausedByRemote -> Participant.Status.OnHold
+                    else -> Participant.Status.Talking
+                })
+            }
+            _call.value = CallInfo(people.joinToString(", ") { it.number }, Call.State.StreamsRunning, false,
+                consulting = calls.any { it.conference == null }, conference = true, participants = people)
             return
         }
         val call = core.currentCall ?: calls.firstOrNull() ?: return
@@ -185,6 +201,8 @@ object SipManager {
         core.addListener(listener)
         core.isEchoCancellationEnabled = true   // without AEC, speakerphone audio loops back into the mic
         _echo.value = context.applicationContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getString("result", "") ?: ""
+        _gate.value = context.applicationContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getBoolean("gate", true)
+        applyGate()
         // Shows on the PBX (registrations, logs) instead of "Unknown".
         core.setUserAgent("N2IT Phone Android", BuildConfig.VERSION_NAME)
         // STUN puts the phone's public address in the SDP, so the PBX can send audio before the phone does.
@@ -247,11 +265,21 @@ object SipManager {
         _registered.value = false; _status.value = "Not registered"; _recents.value = emptyList(); _voicemail.value = false
     }
 
-    fun call(number: String) {
-        if (!started || number.isBlank()) return
-        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
-        core.invite(if ('@' in number) "sip:$number" else "sip:$number@$domain")
+    /** Rings [number]; false when it could not be dialled (not registered, or not a valid number). */
+    fun call(number: String): Boolean {
+        val n = cleanNumber(number)
+        if (!started || n.isBlank()) return false
+        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return false
+        return core.invite(if ('@' in n) "sip:$n" else "sip:$n@$domain") != null
     }
+
+    /** "082 123-4567", "(012) 345 6789" → digits; a typed SIP address (with @) is only trimmed. */
+    fun cleanNumber(number: String) = number.trim().let { n -> if ('@' in n) n.filterNot { it.isWhitespace() } else n.filter { it in "+0123456789*#" } }
+
+    private val _notice = MutableStateFlow<String?>(null)
+    /** A short message for the call screen (e.g. the second call could not be placed); cleared by the screen. */
+    val notice: StateFlow<String?> = _notice
+    fun clearNotice() { _notice.value = null }
 
     fun answer() { (ringingCall() ?: core.currentCall)?.accept(); stopQuietRing(); PhoneService.clearIncoming(appContext) }
     private fun ringingCall() = core.calls.firstOrNull { it.state == Call.State.IncomingReceived }
@@ -313,6 +341,10 @@ object SipManager {
         if (c != null && c.conference == null) { c.terminate(); return }
         conference()?.terminate() ?: liveCalls().firstOrNull()?.terminate()
     }
+    /** Conference: hang up on one person ([Participant.id]); everyone else stays connected. */
+    fun dropParticipant(id: String) {
+        liveCalls().firstOrNull { it.conference != null && (it.callLog.callId ?: it.remoteAddress.asStringUriOnly()) == id }?.terminate()
+    }
     fun sendDigit(d: Char) { core.currentCall?.sendDtmf(d) }
     fun toggleMute() { core.isMicEnabled = !core.isMicEnabled; _muted.value = !core.isMicEnabled }
 
@@ -356,8 +388,62 @@ object SipManager {
         // so their voice coming out of the speaker is not sent back to them (speakerphone works a little like a
         // walkie-talkie when both talk at once). Earpiece, headset and Bluetooth do not need it.
         val limiter = _route.value == AudioRoute.Speaker
-        liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter }
+        // Bluetooth earbuds and car kits cancel echo themselves; our canceller on top, tuned for this phone's own speaker
+        // and not the Bluetooth delay, adds crackle (owner 2026-10-08: static on calls only with his earbuds).
+        val ownAec = _route.value != AudioRoute.Bluetooth
+        liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter
+            c.isEchoCancellationEnabled = ownAec }
         conference()?.let { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
+        // A conference is mixed on this phone and its microphone/speaker run in the conference's own audio stream, which
+        // takes the limiter from the core setting, not from the calls (owner 2026-10-10: on speaker in a 3-way call
+        // both other parties heard themselves). Set it on the core, and rebuild that stream if it changed mid-conference.
+        if (core.isEchoLimiterEnabled != limiter) {
+            core.isEchoLimiterEnabled = limiter
+            conference()?.takeIf { it.isIn }?.let { c -> c.leave(); c.enter() }
+        }
+        updateProximity()
+    }
+
+    // Phone at the ear: screen off and touch ignored, so the cheek cannot press Hang up, Hold or Add participant
+    // (owner 2026-10-10). Only on the earpiece while a call is up or being dialled; on speaker, Bluetooth or a headset
+    // the screen stays usable. Android's proximity wake lock switches the screen back on when the phone moves away.
+    private var proximity: android.os.PowerManager.WakeLock? = null
+    private fun updateProximity() {
+        val want = started && _route.value == AudioRoute.Earpiece &&
+            liveCalls().any { it.state != Call.State.IncomingReceived }
+        val lock = proximity ?: appContext.getSystemService(android.os.PowerManager::class.java)
+            ?.takeIf { it.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK) }
+            ?.newWakeLock(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "n2it:proximity")
+            ?.apply { setReferenceCounted(false) }
+            ?.also { proximity = it } ?: return
+        if (want && !lock.isHeld) lock.acquire(4 * 3600 * 1000L)   // safety cap; released when the call ends
+        else if (!want && lock.isHeld) lock.release(android.os.PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
+    }
+
+    // Background voices (owner 2026-10-08: on speaker, people talking a few paces away came through to the other side).
+    // The noise gate turns the microphone down to 3% whenever the sound is quieter than someone speaking into the
+    // phone, so the room only gets through while you talk. Read when a call's audio starts: a change applies to the
+    // next call.
+    private fun applyGate() {
+        core.config.setInt("sound", "noisegate", if (_gate.value) 1 else 0)
+        core.config.setFloat("sound", "ng_thres", 0.03f)
+        core.config.setFloat("sound", "ng_floorgain", 0.03f)
+        // Echo limiter strength for the loudspeaker (owner 2026-10-10: on speaker the other side still heard
+        // themselves). Without these the limiter runs on mediastreamer's mild defaults and hardly turns the microphone
+        // down. Values recommended by Linphone for speakerphone: while the other side's voice plays (el_thres), the
+        // microphone drops hard (el_force) and stays down for 600 ms after they stop (el_sustain), so the tail of their
+        // voice in the room is not sent back. Only used on calls with the limiter on, i.e. on Speaker (applyRoute).
+        core.config.setString("sound", "el_type", "mic")
+        core.config.setFloat("sound", "el_thres", 0.03f)
+        core.config.setFloat("sound", "el_force", 100000f)
+        core.config.setFloat("sound", "el_speed", 0.03f)
+        core.config.setInt("sound", "el_sustain", 600)
+        core.config.setFloat("sound", "el_transmit_thres", 1.7f)
+    }
+    fun setBackgroundFilter(on: Boolean) {
+        _gate.value = on
+        appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).edit().putBoolean("gate", on).apply()
+        if (started) applyGate()
     }
 
     /** Tune the echo canceller for this phone (a few seconds of beeps on the loudspeaker); not during a call. */
@@ -455,14 +541,38 @@ object SipManager {
     fun blindTransfer(number: String) {
         val c = core.currentCall ?: core.calls.firstOrNull() ?: return
         val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
-        val target = Factory.instance().createAddress(if ('@' in number) "sip:$number" else "sip:$number@$domain") ?: return
+        val n = cleanNumber(number)
+        val target = n.takeIf { it.isNotBlank() }?.let { Factory.instance().createAddress(if ('@' in it) "sip:$it" else "sip:$it@$domain") }
+        if (target == null) { _notice.value = "Not a valid number"; return }
         c.transferTo(target)
     }
 
-    /** Attended transfer, step 1: put the caller on hold and ring [number]. */
+    /** Attended transfer, step 1: put the caller on hold and ring [number]. The second call is placed once the hold
+     *  has gone through (dialling while the first call is still "Pausing" could leave it on hold with nothing ringing);
+     *  if it cannot be placed the caller is taken off hold again and the screen says why. */
     fun consult(number: String) {
-        core.currentCall?.pause()
-        call(number)
+        val n = cleanNumber(number)
+        if (n.isBlank()) { _notice.value = "Not a valid number"; return }
+        val c = core.currentCall
+        if (c == null || c.state == Call.State.Paused) { placeConsult(n, null); return }
+        c.pause()
+        pendingConsult = n to c
+        main.postDelayed(consultFallback, 3000)   // the hold never confirmed: dial anyway
+    }
+    private var pendingConsult: Pair<String, Call>? = null
+    private val consultFallback = Runnable { pendingConsult?.let { (n, held) -> pendingConsult = null; placeConsult(n, held) } }
+    /** Called from onCallStateChanged: the held call reached Paused (or ended). */
+    private fun consultHoldDone(call: Call) {
+        val (n, held) = pendingConsult ?: return
+        if (held !== call) return
+        pendingConsult = null; main.removeCallbacks(consultFallback)
+        if (call.state in ended) return
+        placeConsult(n, held)
+    }
+    private fun placeConsult(n: String, held: Call?) {
+        if (call(n)) return
+        _notice.value = "Could not call $n"
+        if (held != null && held.state == Call.State.Paused && held !in userHeld) held.resume()
     }
 
     /** Add participant, step 1: in a conference, invite [number] straight in; otherwise hold the call and ring
@@ -471,7 +581,9 @@ object SipManager {
         val conf = conference()
         val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
         if (conf != null) {
-            val target = Factory.instance().createAddress(if ('@' in number) "sip:$number" else "sip:$number@$domain") ?: return
+            val n = cleanNumber(number)
+            val target = n.takeIf { it.isNotBlank() }?.let { Factory.instance().createAddress(if ('@' in it) "sip:$it" else "sip:$it@$domain") }
+            if (target == null) { _notice.value = "Not a valid number"; return }
             conf.addParticipant(target)
         } else consult(number)
     }

@@ -39,15 +39,21 @@ jobs:
       - run: npm ci
       - name: Syntax check
         run: for f in src/*.js; do node --check "$f"; done
-      - name: Build AppImage and .deb
+      - name: Syntax check build hooks
+        run: for f in build/*.js; do node --check "$f"; done
+      # bsdtar for the Arch (.pacman) package
+      - run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+      - name: Build AppImage, .deb and .pacman
         run: npm run dist:linux
       # Download from the run's Artifacts section. AppImage: chmod +x, then run. Deb: sudo apt install ./file.deb
+      # Arch/Omarchy: sudo pacman -U ./file.pacman
       - uses: actions/upload-artifact@v4
         with:
           name: n2it-phone-linux
           path: |
             windows/dist/*.AppImage
             windows/dist/*.deb
+            windows/dist/*.pacman
 
   mac:
     runs-on: macos-15
@@ -86,8 +92,9 @@ jobs:
           cp *.exe n2it-phone-setup.exe
           cp *.AppImage n2it-phone.AppImage
           cp *.deb n2it-phone.deb
+          cp *.pacman n2it-phone.pacman
           gh release delete desktop-latest --cleanup-tag -y || true
-          gh release create desktop-latest n2it-phone-setup.exe n2it-phone.AppImage n2it-phone.deb \
+          gh release create desktop-latest n2it-phone-setup.exe n2it-phone.AppImage n2it-phone.deb n2it-phone.pacman \
             n2it-phone-mac-arm64.dmg n2it-phone-mac-x64.dmg --prerelease \
             --title "N2IT Phone desktop (latest test build)" \
-            --notes "Build of commit ${GITHUB_SHA::7}. Windows: run n2it-phone-setup.exe (SmartScreen: More info > Run anyway). Linux: AppImage (chmod +x) or .deb. macOS: n2it-phone-mac-arm64.dmg (Apple Silicon, M1 and later) or n2it-phone-mac-x64.dmg (Intel); drag to Applications, open once, then System Settings > Privacy & Security > Open Anyway."
+            --notes "Build of commit ${GITHUB_SHA::7}. Windows: run n2it-phone-setup.exe (SmartScreen: More info > Run anyway). Linux: .deb (Ubuntu/Debian), .pacman (Arch/Omarchy) or AppImage (chmod +x; needs fuse2/libfuse2). macOS: n2it-phone-mac-arm64.dmg (Apple Silicon, M1 and later) or n2it-phone-mac-x64.dmg (Intel); drag to Applications, open once, then System Settings > Privacy & Security > Open Anyway."

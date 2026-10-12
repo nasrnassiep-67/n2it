@@ -154,3 +154,41 @@ Reply to the DND / Accounts requests above; iOS now matches Android on these:
   screen, CallKit and Recents (number underneath). Android and desktop also show only the number today: PBX session,
   please match there (Android: `call.remoteAddress.displayName`). If the name stays missing on internal calls, the
   extension's effective caller ID name on the PBX is probably empty.
+
+## Android 0.2.5 + 0.2.6 (voip-server session, 2026-10-10): please check / match on iOS
+Feature list for all platforms now in FEATURES.md (update it with each release).
+- **Screen off at the ear (0.2.6).** Owner: with the phone at his ear the touchscreen stayed on and his cheek
+  pressed buttons (calls held / hung up / Add participant). Android now holds a proximity wake lock while a call is
+  up or dialling on the earpiece (not on speaker, Bluetooth or headset). On iOS, calls reported to CallKit normally
+  get this from the system, but check on a real iPhone during a call in OUR app's call screen: hold the phone to
+  your ear and see if the screen goes black. If it does not, set `UIDevice.current.isProximityMonitoringEnabled =
+  true` when a call connects on the receiver and `false` when it ends or the route changes to speaker/Bluetooth.
+  Android reference: SipManager.kt updateProximity().
+- **Add participant / Transfer (0.2.5).** The number box also searches the company address book and phone contacts
+  (tap one to fill in the number). Numbers are cleaned before dialling (spaces broke the SIP address on Android:
+  nothing rang and the first call stayed on hold). The second call is placed only after the hold has gone through;
+  if it cannot be placed the first call is resumed and a message shows. Android reference: Ui.kt NumberOrContact,
+  SipManager.kt consult()/cleanNumber().
+- **1002 iPhone does not ring (2026-10-10).** The PBX had no registration from the iPhone app (last REGISTER 12:09
+  from 197.245.66.36), only the Snom and the desktop app, even with the app said to be open. Please check the app
+  stays registered while in the foreground. Push stays parked until Monday (APNs key + enable-push.sh 1002).
+
+## Conference cards, Android 0.2.8 + desktop 0.2.5 (voip-server session, 2026-10-11, branch `conference-cards`): please match on iOS and Mac
+Owner's screenshot (Android 0.2.7, 3-way call): the call screen showed "1002, +27735779444" as one 34sp line that
+wrapped over itself. Owner wants the screen split per caller. **iPhone and Mac are parked for now (owner): build this
+when the owner asks.**
+- **Conference screen.** Keep the "Conference · N people" line; in place of the big name/number, one card per other
+  person. Up to 4 people the cards share the space between that line and the buttons evenly ("split screen"); more
+  than 4, or while the keypad is open, a scrolling list of short cards.
+- **Each card:** round badge with the first letter of the name (person icon for a bare number), the name (company
+  address book first, then phone contacts), the number underneath in local form, a status (Talking green /
+  Ringing… amber / On hold grey), and a small red hang-up that drops **only that person**. Everyone else stays on;
+  the big red button still ends the whole conference.
+- **Number format:** +27735779444 / 27735779444 -> `073 577 9444`; 10-digit 0-numbers the same; extensions as they are.
+- **Desk phones are not affected:** the conference is mixed in our app; other people's phones just see one normal call.
+- iOS today: `Views.swift` shows `sip.participants` joined (line ~188 label); `SipManager.swift` ~415 builds
+  `participants` from `remoteAddress.username`. Needs per-call state + Call-ID to drop one person (`call.terminate()`
+  on that participant's call; Linphone keeps the rest of the local conference).
+- Android reference: Ui.kt ConferenceCards / ParticipantCard / displayNumber / rememberContactName,
+  SipManager.kt Participant + dropParticipant(). Desktop (Windows/Linux, and the Mac .dmg when it is next built):
+  windows/src/app.js renderConf() / displayNumber() / confName(), styles `.pcard` in index.html.
