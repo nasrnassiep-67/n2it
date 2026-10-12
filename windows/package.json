@@ -1,6 +1,6 @@
 {
   "name": "n2it-phone-desktop",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "N2IT Phone desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
@@ -83,6 +83,12 @@
         "xdg-utils",
         "util-linux-libs"
       ]
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true
     }
   },
   "author": {
