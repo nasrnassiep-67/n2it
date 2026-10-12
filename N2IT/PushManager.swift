@@ -47,9 +47,8 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
         URLSession.shared.dataTask(with: req).resume()
     }
 
-    /// Call on sign-out so the gateway stops pushing to this device.
-    func unregister() {
-        let acc = Account.load()
+    /// Call on log-out (and when switching away from an account) so the gateway stops pushing it to this device.
+    func unregister(_ acc: Account) {
         guard let token, let base = gatewayURL?.deletingLastPathComponent() else { return }
         var req = URLRequest(url: base.appendingPathComponent("unregister"))
         req.httpMethod = "POST"
@@ -73,7 +72,12 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
     func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload,
                       for type: PKPushType, completion: @escaping () -> Void) {
         let caller = payload.dictionaryPayload["caller"] as? String ?? "Incoming call"
-        CallKitManager.shared.reportPushIncoming(caller: caller, completion: completion)
+        SipManager.shared.checkDnd()
+        if SipManager.shared.dndActive {
+            CallKitManager.shared.reportPushDeclined(caller: caller, completion: completion)
+        } else {
+            CallKitManager.shared.reportPushIncoming(caller: caller, completion: completion)
+        }
         // The SIP socket is probably dead after suspension: re-register so the PBX delivers the INVITE.
         SipManager.shared.wake()
     }

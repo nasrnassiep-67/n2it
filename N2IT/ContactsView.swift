@@ -28,6 +28,7 @@ final class ContactsStore: ObservableObject {
         async let pbx = loadCompany()
         await loadPhone()
         company = await pbx
+        SipManager.shared.learnNames(company + contacts)   // names on incoming calls and in Recents
     }
 
     /// Empty when the account isn't set up, the endpoint isn't deployed yet (404) or the request fails.

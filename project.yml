@@ -22,8 +22,8 @@ targets:
       CODE_SIGN_STYLE: Automatic
       ENABLE_BITCODE: NO
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-      MARKETING_VERSION: "0.1.0"
-      CURRENT_PROJECT_VERSION: "1"
+      MARKETING_VERSION: "0.2.2"   # same features as Android 0.2.2
+      CURRENT_PROJECT_VERSION: "2"
     entitlements:
       path: N2IT/N2IT.entitlements
       properties:
@@ -32,6 +32,8 @@ targets:
       path: N2IT/Info.plist
       properties:
         CFBundleDisplayName: N2IT Phone
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

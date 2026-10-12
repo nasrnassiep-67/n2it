@@ -7,6 +7,8 @@ struct CallInfo: Identifiable {
     let number: String
     let state: Call.State
     let incoming: Bool
+    /// Caller ID name from the PBX, or the contact's name; nil when unknown.
+    var name: String? = nil
 }
 
 /// Where the call is heard and spoken: the iPhone itself, its loudspeaker, Bluetooth (car kit, headset) or a wired headset.
@@ -36,6 +38,7 @@ struct RecentCall: Identifiable, Codable {
     let date: Date
     let incoming: Bool
     let missed: Bool
+    var name: String? = nil
 }
 
 final class SipManager: ObservableObject {
@@ -51,6 +54,9 @@ final class SipManager: ObservableObject {
     @Published var newVoicemails = 0
     @Published var hasVoicemail = false
 
+    /// "0.2.2", from MARKETING_VERSION in project.yml.
+    static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+
     private var core: Core!
     private var delegate: CoreDelegateStub!
 
@@ -58,12 +64,37 @@ final class SipManager: ObservableObject {
         if let d = try? JSONEncoder().encode(Array(recents.prefix(100))) { UserDefaults.standard.set(d, forKey: "recents") }
     }
 
-    /// Forget the account: unregister push, drop SIP account, clear stored data.
-    func signOut() {
-        PushManager.shared.unregister()
-        core?.clearAccounts()
-        core?.clearAllAuthInfo()
-        Account.clear()
+    /// Another saved account becomes active (`Account.activate` already stored it): only it registers and rings.
+    func switchAccount(to acc: Account, from previous: Account) {
+        if previous.isConfigured && !previous.sameAs(acc) { PushManager.shared.unregister(previous) }
+        resetShown()
+        registration = "Registering…"
+        configure(acc)
+        PushManager.shared.uploadToken()
+    }
+
+    /// Log out of `acc` and forget it on this phone. Logging out of the active account switches to the next one.
+    /// Returns false when no account is left (back to the sign-in screen).
+    func logOut(_ acc: Account) -> Bool {
+        let active = Account.load()
+        PushManager.shared.unregister(acc)
+        guard let next = Account.remove(acc) else {
+            core?.clearAccounts()
+            core?.clearAllAuthInfo()
+            resetShown()
+            return false
+        }
+        if active.sameAs(acc) {
+            resetShown()
+            registration = "Registering…"
+            configure(next)
+            PushManager.shared.uploadToken()
+        }
+        return true
+    }
+
+    /// What was shown belongs to the previous account.
+    private func resetShown() {
         recents = []
         registered = false
         registration = "Not registered"
@@ -78,6 +109,8 @@ final class SipManager: ObservableObject {
         core = c
         core.pushNotificationEnabled = false   // we use our own PushKit gateway, not Linphone's flexisip push
         core.callkitEnabled = true
+        // Shows on the PBX (registrations, logs) instead of "Unknown"; Android sends "N2IT Phone Android/<version>".
+        core.setUserAgent(name: "N2IT Phone iOS", version: SipManager.appVersion)
         delegate = CoreDelegateStub(
             onCallStateChanged: { [weak self] (_, call, state, _) in self?.callChanged(call, state) },
             onNotifyReceived: { [weak self] (_, _, name, body) in
@@ -102,9 +135,66 @@ final class SipManager: ObservableObject {
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) {
             [weak self] _ in self?.readCurrentRoute()
         }
+        let savedDnd = UserDefaults.standard.double(forKey: "dndUntil")
+        setDnd(savedDnd > 0 ? Date(timeIntervalSince1970: savedDnd) : nil)   // survives restarts; clears itself if expired
         configure(Account.load())
         PushManager.shared.start()
     }
+
+    // MARK: Caller names
+
+    /// Contact names by number (company contacts from the PBX and the phone's own), filled by ContactsStore.
+    private var knownNames: [String: String] = [:]
+
+    /// Digits only; long numbers by their last 9 digits so "+27 82 123 4567" and "082 123 4567" match.
+    private static func numberKey(_ n: String) -> String {
+        let d = n.filter(\.isNumber)
+        return d.count >= 9 ? String(d.suffix(9)) : d
+    }
+
+    func learnNames(_ contacts: [PhoneContact]) {
+        for c in contacts where !c.name.isEmpty {
+            for n in c.numbers { let k = Self.numberKey(n); if !k.isEmpty && knownNames[k] == nil { knownNames[k] = c.name } }
+        }
+    }
+
+    func name(for number: String) -> String? { knownNames[Self.numberKey(number)] }
+
+    /// The caller ID name the PBX sends (the extension's name for internal calls), else the contact's name.
+    private func name(of call: Call) -> String? {
+        let number = call.remoteAddress?.username ?? ""
+        if let d = call.remoteAddress?.displayName?.trimmingCharacters(in: .whitespaces), !d.isEmpty, d != number { return d }
+        return name(for: number)
+    }
+
+    // MARK: Do Not Disturb
+
+    /// DND is always timed, at most 2 weeks (owner 2026-10-07). Per phone, not per account.
+    static let maxDnd: TimeInterval = 14 * 24 * 3600
+    /// End of DND, or nil when off.
+    @Published private(set) var dndUntil: Date?
+    private var dndTimer: Timer?
+    /// Calls refused because of DND; they go in Recents as missed.
+    private var dndRefused: [Call] = []
+
+    var dndActive: Bool { (dndUntil ?? .distantPast) > Date() }
+
+    /// Turn DND on until `until` (capped at 2 weeks from now), or off with nil or a time already past.
+    func setDnd(_ until: Date?) {
+        let now = Date()
+        let u = until.map { min($0, now.addingTimeInterval(Self.maxDnd)) }.flatMap { $0 > now ? $0 : nil }
+        UserDefaults.standard.set(u?.timeIntervalSince1970 ?? 0, forKey: "dndUntil")
+        dndUntil = u
+        dndTimer?.invalidate()
+        if let u {
+            dndTimer = Timer.scheduledTimer(withTimeInterval: u.timeIntervalSince(now), repeats: false) { [weak self] _ in
+                self?.checkDnd()
+            }
+        }
+    }
+
+    /// Ends an expired DND. Timers don't run while the app is suspended, so this also runs on resume and on each call.
+    func checkDnd() { if dndUntil != nil && !dndActive { setDnd(nil) } }
 
     // MARK: Account
 
@@ -129,6 +219,10 @@ final class SipManager: ObservableObject {
             try core.setMediaencryption(newValue: acc.srtp ? .SRTP : .None)
             core.mediaEncryptionMandatory = false  // optional SRTP: still call peers that do not offer it
             params.registerEnabled = true
+            // Re-register every 10 min (default 1 h) and keep the connection alive: a mobile network drops an idle
+            // connection after a few minutes, and the PBX can only reach the phone over a live one (same as Android).
+            params.expires = 600
+            core.keepAliveEnabled = true
             step = "create account"
             let account = try core.createAccount(params: params)
             core.addAuthInfo(info: auth)
@@ -381,16 +475,29 @@ final class SipManager: ObservableObject {
         DispatchQueue.main.async {
             let number = call.remoteAddress?.username ?? "Unknown"
             let incoming = call.dir == .Incoming
+            let name = self.name(of: call)
             switch state {
             case .IncomingReceived:
-                CallKitManager.shared.sipIncoming(caller: number)
-                self.activeCall = CallInfo(number: number, state: state, incoming: true)
+                self.checkDnd()
+                if self.dndActive {
+                    // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none).
+                    // Other phones on the same extension (e.g. a desk phone) keep ringing.
+                    self.dndRefused.append(call)
+                    try? call.decline(reason: .Busy)
+                    return
+                }
+                CallKitManager.shared.sipIncoming(caller: number, name: name)
+                self.activeCall = CallInfo(number: number, state: state, incoming: true, name: name)
             case .End, .Error, .Released:
                 self.userHeld.removeAll { $0 === call }
                 // Another call may still be up (held caller after a consult, or the rest of a conference).
-                if let other = self.core.currentCall ?? self.liveCalls(except: call).first {
+                let refused = self.dndRefused.contains { $0 === call }
+                if refused {
+                    // Never shown: leave the call screen and CallKit as they are.
+                    if state == .Released { self.dndRefused.removeAll { $0 === call } }
+                } else if let other = self.core.currentCall ?? self.liveCalls(except: call).first {
                     self.activeCall = CallInfo(number: other.remoteAddress?.username ?? "Unknown", state: other.state,
-                                               incoming: other.dir == .Incoming)
+                                               incoming: other.dir == .Incoming, name: self.name(of: other))
                 } else {
                     CallKitManager.shared.sipEnded()
                     self.activeCall = nil
@@ -399,20 +506,20 @@ final class SipManager: ObservableObject {
                     self.muted = false
                 }
                 if state == .End || state == .Error {
-                    let missed = incoming && call.callLog?.status == .Missed
-                    self.recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed), at: 0)
+                    let missed = incoming && (call.callLog?.status == .Missed || refused)
+                    self.recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed, name: name), at: 0)
                 }
             case .StreamsRunning:
                 if !incoming { CallKitManager.shared.sipConnected() }
                 if self.routePending { self.routePending = false; self.applyRoute() }
-                self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
+                self.activeCall = CallInfo(number: number, state: state, incoming: incoming, name: name)
             default:
-                self.activeCall = CallInfo(number: number, state: state, incoming: incoming)
+                self.activeCall = CallInfo(number: number, state: state, incoming: incoming, name: name)
             }
             let live = self.liveCalls()
             let members = live.filter { $0.conference != nil }
             self.inConference = !members.isEmpty
-            self.participants = members.map { $0.remoteAddress?.username ?? "Unknown" }
+            self.participants = members.map { self.name(of: $0) ?? $0.remoteAddress?.username ?? "Unknown" }
             if self.inConference {
                 self.activeCall = CallInfo(number: self.participants.joined(separator: ", "), state: .StreamsRunning, incoming: false)
                 self.onHold = false

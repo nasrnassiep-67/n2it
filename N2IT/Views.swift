@@ -2,12 +2,20 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var sip: SipManager
+    @Environment(\.scenePhase) private var scenePhase
     @State private var loggedIn = Account.load().isConfigured
 
     var body: some View {
-        if !loggedIn {
-            LoginView { loggedIn = true }
-        } else { tabs }
+        Group {
+            if !loggedIn {
+                LoginView { loggedIn = true }
+            } else {
+                VStack(spacing: 0) {
+                    DndBanner()
+                    tabs
+                }
+            }
+        }.onChange(of: scenePhase) { if $0 == .active { sip.checkDnd() } }
     }
 
     private var tabs: some View {
@@ -26,8 +34,100 @@ struct StatusDot: View {
     @EnvironmentObject var sip: SipManager
     var body: some View {
         HStack(spacing: 6) {
-            Circle().fill(sip.registered ? .green : .red).frame(width: 10, height: 10)
-            Text(sip.registration).font(.footnote).foregroundStyle(.secondary)
+            Circle().fill(!sip.registered ? .red : sip.dndUntil != nil ? Color.dndOrange : .green).frame(width: 10, height: 10)
+            Text(sip.registered && sip.dndUntil != nil ? "Do Not Disturb" : sip.registration).font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+}
+
+extension Color {
+    static let dndOrange = Color(red: 0xE6 / 255, green: 0x51 / 255, blue: 0)
+}
+
+private let dndTime: DateFormatter = {
+    let f = DateFormatter()
+    f.setLocalizedDateFormatFromTemplate("EEE d MMM HH:mm")
+    return f
+}()
+
+/// Orange banner on every screen while DND is on, so it can't be forgotten.
+struct DndBanner: View {
+    @EnvironmentObject var sip: SipManager
+    var body: some View {
+        if let until = sip.dndUntil {
+            HStack(spacing: 10) {
+                Image(systemName: "minus.circle.fill")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("DND enabled. Please disable DND to receive calls.").font(.subheadline)
+                    Text("Until \(dndTime.string(from: until))").font(.caption)
+                }
+                Spacer()
+                Button("Turn off") { sip.setDnd(nil) }.font(.subheadline.bold())
+            }
+            .foregroundStyle(.white).padding(.horizontal, 16).padding(.vertical, 8)
+            .frame(maxWidth: .infinity).background(Color.dndOrange)
+        }
+    }
+}
+
+/// DND button: always with an end time, from 1 hour up to 2 weeks.
+struct DndButton: View {
+    @EnvironmentObject var sip: SipManager
+    @State private var choosing = false
+    @State private var picking = false
+    @State private var picked = Date().addingTimeInterval(3600)
+
+    var body: some View {
+        let on = sip.dndUntil != nil
+        Button { choosing = true } label: {
+            Label(sip.dndUntil.map { "DND until \(dndTime.string(from: $0))" } ?? "Do Not Disturb", systemImage: "minus.circle.fill")
+                .font(.footnote).padding(.horizontal, 12).padding(.vertical, 6)
+                .foregroundStyle(on ? .white : .primary)
+                .background(on ? Color.dndOrange : Color(.secondarySystemBackground)).clipShape(Capsule())
+        }
+        .buttonStyle(.borderless)
+        .confirmationDialog("Do Not Disturb", isPresented: $choosing, titleVisibility: .visible) {
+            Button("1 hour") { set(hours: 1) }
+            Button("2 hours") { set(hours: 2) }
+            Button("4 hours") { set(hours: 4) }
+            Button("Until \(dndTime.string(from: morning))") { sip.setDnd(morning) }
+            Button("Choose date and time…") { picked = Date().addingTimeInterval(3600); picking = true }
+            if on { Button("Turn off now", role: .destructive) { sip.setDnd(nil) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Calls to this app go to voicemail until the time you choose. Other phones on your extension still ring.")
+        }
+        .sheet(isPresented: $picking) {
+            NavigationStack {
+                Form {
+                    DatePicker("Until", selection: $picked,
+                               in: Date()...Date().addingTimeInterval(SipManager.maxDnd))
+                        .datePickerStyle(.graphical)
+                    Text("At most 2 weeks from now.").font(.footnote).foregroundStyle(.secondary)
+                }
+                .navigationTitle("Do Not Disturb").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { picking = false } }
+                    ToolbarItem(placement: .confirmationAction) { Button("Turn on") { sip.setDnd(picked); picking = false } }
+                }
+            }
+        }
+    }
+
+    private func set(hours: Double) { sip.setDnd(Date().addingTimeInterval(hours * 3600)) }
+
+    /// Next 08:00 (today if it's still early, otherwise tomorrow).
+    private var morning: Date {
+        let cal = Calendar.current
+        let today = cal.date(bySettingHour: 8, minute: 0, second: 0, of: Date())!
+        return today > Date() ? today : cal.date(byAdding: .day, value: 1, to: today)!
+    }
+}
+
+struct VersionText: View {
+    var body: some View {
+        HStack {
+            Text("Version: \(SipManager.appVersion)").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
         }
     }
 }
@@ -39,7 +139,7 @@ struct KeypadView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            StatusDot()
+            VStack(spacing: 8) { StatusDot(); DndButton() }
             Text(number.isEmpty ? " " : number).font(.system(size: 36, weight: .light)).lineLimit(1).minimumScaleFactor(0.5)
                 .frame(maxWidth: .infinity).contentShape(Rectangle())
                 .contextMenu {
@@ -89,7 +189,8 @@ struct RecentsView: View {
                         Image(systemName: r.incoming ? "phone.arrow.down.left" : "phone.arrow.up.right")
                             .foregroundStyle(r.missed ? .red : .secondary)
                         VStack(alignment: .leading) {
-                            Text(r.number).foregroundStyle(r.missed ? .red : .primary)
+                            Text(r.name ?? r.number).foregroundStyle(r.missed ? .red : .primary)
+                            if r.name != nil { Text(r.number).font(.caption).foregroundStyle(.secondary) }
                             Text(r.date, style: .relative).font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -112,7 +213,10 @@ struct CallView: View {
     var body: some View {
         VStack(spacing: 28) {
             Spacer()
-            Text(sip.activeCall?.number ?? "").font(.largeTitle)
+            Text(sip.activeCall?.name ?? sip.activeCall?.number ?? "").font(.largeTitle).multilineTextAlignment(.center)
+            if let name = sip.activeCall?.name, !sip.inConference, name != sip.activeCall?.number {
+                Text(sip.activeCall?.number ?? "").font(.title3).foregroundStyle(.secondary)
+            }
             Text(label).foregroundStyle(.secondary)
             Spacer()
             // While dialling: mute and the audio button already, so the user can pick the car or speaker before they answer.
@@ -235,7 +339,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Status") { StatusDot() }
+                Section("Status") { StatusDot(); DndButton() }
                 Section(header: Text("SIP account"), footer: Text(acc.domain)) {
                     TextField("Client (e.g. n2it)", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -248,10 +352,98 @@ struct SettingsView: View {
                     Toggle("Encrypt call audio (SRTP)", isOn: $acc.srtp)
                 }
                 Button("Save & Register") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken() }
-                Section {
-                    Button("Sign out", role: .destructive) { sip.signOut(); onSignOut() }
-                }
+                AccountsSection(onActiveChanged: { acc = $0 }, onNoneLeft: onSignOut)
+                Section { VersionText() }.listRowBackground(Color.clear)
             }.navigationTitle("Settings")
+        }
+    }
+}
+
+/// Saved accounts (e.g. a reseller testing several clients). One is active at a time: only it is registered and
+/// rings; tap another to switch. Log out removes an account from this phone.
+struct AccountsSection: View {
+    @EnvironmentObject var sip: SipManager
+    var onActiveChanged: (Account) -> Void
+    var onNoneLeft: () -> Void
+    @State private var active = Account.load()
+    @State private var others = Account.others()
+    @State private var adding = false
+    @State private var leaving: Account?
+
+    private var inCall: Bool { sip.activeCall != nil }
+    private var list: [Account] { (active.isConfigured ? [active] : []) + others }
+
+    var body: some View {
+        Section(header: Text("Accounts"),
+                footer: Text(inCall ? "Finish the call to switch accounts." : "Only the active account receives calls. Tap another to switch.")) {
+            ForEach(list, id: \.key) { a in
+                let isActive = a.sameAs(active)
+                HStack {
+                    Image(systemName: isActive ? "largecircle.fill.circle" : "circle")
+                        .foregroundStyle(isActive ? Color.accentColor : .secondary)
+                    VStack(alignment: .leading) {
+                        Text("Extension \(a.user)")
+                        Text(a.domain + (isActive ? " · active" : "")).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Log out", role: .destructive) { leaving = a }.buttonStyle(.borderless).disabled(inCall)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { if !isActive && !inCall { use(a) } }
+            }
+            Button { adding = true } label: { Label("Add account", systemImage: "person.badge.plus") }.disabled(inCall)
+        }
+        .onAppear(perform: refresh)
+        .sheet(isPresented: $adding) { AddAccountView { a in adding = false; use(a) } }
+        .alert("Log out of extension \(leaving?.user ?? "")?", isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
+               presenting: leaving) { a in
+            Button("Log out", role: .destructive) {
+                leaving = nil
+                if sip.logOut(a) { refresh(); onActiveChanged(active) } else { onNoneLeft() }
+            }
+            Button("Cancel", role: .cancel) { leaving = nil }
+        } message: { a in
+            Text("\(a.domain) is removed from this phone. You can add it again later with its password.")
+        }
+    }
+
+    private func refresh() { active = Account.load(); others = Account.others() }
+
+    private func use(_ a: Account) {
+        let previous = Account.load()
+        Account.activate(a)
+        sip.switchAccount(to: a, from: previous)
+        refresh()
+        onActiveChanged(active)
+    }
+}
+
+struct AddAccountView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var a = Account.blank
+    var onAdd: (Account) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(footer: Text((a.domain.isEmpty ? "e.g. n2it" : "Connects to \(a.domain)")
+                                     + "\nIt becomes the active account; the current one stays in the list.")) {
+                    TextField("Company code", text: $a.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("Extension", text: $a.user).keyboardType(.numberPad)
+                    SecureField("Password", text: $a.password)
+                }
+            }
+            .navigationTitle("Add account").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        a.tenant = a.tenant.trimmingCharacters(in: .whitespacesAndNewlines)
+                        a.user = a.user.trimmingCharacters(in: .whitespacesAndNewlines)
+                        onAdd(a)
+                    }.disabled(!a.isConfigured)
+                }
+            }
         }
     }
 }
@@ -270,6 +462,7 @@ struct LoginView: View {
                     SecureField("Password", text: $acc.password)
                 }
                 Button("Sign in") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken(); done() }.disabled(!acc.isConfigured)
+                Section { VersionText() }.listRowBackground(Color.clear)
             }.navigationTitle("N2IT Phone")
         }
     }
