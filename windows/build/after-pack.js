@@ -7,7 +7,24 @@
 //    In that case only, run without Chromium's sandbox instead of crashing at start. Arch/Omarchy are unaffected.
 const fs = require('fs')
 const path = require('path')
+const { execFileSync } = require('child_process')
 const adhocSign = require('./adhoc-sign').default
+
+// Security (owner 2026-10-12): Electron fuses off, so the saved extension password can't be reached by starting the
+// app as plain Node (ELECTRON_RUN_AS_NODE), with NODE_OPTIONS or --inspect, or with a replaced app folder. Done with
+// the pinned @electron/fuses CLI (electron-builder 25 has no electronFuses option; npm ci keeps the lockfile as is),
+// BEFORE the macOS ad-hoc signature, which changing the binary would break. The build log prints the result.
+const FUSES = ['RunAsNode=off', 'EnableNodeOptionsEnvironmentVariable=off', 'EnableNodeCliInspectArguments=off', 'OnlyLoadAppFromAsar=on']
+function flipFuses (context) {
+  const name = context.packager.appInfo.productFilename
+  const app = { darwin: `${name}.app`, win32: `${name}.exe`, linux: context.packager.executableName }[context.electronPlatformName]
+  const target = path.join(context.appOutDir, app)
+  const win = process.platform === 'win32'   // npx.cmd needs the shell there, so quote the path ("N2IT Phone.exe")
+  const run = (args) => execFileSync(win ? 'npx.cmd' : 'npx', ['--yes', '@electron/fuses@1.8.0', ...args, '--app', win ? `"${target}"` : target],
+    { stdio: 'inherit', shell: win })
+  run(['write', ...FUSES])
+  run(['read'])
+}
 
 const wrapper = (bin) => `#!/bin/bash
 HERE="$(dirname "$(readlink -f "$0")")"
@@ -20,6 +37,7 @@ exec "$HERE/${bin}" "\${ARGS[@]}" "$@"
 `
 
 exports.default = async (context) => {
+  flipFuses(context)
   await adhocSign(context)
   if (context.electronPlatformName !== 'linux') return
   const name = context.packager.executableName

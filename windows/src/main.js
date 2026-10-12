@@ -5,7 +5,7 @@ const path = require('path')
 
 // Security (owner 2026-10-12): the saved extension password must not be reachable through debugging tools. Packaged app:
 // no developer tools (webPreferences below) and no start with Chromium / Node debug switches; the build also turns off
-// Electron's run-as-Node and inspect fuses (package.json build.electronFuses).
+// Electron's run-as-Node and inspect fuses (build/after-pack.js).
 const DEBUG_SWITCHES = ['remote-debugging-port', 'remote-debugging-pipe', 'remote-debugging-address', 'inspect', 'inspect-brk', 'inspect-port', 'js-flags']
 if (app.isPackaged && DEBUG_SWITCHES.some((s) => app.commandLine.hasSwitch(s))) app.exit(1)
 

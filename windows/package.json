@@ -83,12 +83,6 @@
         "xdg-utils",
         "util-linux-libs"
       ]
-    },
-    "electronFuses": {
-      "runAsNode": false,
-      "enableNodeOptionsEnvironmentVariable": false,
-      "enableNodeCliInspectArguments": false,
-      "onlyLoadAppFromAsar": true
     }
   },
   "author": {
