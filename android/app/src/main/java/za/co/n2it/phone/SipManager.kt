@@ -10,6 +10,11 @@ import android.os.Build
 import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationAttributes
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.provider.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.linphone.core.*
@@ -108,7 +113,7 @@ object SipManager {
                     val name = sipName(call)
                     _call.value = CallInfo(number, state, true, name = name)
                     PhoneService.notifyIncoming(appContext, name?.let { "$it ($number)" } ?: number, busy)
-                    if (busy) quietRing()
+                    if (busy) quietRing() else startVibrate()
                 }
                 else -> {
                     if (state == Call.State.Paused) consultHoldDone(call)
@@ -324,6 +329,7 @@ object SipManager {
     private fun ringNormally() {
         main.removeCallbacks(beep); tone?.release(); tone = null
         PhoneService.ringAgain(appContext)
+        startVibrate()
         try {
             val uri = RingtoneManager.getActualDefaultRingtoneUri(appContext, RingtoneManager.TYPE_RINGTONE) ?: return
             ringtone = RingtoneManager.getRingtone(appContext, uri)?.apply {
@@ -340,6 +346,36 @@ object SipManager {
         main.removeCallbacks(beep)
         tone?.release(); tone = null
         ringtone?.stop(); ringtone = null
+        stopVibrate()
+    }
+
+    /** Vibration while ringing (owner 2026-10-12: on Vibrate the phone stayed silent and still), like the phone's own
+     *  dialler: Vibrate mode vibrates, Sound mode only with Android's "Vibrate for calls" on, Silent never. Stops with the
+     *  ringing (stopQuietRing: answered, declined, Silence, answered on another phone, caller gave up). */
+    private var vibrating = false
+    private fun vibrator(): Vibrator? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) appContext.getSystemService(VibratorManager::class.java)?.defaultVibrator
+        else @Suppress("DEPRECATION") appContext.getSystemService(Vibrator::class.java)
+    private fun startVibrate() {
+        if (vibrating) return
+        try {
+            val on = when (appContext.getSystemService(AudioManager::class.java)?.ringerMode) {
+                AudioManager.RINGER_MODE_VIBRATE -> true
+                AudioManager.RINGER_MODE_NORMAL -> Settings.System.getInt(appContext.contentResolver, "vibrate_when_ringing", 0) == 1
+                else -> false
+            }
+            val v = vibrator()
+            if (!on || v == null || !v.hasVibrator()) return
+            val pattern = VibrationEffect.createWaveform(longArrayOf(0, 1000, 1000), 0)   // 1 s on, 1 s off, until stopped
+            if (Build.VERSION.SDK_INT >= 33) v.vibrate(pattern, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_RINGTONE))
+            else @Suppress("DEPRECATION") v.vibrate(pattern, AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
+            vibrating = true
+        } catch (e: RuntimeException) { /* no vibration: the ringtone and notification still show the call */ }
+    }
+    private fun stopVibrate() {
+        if (!vibrating) return
+        vibrating = false
+        try { vibrator()?.cancel() } catch (e: RuntimeException) { }
     }
     /** Ends the call in front of the user; in a conference with nobody else ringing, ends it for everyone. */
     fun hangup() {

@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.2.9**, **desktop 0.2.6** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
+Current versions: **Android 0.2.10**, **desktop 0.2.6** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
 
 | Feature | Android | Desktop | iOS |
 |---|:-:|:-:|:-:|
@@ -38,6 +38,8 @@ Current versions: **Android 0.2.9**, **desktop 0.2.6** (Windows, Mac, Linux), iO
 | Dark mode | system | ✓ | system |
 
 ## History (newest first)
+- Android 0.2.10 (2026-10-12): incoming calls vibrate like the phone's dialler (Vibrate mode always, Sound mode with
+  "Vibrate for calls" on, Silent never); before, a phone on Vibrate gave no sign of a call apart from the screen.
 - Desktop 0.2.6 (2026-10-12, security): no developer tools in the installed app, refuses to start with debug switches,
   Electron fuses off (run as Node, NODE_OPTIONS, --inspect; app only from its asar), so the saved password can't be read that way.
   Android 0.2.9 also: no cloud backup or new-phone copy of the app's data (users sign in again on a new phone).
