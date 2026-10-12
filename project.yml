@@ -35,6 +35,10 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        # Linphone includes video-call code that touches the camera; App Store Connect rejects a build without this
+        # text even though N2IT never turns the camera on (ITMS-90683). Same for location (CoreLocation is linked).
+        NSCameraUsageDescription: N2IT Phone uses the camera only for video calls.
+        NSLocationWhenInUseUsageDescription: N2IT Phone does not track your location; this is required by the calling library.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
