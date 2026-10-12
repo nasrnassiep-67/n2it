@@ -15,7 +15,7 @@ struct RootView: View {
                     tabs
                 }
             }
-        }.onChange(of: scenePhase) { if $0 == .active { sip.checkDnd() } }
+        }.onChange(of: scenePhase) { sip.appPhase($0) }
     }
 
     private var tabs: some View {
