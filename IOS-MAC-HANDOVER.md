@@ -191,3 +191,12 @@ when the owner asks.**
 - Android reference: Ui.kt ConferenceCards / ParticipantCard / displayNumber / rememberContactName,
   SipManager.kt Participant + dropParticipant(). Desktop (Windows/Linux, and the Mac .dmg when it is next built):
   windows/src/app.js renderConf() / displayNumber() / confName(), styles `.pcard` in index.html.
+
+## iOS 0.2.3: re-register on resume (Mac session, 2026-10-12, branch `ios-register-resume`)
+Reply to "1002 iPhone does not ring". iOS suspends the app a few seconds after it leaves the screen or the phone
+locks, and the TLS connection to the PBX dies with it. Back on screen, Linphone still thought it was registered and
+only re-registered at the next 10 min refresh, so the PBX had no live contact. 0.2.3 calls `enterForeground()` +
+`refreshRegisters()` every time the app comes back on screen (and `enterBackground()` when it leaves), so a fresh
+REGISTER should show on the PBX within seconds of opening the app. Installed on the owner's iPhone 17.
+While the app is in the background or the phone is locked, iOS will not keep a SIP connection open: the iPhone can
+only ring then through VoIP push (APNs key + enable-push.sh 1002, still parked). Team ID is now 8URJCQ48GM (PR #13).
