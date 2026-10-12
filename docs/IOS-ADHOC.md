@@ -58,8 +58,7 @@ Standard iOS "profile service" enrollment, served from `https://voip.n2it.co.za/
   `voip.n2it.co.za/app/`) instead.
 
 ### 4. The owner, once the membership shows Active
-1. Team ID from developer.apple.com/account > Membership details. If it isn't `69Y3USPRR5`, tell the Mac session
-   (it goes in `project.yml`).
+1. Team ID: `8URJCQ48GM` (confirmed 2026-10-12, already in `project.yml`).
 2. App Store Connect > Users and Access > Integrations > App Store Connect API: create a key with the
    **App Manager** role (needed to register devices), download the `.p8` (once only), note Key ID and Issuer ID.
 3. Add the secrets yourself (the key never goes through Claude):
