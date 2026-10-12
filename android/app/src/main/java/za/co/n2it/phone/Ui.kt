@@ -75,7 +75,7 @@ private fun ReturnToCallBar(call: CallInfo, onClick: () -> Unit) {
     Surface(color = Green, modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Call, null, tint = Color.White); Spacer(Modifier.width(10.dp))
-            Text((if (call.onHold) "On hold: " else "On call: ") + call.number + " · tap to return",
+            Text((if (call.onHold) "On hold: " else "On call: ") + (call.name ?: call.number) + " · tap to return",
                 color = Color.White, maxLines = 1)
         }
     }
@@ -538,7 +538,11 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
             Spacer(Modifier.height(20.dp))
         } else {
             Spacer(Modifier.weight(1f))
-            Text(call.number, fontSize = 34.sp); Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Phone contact or company book first, then the caller ID name the PBX sent; the number underneath
+            val name = rememberContactName(call.number) ?: call.name
+            Text(name ?: displayNumber(call.number), fontSize = 34.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (name != null) Text(displayNumber(call.number), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
         }
         // While dialling: mute and speaker/Bluetooth already, so the user can pick the car or speaker before they answer.
@@ -611,7 +615,7 @@ private fun ConferenceCards(people: List<Participant>, compact: Boolean, modifie
 /** Name, number, status and a hang-up for this person only. Tall cards stack it centred; short ones in a row. */
 @Composable
 private fun ParticipantCard(p: Participant, modifier: Modifier) {
-    val name = rememberContactName(p.number)
+    val name = rememberContactName(p.number) ?: p.name
     val title = name ?: displayNumber(p.number)
     val number = if (name != null) displayNumber(p.number) else null
     val (status, statusColor) = when (p.status) {
