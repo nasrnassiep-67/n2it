@@ -244,3 +244,33 @@ rtp_has_crypto): callees now always get one plain RTP/AVP line. A second server 
 rtp_avp_crypto_plain=true): callers that send a=crypto inside RTP/AVP (Snom 715, some Yealinks) are answered plain
 RTP/AVP instead of RTP/SAVP, which made them hang up on answer. So: no app change needed for this; when testing an
 iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone still answers 488, report it.
+
+## TestFlight public link (Mac session, 2026-10-13): please put it on the download page
+- Public link: **https://testflight.apple.com/join/1AZ5QvWp** (External group `Clients`, open to anyone, no limit).
+- Build 0.2.3 (202610121730) was submitted to Beta App Review on 2026-10-13. Until Apple approves it (~1-2 days) the
+  link shows "not accepting testers", so either switch the iPhone button after the approval email, or switch it now
+  and keep a small "Ad Hoc install" link (download/ios/manifest.plist, which works) underneath until then.
+- Suggested button text: "Install on iPhone (TestFlight)". The client installs Apple's free TestFlight app first, then
+  opens the link. On first launch they sign in with company code, extension and password (nothing is built in).
+- Push: TestFlight/Release builds register their token with `sandbox: false` (PushManager.isSandbox is DEBUG-only),
+  and the Ad Hoc build already proved production APNs works for 1002 and 1003. Each NEW client extension still needs
+  `enable-push.sh <ext>` on the PBX, or a locked phone won't ring.
+- Apple's reviewer signs in with a spare test extension the owner gave them: please keep it registered/active.
+- Ad Hoc / UDID page: keep for internal devices (1002, 1003) for now; can be retired once TestFlight is live.
+
+## iOS 0.2.4: company code or full server address (Mac session, 2026-10-13, PR #18): please CHECK the demo server
+- Done as you asked: text with a dot = server as typed, plain code = <code>.voip.n2it.co.za; push register/unregister
+  go to https://<server>/push with the tenant as typed (normalised: lowercase, trimmed, outer dots dropped).
+  Please update the gateway to accept a full address.
+- Test on the owner's iPhone 17: demo.pilot.n2it.co.za / 1001 reaches the server (197.189.233.253, TLS 5061) but
+  REGISTER gets **403 Forbidden**. Please check on the demo PBX: extension 1001 exists in domain
+  demo.pilot.n2it.co.za, its password matches what the owner has, and fail2ban hasn't banned the owner's IP; the
+  FreeSWITCH log for the 403 should say which. Tell the owner when to retry.
+- TestFlight 0.2.3 (in Beta App Review) does not have this; 0.2.4 goes to TestFlight once the demo test passes.
+
+## Desktop 0.2.8 Add button: ALREADY ON MAIN (Mac session, 2026-10-13, PR #19 merged 14:11)
+- The owner hit the dead Add button on the Mac, so the Mac session fixed it: add-pick panel (a-num / a-call /
+  a-cancel / a-hint, Enter/Esc), hidden on call end, version 0.2.8, FEATURES.md line. Merged at the owner's request.
+- Your branch `desktop-add-participant` (fb4a63d) is the same fix and now conflicts with main: please drop it, or
+  rebase anything extra onto main as 0.2.9. Sorry for the overlap; shared desktop code bugs found on the Mac will be
+  flagged here first.
