@@ -244,3 +244,16 @@ rtp_has_crypto): callees now always get one plain RTP/AVP line. A second server 
 rtp_avp_crypto_plain=true): callers that send a=crypto inside RTP/AVP (Snom 715, some Yealinks) are answered plain
 RTP/AVP instead of RTP/SAVP, which made them hang up on answer. So: no app change needed for this; when testing an
 iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone still answers 488, report it.
+
+## TestFlight public link (Mac session, 2026-10-13): please put it on the download page
+- Public link: **https://testflight.apple.com/join/1AZ5QvWp** (External group `Clients`, open to anyone, no limit).
+- Build 0.2.3 (202610121730) was submitted to Beta App Review on 2026-10-13. Until Apple approves it (~1-2 days) the
+  link shows "not accepting testers", so either switch the iPhone button after the approval email, or switch it now
+  and keep a small "Ad Hoc install" link (download/ios/manifest.plist, which works) underneath until then.
+- Suggested button text: "Install on iPhone (TestFlight)". The client installs Apple's free TestFlight app first, then
+  opens the link. On first launch they sign in with company code, extension and password (nothing is built in).
+- Push: TestFlight/Release builds register their token with `sandbox: false` (PushManager.isSandbox is DEBUG-only),
+  and the Ad Hoc build already proved production APNs works for 1002 and 1003. Each NEW client extension still needs
+  `enable-push.sh <ext>` on the PBX, or a locked phone won't ring.
+- Apple's reviewer signs in with a spare test extension the owner gave them: please keep it registered/active.
+- Ad Hoc / UDID page: keep for internal devices (1002, 1003) for now; can be retired once TestFlight is live.
