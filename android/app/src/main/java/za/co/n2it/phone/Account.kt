@@ -13,8 +13,10 @@ data class Account(
     val srtp: Boolean = true,
     val voicemail: String = "*97",
 ) {
-    /** Each client has its own PBX at <tenant>.voip.n2it.co.za */
-    val domain get() = if (tenant.isBlank()) "" else "${tenant.lowercase().trim()}.$BASE_DOMAIN"
+    /** Each client has its own PBX at <tenant>.voip.n2it.co.za. A full address (with a dot) is used as typed: PBXs on
+     *  another N2IT server (demo.pilot.n2it.co.za) or on a client's own server. */
+    val domain get() = tenant.lowercase().trim().trimEnd('.').let { t ->
+        when { t.isEmpty() -> ""; '.' in t -> t; else -> "$t.$BASE_DOMAIN" } }
     val isConfigured get() = tenant.isNotBlank() && user.isNotBlank() && password.isNotBlank()
     /** Same extension on the same PBX = same account. */
     fun sameAs(o: Account) = domain == o.domain && user.trim() == o.user.trim()

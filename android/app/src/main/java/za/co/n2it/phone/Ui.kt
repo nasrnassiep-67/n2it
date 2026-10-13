@@ -177,7 +177,7 @@ fun LoginScreen(done: () -> Unit) {
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Company code") },
             singleLine = true, modifier = Modifier.fillMaxWidth(),
-            supportingText = { Text(if (acc.domain.isEmpty()) "Enter your company code" else "Connects to ${acc.domain}") })
+            supportingText = { Text(if (acc.domain.isEmpty()) "Your company code, or the full server address" else "Connects to ${acc.domain}") })
         OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") },
             singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         OutlinedTextField(acc.password, { acc = acc.copy(password = it) }, label = { Text("Password") },

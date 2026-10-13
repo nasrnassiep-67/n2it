@@ -148,7 +148,8 @@ ipcMain.handle('account:clear', () => { try { fs.unlinkSync(file()) } catch {} }
 ipcMain.handle('directory:load', async () => {
   let acc
   try { acc = JSON.parse(safeStorage.decryptString(fs.readFileSync(file()))) } catch { return { error: 'Not signed in' } }
-  const host = `${acc.tenant.trim().toLowerCase()}.voip.n2it.co.za`
+  const t = acc.tenant.trim().toLowerCase().replace(/\.+$/, '')
+  const host = t.includes('.') ? t : `${t}.voip.n2it.co.za`   // full address = another server (same rule as app.js)
   const auth = Buffer.from(`${acc.user.trim()}:${acc.pass}`).toString('base64')
   try {
     const r = await fetch(`https://${host}/app/n2it/contacts.php`,

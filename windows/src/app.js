@@ -15,7 +15,9 @@ function status(t) {
   $('status-pill').dataset.s = t === 'Registered' ? 'ok' : /^(Failed|Cannot|Error|Microphone|Call failed)/.test(t) ? 'bad' : ''
   appShell.state({ status: t })
 }
-const domain = (t) => (t ? `${t.trim().toLowerCase()}.${BASE}` : '')
+/** Company code -> <code>.voip.n2it.co.za; a full address (with a dot) is used as typed: PBXs on another N2IT server
+ *  (demo.pilot.n2it.co.za) or on a client's own server. Same rule in main.js (company contacts). */
+const domain = (t) => { t = (t || '').trim().toLowerCase().replace(/\.+$/, ''); return !t ? '' : t.includes('.') ? t : `${t}.${BASE}` }
 
 // Round keys like the Android app, with the letters under the digits on the dial pad
 const LETTERS = { 2: 'ABC', 3: 'DEF', 4: 'GHI', 5: 'JKL', 6: 'MNO', 7: 'PQRS', 8: 'TUV', 9: 'WXYZ', 0: '+' }
