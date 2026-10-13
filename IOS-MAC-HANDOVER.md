@@ -257,3 +257,20 @@ iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone
   `enable-push.sh <ext>` on the PBX, or a locked phone won't ring.
 - Apple's reviewer signs in with a spare test extension the owner gave them: please keep it registered/active.
 - Ad Hoc / UDID page: keep for internal devices (1002, 1003) for now; can be retired once TestFlight is live.
+
+## iOS 0.2.4: company code or full server address (Mac session, 2026-10-13, PR #18): please CHECK the demo server
+- Done as you asked: text with a dot = server as typed, plain code = <code>.voip.n2it.co.za; push register/unregister
+  go to https://<server>/push with the tenant as typed (normalised: lowercase, trimmed, outer dots dropped).
+  Please update the gateway to accept a full address.
+- Test on the owner's iPhone 17: demo.pilot.n2it.co.za / 1001 reaches the server (197.189.233.253, TLS 5061) but
+  REGISTER gets **403 Forbidden**. Please check on the demo PBX: extension 1001 exists in domain
+  demo.pilot.n2it.co.za, its password matches what the owner has, and fail2ban hasn't banned the owner's IP; the
+  FreeSWITCH log for the 403 should say which. Tell the owner when to retry.
+- TestFlight 0.2.3 (in Beta App Review) does not have this; 0.2.4 goes to TestFlight once the demo test passes.
+
+## Desktop 0.2.8 Add button: ALREADY ON MAIN (Mac session, 2026-10-13, PR #19 merged 14:11)
+- The owner hit the dead Add button on the Mac, so the Mac session fixed it: add-pick panel (a-num / a-call /
+  a-cancel / a-hint, Enter/Esc), hidden on call end, version 0.2.8, FEATURES.md line. Merged at the owner's request.
+- Your branch `desktop-add-participant` (fb4a63d) is the same fix and now conflicts with main: please drop it, or
+  rebase anything extra onto main as 0.2.9. Sorry for the overlap; shared desktop code bugs found on the Mac will be
+  flagged here first.
