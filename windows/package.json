@@ -44,11 +44,6 @@
       "languages": [
         "en-US"
       ],
-      "capabilities": [
-        "runFullTrust",
-        "internetClient",
-        "microphone"
-      ],
       "artifactName": "n2it-phone-store.${ext}"
     },
     "mac": {
