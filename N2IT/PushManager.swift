@@ -73,6 +73,12 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
 
     func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload,
                       for type: PKPushType, completion: @escaping () -> Void) {
+        // {"type":"cancel","reason":"answered"|"ended"}: answered elsewhere / caller hung up before we reconnected
+        if payload.dictionaryPayload["type"] as? String == "cancel" {
+            let answered = payload.dictionaryPayload["reason"] as? String == "answered"
+            CallKitManager.shared.reportPushCancelled(answeredElsewhere: answered, completion: completion)
+            return
+        }
         let caller = payload.dictionaryPayload["caller"] as? String ?? "Incoming call"
         SipManager.shared.checkDnd()
         if SipManager.shared.dndActive {

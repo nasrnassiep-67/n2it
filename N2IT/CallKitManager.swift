@@ -51,6 +51,32 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         }
     }
 
+    /// A cancel push from the PBX: the call was answered on another device (or the caller gave up) before this
+    /// iPhone reconnected, so no SIP CANCEL will ever reach it. Ends the push-only call. A call that already has
+    /// its SIP INVITE is left alone (the SIP CANCEL or BYE ends it). iOS requires every VoIP push to report a call:
+    /// re-reporting the existing UUID counts (CallKit just answers "already exists"), and with nothing pending a
+    /// call is reported and ended at once, as for Do Not Disturb.
+    func reportPushCancelled(answeredElsewhere: Bool, completion: (() -> Void)? = nil) {
+        let reason: CXCallEndedReason = answeredElsewhere ? .answeredElsewhere : .remoteEnded
+        if let id = uuid {
+            if SipManager.shared.activeCall == nil {
+                pendingTimeout?.cancel()
+                answerWhenInvite = false
+                provider.reportCall(with: id, endedAt: nil, reason: reason)
+                uuid = nil
+                completion?()
+            } else {
+                report(id, caller: "", completion: completion)
+            }
+            return
+        }
+        let id = UUID()
+        report(id, caller: "Call ended") { [weak self] in
+            self?.provider.reportCall(with: id, endedAt: nil, reason: reason)
+            completion?()
+        }
+    }
+
     /// Called when Linphone sees the INVITE. Reuses the push's CallKit call if there is one.
     func sipIncoming(caller: String, name: String?) {
         pendingTimeout?.cancel()

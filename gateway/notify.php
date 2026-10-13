@@ -1,6 +1,8 @@
 <?php
 // POST /push/notify.php (127.0.0.1 only): FreeSWITCH asks us to wake an extension's iPhones before ringing it.
 // Form fields: user, domain, number, name. Answers {"devices": n, "sent": m}; FreeSWITCH waits only when sent > 0.
+// type=cancel (+ reason=answered|ended): the call was answered elsewhere or abandoned before the iPhone reconnected,
+// so the app ends the call it showed from the first push (needs iOS 0.2.5+: older apps would ring on it).
 require __DIR__ . '/common.php';
 
 if (($_SERVER['REMOTE_ADDR'] ?? '') !== '127.0.0.1') reply(403);
@@ -18,10 +20,13 @@ if (empty($c['team_id']) || empty($c['key_id']) || empty($c['key_file']) || !is_
 	reply(200, ['devices' => count($devices), 'sent' => 0, 'error' => 'APNs key not configured']);
 }
 
+$cancel = ($_POST['type'] ?? '') === 'cancel';
 $number = substr(preg_replace('/[^0-9+*#]/', '', (string)($_POST['number'] ?? '')), 0, 32);
 $name = mb_substr(trim(preg_replace('/[\x00-\x1f\x7f]/', '', (string)($_POST['name'] ?? ''))), 0, 60);
 $caller = ($name !== '' && $name !== $number) ? $name : ($number !== '' ? $number : 'Unknown');
-$payload = json_encode(['caller' => $caller, 'number' => $number, 'callee' => $user]);
+$payload = $cancel
+	? json_encode(['type' => 'cancel', 'reason' => ($_POST['reason'] ?? '') === 'answered' ? 'answered' : 'ended', 'callee' => $user])
+	: json_encode(['caller' => $caller, 'number' => $number, 'callee' => $user]);
 
 try {
 	$jwt = apns_jwt($c);
@@ -70,7 +75,7 @@ if ($dead) {
 		if (!$data[$k]) unset($data[$k]);
 	});
 }
-push_log("notify $user@$domain caller=$number: $sent/" . count($devices) . ' sent');
+push_log(($cancel ? 'cancel' : 'notify') . " $user@$domain caller=$number: $sent/" . count($devices) . ' sent');
 reply(200, ['devices' => count($devices), 'sent' => $sent]);
 
 // APNs provider token (ES256 JWT). Apple allows a new one at most every 20 min and accepts it for 60 min,

@@ -274,3 +274,19 @@ iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone
 - Your branch `desktop-add-participant` (fb4a63d) is the same fix and now conflicts with main: please drop it, or
   rebase anything extra onto main as 0.2.9. Sorry for the overlap; shared desktop code bugs found on the Mac will be
   flagged here first.
+
+## Please build: iOS cancel push, "iPhone keeps ringing after answered elsewhere" (voip-server session, 2026-10-13, branch `ios-push-cancel`)
+- Bug (owner + Nasr, 1002): Nasr answers on another device, his iPhone keeps ringing for up to 30 s. Cause: the
+  PBX's VoIP push shows a CallKit call at once; when the app does not re-register within 10 s it never gets the SIP
+  INVITE, so no SIP CANCEL can reach it, and only the app's 30 s `pendingTimeout` ends it.
+- Fix, iOS (this branch, Swift written on the PBX box, NOT compiled): `PushManager` handles a push payload
+  `{"type":"cancel","reason":"answered"|"ended","callee":"1002"}` by calling the new
+  `CallKitManager.reportPushCancelled(answeredElsewhere:)`. It ends a push-only call (`uuid` set, no
+  `activeCall`) with `.answeredElsewhere` / `.remoteEnded`. A call that already has its INVITE is left to SIP, and
+  the existing UUID is re-reported only to satisfy iOS's "every VoIP push reports a call" rule. With nothing
+  pending, it reports a call and ends it at once (as DND does). Please compile, check that rule on a real iPhone
+  (no crash / no visible flash when the app was awake and answered on the SIP leg), bump to 0.2.5 and TestFlight it.
+- PBX side is ready but OFF: `n2it_push_ring.lua` stays in the ring after the push and sends the cancel when the
+  ring ends (LOSE_RACE = answered). Switched on with the FreeSWITCH global `n2it_push_cancel=true`. **Old apps
+  (0.2.4 and earlier) would show a cancel push as a new incoming call**, so it stays off until every iPhone on push
+  has 0.2.5. Tell us here when 0.2.5 is on TestFlight.
