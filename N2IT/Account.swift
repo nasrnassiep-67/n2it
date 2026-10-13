@@ -19,8 +19,16 @@ struct Account: Codable {
     var srtp: Bool
 
     static let baseDomain = "voip.n2it.co.za"
-    /// Each client has its own PBX at <tenant>.voip.n2it.co.za
-    var domain: String { tenant.isEmpty ? "" : "\(tenant.lowercased()).\(Account.baseDomain)" }
+    /// The company code box as the PBX and push gateway see it: lowercase, no spaces or outer dots.
+    var tenantKey: String {
+        tenant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    }
+    /// A plain company code means <code>.voip.n2it.co.za; anything with a dot is a full server address, used as typed.
+    var domain: String {
+        let t = tenantKey
+        if t.isEmpty { return "" }
+        return t.contains(".") ? t : "\(t).\(Account.baseDomain)"
+    }
     var isConfigured: Bool { !tenant.isEmpty && !user.isEmpty && !password.isEmpty }
     /// Same extension on the same PBX = same account.
     func sameAs(_ o: Account) -> Bool { domain == o.domain && user == o.user }
