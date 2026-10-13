@@ -53,7 +53,9 @@ pendingDial = linkIn(process.argv) ? numberOf(linkIn(process.argv)) : null
  * app owns (e.g. Phone Link for tel:); the user picks N2IT Phone once there (Settings > "Phone links" button).
  */
 function registerLinksWindows() {
-  if (process.platform !== 'win32' || !app.isPackaged) return
+  // Store (MSIX) build: its registry writes stay inside the package, so the schemes come from the package manifest
+  // (build.protocols in package.json) and Windows lists the app under Default apps by itself
+  if (process.platform !== 'win32' || !app.isPackaged || process.windowsStore) return
   const exe = process.execPath, cls = 'HKCU\\Software\\Classes\\N2ITPhone.URL', caps = 'HKCU\\Software\\N2IT\\N2ITPhone\\Capabilities'
   const reg = (key, name, data) => new Promise((ok) =>
     execFile('reg', ['add', key, ...(name === null ? ['/ve'] : ['/v', name]), '/d', data, '/f'], () => ok()))

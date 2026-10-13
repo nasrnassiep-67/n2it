@@ -52,3 +52,15 @@ save(tile(512, 0.70), "windows/build/icon.png")
 save(tile(256, 0.70), "windows/src/assets/icon.png")
 logo = Image.open(ROOT / "branding/n2it-logo.png").convert("RGBA")
 save(logo.resize((300, round(logo.height * 300 / logo.width)), Image.LANCZOS), "windows/src/assets/logo.png")
+
+# Microsoft Store (MSIX/AppX): electron-builder takes these tiles from windows/build/appx/ (else Electron's defaults).
+APPX = "windows/build/appx"
+save(tile(50, 0.70), f"{APPX}/StoreLogo.png")
+save(tile(44, 0.74), f"{APPX}/Square44x44Logo.png")
+save(tile(150, 0.62), f"{APPX}/Square150x150Logo.png")
+save(tile(310, 0.62), f"{APPX}/LargeTile.png")
+save(tile(71, 0.66), f"{APPX}/SmallTile.png")
+wide = Image.new("RGBA", (310, 150), WHITE)
+wm = mark(round(150 * 0.62))
+wide.alpha_composite(wm, ((310 - wm.width) // 2, (150 - wm.height) // 2))
+save(wide, f"{APPX}/Wide310x150Logo.png")
