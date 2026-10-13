@@ -137,7 +137,7 @@ function end(s) {
   if (mix) buildMix()   // rebuild for whoever is left (tears down below two calls)
   updateRinging()
   if (!calls.length) {
-    session = null; show('incall', false); show('audio-pick', false); show('xfer-pick', false); show('dpad', false)
+    session = null; show('incall', false); show('audio-pick', false); show('xfer-pick', false); show('add-pick', false); show('dpad', false)
     $('keys').classList.remove('on'); show('idle', true); appShell.state({ inCall: false }); return
   }
   if (session === s) session = calls.find((c) => c.isEstablished()) || calls[calls.length - 1]
@@ -456,12 +456,21 @@ $('hold').onclick = () => {
     session.unhold()
   } else session.hold()
 }
-$('add').onclick = () => {   // hold the call (unless in a conference) and ring the new person; Merge joins them
-  const n = prompt(mix ? 'Add to conference: extension or number' : 'Add participant: extension or number\n(the current call goes on hold; press Merge when they answer)')
-  if (!n) return
-  if (!mix) session?.hold()
-  dial(n.trim())
+// Add: hold the call (unless in a conference) and ring the new person; Merge joins them.
+// A panel like Transfer's, because Electron has no window.prompt() (it returned nothing, so Add did nothing).
+$('add').onclick = () => {
+  $('a-num').value = ''
+  $('a-hint').textContent = mix ? 'They join the conference when you press Merge.' : 'The current call goes on hold; press Merge when they answer.'
+  show('add-pick', true); $('a-num').focus()
 }
+$('a-cancel').onclick = () => show('add-pick', false)
+$('a-call').onclick = () => {
+  const n = $('a-num').value.trim(); if (!n) return
+  show('add-pick', false)
+  if (!mix) session?.hold()
+  dial(n)
+}
+$('a-num').onkeydown = (e) => { if (e.key === 'Enter') $('a-call').click(); if (e.key === 'Escape') $('a-cancel').click() }
 $('merge').onclick = merge
 // ---- Transfer: "Transfer now" (blind, SIP REFER) or "Ask first" (attended: the caller waits on hold while you talk to
 // the new person, then Complete transfer joins them: REFER with Replaces; the PBX connects them and drops us) ----
