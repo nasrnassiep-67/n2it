@@ -25,21 +25,23 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
 
     // MARK: Gateway registration
 
-    private var gatewayURL: URL? {
-        let host = Bundle.main.infoDictionary?["PushGatewayHost"] as? String ?? ""
-        return host.isEmpty ? nil : URL(string: "https://\(host)/register")
+    /// Every N2IT server serves the gateway at /push on all its company addresses, so each account
+    /// registers with its own server (falls back to Info.plist PushGatewayHost).
+    private func gatewayURL(_ acc: Account, _ action: String) -> URL? {
+        let host = acc.domain.isEmpty ? Bundle.main.infoDictionary?["PushGatewayHost"] as? String ?? "" : "\(acc.domain)/push"
+        return host.isEmpty ? nil : URL(string: "https://\(host)/\(action)")
     }
 
     /// Call after sign-in, and whenever the token changes.
     func uploadToken() {
         let acc = Account.load()
-        guard let token, acc.isConfigured, let url = gatewayURL else { return }
+        guard let token, acc.isConfigured, let url = gatewayURL(acc, "register") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // The gateway verifies these SIP credentials against the PBX before storing the token.
         let body: [String: Any] = [
-            "tenant": acc.tenant.lowercased(), "user": acc.user, "password": acc.password,
+            "tenant": acc.tenantKey, "user": acc.user, "password": acc.password,
             "token": token, "bundle": Bundle.main.bundleIdentifier ?? "",
             "sandbox": Self.isSandbox
         ]
@@ -49,12 +51,12 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
 
     /// Call on log-out (and when switching away from an account) so the gateway stops pushing it to this device.
     func unregister(_ acc: Account) {
-        guard let token, let base = gatewayURL?.deletingLastPathComponent() else { return }
-        var req = URLRequest(url: base.appendingPathComponent("unregister"))
+        guard let token, let url = gatewayURL(acc, "unregister") else { return }
+        var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject:
-            ["tenant": acc.tenant.lowercased(), "user": acc.user, "token": token])
+            ["tenant": acc.tenantKey, "user": acc.user, "token": token])
         URLSession.shared.dataTask(with: req).resume()
     }
 

@@ -341,7 +341,7 @@ struct SettingsView: View {
             Form {
                 Section("Status") { StatusDot(); DndButton() }
                 Section(header: Text("SIP account"), footer: Text(acc.domain)) {
-                    TextField("Client (e.g. n2it)", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("Company code or server", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("Password", text: $acc.password)
                     TextField("Port", value: $acc.port, format: .number.grouping(.never)).keyboardType(.numberPad)
@@ -426,7 +426,7 @@ struct AddAccountView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(footer: Text((a.domain.isEmpty ? "e.g. n2it" : "Connects to \(a.domain)")
+                Section(footer: Text((a.domain.isEmpty ? "Your company code (e.g. n2it), or the full server address" : "Connects to \(a.domain)")
                                      + "\nIt becomes the active account; the current one stays in the list.")) {
                     TextField("Company code", text: $a.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $a.user).keyboardType(.numberPad)
@@ -456,7 +456,7 @@ struct LoginView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Sign in"), footer: Text(acc.domain.isEmpty ? "Enter your company code" : "Connects to \(acc.domain)")) {
+                Section(header: Text("Sign in"), footer: Text(acc.domain.isEmpty ? "Your company code, or the full server address" : "Connects to \(acc.domain)")) {
                     TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("Password", text: $acc.password)

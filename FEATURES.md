@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.2.12**, **desktop 0.2.7** (Windows, Mac, Linux), iOS: Ad Hoc builds from the Mac.
+Current versions: **Android 0.2.12**, **desktop 0.2.7** (Windows, Mac, Linux), **iOS 0.2.4** (Ad Hoc from the Mac; TestFlight in review).
 
 | Feature | Android | Desktop | iOS |
 |---|:-:|:-:|:-:|
@@ -41,7 +41,8 @@ Current versions: **Android 0.2.12**, **desktop 0.2.7** (Windows, Mac, Linux), i
 - Android 0.2.12 / desktop 0.2.7 (2026-10-13): the company code box also takes a full server address (anything with a
   dot is used as typed, e.g. demo.pilot.n2it.co.za), for PBXs on other N2IT servers or a client's own server; a plain
   code still means <code>.voip.n2it.co.za. Desktop: WebSocket allowed to any wss: host (was *.voip.n2it.co.za only).
-  iOS: same change still to do (N2IT/Account.swift baseDomain).
+  iOS 0.2.4 (2026-10-13): same rule; push registers with the account's own server (https://<server>/push), tenant
+  sent as typed (code or full address).
 - Android 0.2.11 (2026-10-12): call waiting during another app's call (WhatsApp, GSM, Teams) also buzzes twice every
   4 s, not only the in-call beep, which WhatsApp's audio may not let through (Silent mode stays silent).
 - Android 0.2.10 (2026-10-12): incoming calls vibrate like the phone's dialler (Vibrate mode always, Sound mode with
