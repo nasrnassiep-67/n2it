@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.2.12**, **desktop 0.2.8** (Windows, Mac, Linux), **iOS 0.2.4** (Ad Hoc from the Mac; TestFlight in review).
+Current versions: **Android 0.2.12**, **desktop 0.2.9** (Windows, Mac, Linux), **iOS 0.2.4** (Ad Hoc from the Mac; TestFlight in review).
 
 | Feature | Android | Desktop | iOS |
 |---|:-:|:-:|:-:|
@@ -38,6 +38,8 @@ Current versions: **Android 0.2.12**, **desktop 0.2.8** (Windows, Mac, Linux), *
 | Dark mode | system | ✓ | system |
 
 ## History (newest first)
+- Desktop 0.2.9 (2026-10-13): Microsoft Store package (MSIX/AppX, identity N2ITSolutions.N2ITPhone, Store ID 9P1RH1TKPLDB),
+  built unsigned by CI for Partner Center; in the Store build tel:/callto:/sip: come from the package manifest.
 - Desktop 0.2.8 (2026-10-13): the in-call Add button (conference) did nothing, because Electron has no window.prompt();
   it now opens a small panel like Transfer's (number, Call, Cancel; Enter / Esc work).
 - Android 0.2.12 / desktop 0.2.7 (2026-10-13): the company code box also takes a full server address (anything with a

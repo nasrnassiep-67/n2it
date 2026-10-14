@@ -26,6 +26,16 @@ jobs:
         with:
           name: n2it-phone-windows-installer
           path: windows/dist/*.exe
+      # Microsoft Store package (identity N2ITSolutions.N2ITPhone, Partner Center product 9P1RH1TKPLDB). Unsigned on
+      # purpose: the Store signs it. It can't be installed by double-click; upload it in Partner Center > Packages.
+      - name: Build Microsoft Store package (.appx, unsigned)
+        run: npm run dist:store
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n2it-phone-store-package
+          path: windows/dist/*.appx
 
   linux:
     runs-on: ubuntu-latest

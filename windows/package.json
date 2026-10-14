@@ -1,6 +1,6 @@
 {
   "name": "n2it-phone-desktop",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "N2IT Phone desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
@@ -9,6 +9,8 @@
     "start": "electron .",
     "predist": "npm run bundle",
     "dist": "electron-builder --win nsis",
+    "predist:store": "npm run bundle",
+    "dist:store": "electron-builder --win appx",
     "predist:linux": "npm run bundle",
     "dist:linux": "electron-builder --linux AppImage deb pacman",
     "predist:mac": "npm run bundle",
@@ -31,6 +33,18 @@
     "afterPack": "build/after-pack.js",
     "win": {
       "target": "nsis"
+    },
+    "appx": {
+      "identityName": "N2ITSolutions.N2ITPhone",
+      "publisher": "CN=7501823B-3E22-4B8F-87E3-1321277C359B",
+      "publisherDisplayName": "N2IT Solutions",
+      "displayName": "N2IT Phone",
+      "applicationId": "N2ITPhone",
+      "backgroundColor": "#FFFFFF",
+      "languages": [
+        "en-US"
+      ],
+      "artifactName": "n2it-phone-store.${ext}"
     },
     "mac": {
       "target": [
@@ -68,6 +82,12 @@
           "tel",
           "callto",
           "sip"
+        ]
+      },
+      {
+        "name": "N2IT Phone notification",
+        "schemes": [
+          "n2itphone"
         ]
       }
     ],
