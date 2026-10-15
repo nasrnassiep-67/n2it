@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 520" fill="none" stroke="#ffffff" stroke-opacity=".16">
+  <!-- Decorative orbit rings for inner-page title bands (matches the homepage service orbit). -->
+  <ellipse cx="260" cy="260" rx="84" ry="232"/>
+  <ellipse cx="260" cy="260" rx="210" ry="84" transform="rotate(30 260 260)"/>
+  <ellipse cx="260" cy="260" rx="210" ry="84" transform="rotate(-30 260 260)"/>
+  <path d="M206 232 260 205 314 232 260 259zM206 232v62l54 27 54-27v-62M260 259v62" stroke="#9cc6ff" stroke-opacity=".45" stroke-linejoin="round"/>
+  <g fill="#9cc6ff" fill-opacity=".6" stroke="none"><circle cx="260" cy="28" r="3"/><circle cx="442" cy="365" r="3"/><circle cx="78" cy="155" r="3"/></g>
+</svg>

@@ -1,0 +1,179 @@
+/* N2IT branding for the Roundcube (elastic) login page - same look as the Webuzo logins.
+   Source: /root/webuzo-branding/roundcube-plugin - re-run /root/webuzo-branding/apply.sh after editing. */
+
+body.task-login,
+html.dark-mode body.task-login {
+	background: #0f3d80 !important;
+	background:
+		url('n2it-login-art.svg') center / cover no-repeat fixed,
+		url('n2it-login-pattern.svg') repeat fixed,
+		linear-gradient(to bottom, #0f3d80 0%, #0a2a5a 100%) fixed !important;
+	font-family: Arial, Helvetica, sans-serif;
+	min-height: 100vh;
+}
+body.task-login #layout,
+body.task-login #layout-content {
+	background: transparent !important;
+	color: #282828;
+}
+/* Centre the card (logo + form) horizontally and vertically */
+body.task-login #layout-content {
+	display: flex !important;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 100vh;
+	padding: 24px 0 90px;
+	box-sizing: border-box;
+}
+body.task-login #logo,
+body.task-login #login-form {
+	position: static !important;
+	top: auto !important;
+	opacity: 1 !important;
+}
+
+/* Logo + form are siblings: style them as the top and bottom of one white card */
+body.task-login #logo {
+	width: 300px !important;
+	max-width: calc(100vw - 92px);
+	height: auto !important;
+	max-height: none !important;
+	margin: 0 auto !important;
+	display: block !important;
+	padding: 30px 30px 15px;
+	box-sizing: content-box;
+	background: #ffffff;
+	border-radius: 4px 4px 0 0;
+	box-shadow: 0 1px 20px rgba(0, 0, 0, 0.35);
+	clip-path: inset(-30px -30px 0 -30px);
+}
+body.task-login #login-form {
+	width: 360px;
+	max-width: calc(100vw - 32px);
+	box-sizing: border-box;
+	margin: 0 auto !important;
+	padding: 5px 30px 25px;
+	background: #ffffff;
+	border-radius: 0 0 4px 4px;
+	box-shadow: 0 1px 20px rgba(0, 0, 0, 0.35);
+	clip-path: inset(0 -30px -30px -30px);
+}
+body.task-login #login-form table,
+body.task-login #login-form td { background: transparent !important; color: #282828; }
+body.task-login #login-form .form-control {
+	background: #ffffff !important;
+	color: #282828 !important;
+	border: 1px solid #c8d1dc;
+	border-radius: 4px;
+}
+body.task-login #login-form .form-control:focus {
+	border-color: #145ab6;
+	box-shadow: 0 0 0 3px rgba(20, 90, 182, 0.18);
+}
+body.task-login #rcmloginsubmit {
+	background: #0f3d80 !important;
+	border-color: #0f3d80 !important;
+	color: #ffffff !important;
+	border-radius: 3px;
+	font-weight: 600;
+}
+body.task-login #rcmloginsubmit:hover,
+body.task-login #rcmloginsubmit:focus {
+	background: #145ab6 !important;
+	border-color: #145ab6 !important;
+}
+body.task-login #login-footer,
+body.task-login #login-footer a { color: #6b7785 !important; }
+body.task-login #login-footer a:hover { color: #145ab6 !important; }
+
+/* Web Hosting pill under the card */
+#n2it_app_links {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 24px;
+	z-index: 3;
+	text-align: center;
+	font-size: 13px;
+}
+#n2it_app_links .apps {
+	display: flex;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+#n2it_app_links .apps a {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 16px;
+	background: #ffffff;
+	color: #1f2933;
+	border: 1px solid #dfe5ee;
+	border-radius: 999px;
+	text-decoration: none;
+	font-weight: 600;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	transition: transform .12s, border-color .12s;
+}
+#n2it_app_links .apps a:hover {
+	transform: translateY(-1px);
+	border-color: #145ab6;
+}
+#n2it_app_links .apps svg {
+	width: 20px;
+	height: 20px;
+	fill: #0f3d80;
+}
+@media (max-height: 640px) {
+	#n2it_app_links { position: static; margin: 20px auto; }
+}
+
+/* Small screens: dot pattern only (the artwork would sit behind the card) */
+@media (max-width: 900px) {
+	body.task-login {
+		background:
+			url('n2it-login-pattern.svg') repeat fixed,
+			linear-gradient(to bottom, #0f3d80 0%, #0a2a5a 100%) fixed !important;
+	}
+}
+
+/* Turnstile bot check inside the card */
+body.task-login .n2it-turnstile { margin: 10px 0 4px; min-height: 65px; }
+
+/* ---- Services panel (html.n2it-ads is set when n2it-services.js mounts it) ----
+   Elastic clips #layout at 100% height; let the page grow and scroll instead. The pills move into
+   #layout-content (under the card) and the card becomes 420px wide like the other N2IT logins. */
+html.n2it-ads body.task-login { overflow-y: auto !important; }
+html.n2it-ads body.task-login #layout { height: auto; min-height: 100%; overflow: visible; }
+html.n2it-ads body.task-login #layout-content { height: auto; padding-bottom: 40px; }
+html.n2it-ads body.task-login #logo {
+	width: 420px !important;
+	max-width: calc(100vw - 32px);
+	box-sizing: border-box;
+	padding: 30px 60px 15px;
+}
+html.n2it-ads body.task-login #login-form { width: 420px; }
+html.n2it-ads #n2it_app_links { position: static; margin: 22px auto 0; }
+
+/* Wide screens: card + pills in a 420px left column, services panel beside it spanning all rows.
+   The last row is 1fr so the panel's height goes there instead of pulling the logo and form apart. */
+@media (min-width: 1100px) {
+	html.n2it-ads body.task-login #layout-content {
+		display: grid !important;
+		grid-template-columns: 420px minmax(520px, 620px);
+		grid-template-rows: auto auto auto 1fr;
+		column-gap: 48px;
+		justify-content: center;
+		align-items: start;
+		padding: 40px 0;
+	}
+	html.n2it-ads body.task-login #logo,
+	html.n2it-ads body.task-login #login-form,
+	html.n2it-ads body.task-login #n2it_app_links { grid-column: 1; max-width: none; }
+	html.n2it-ads body.task-login #n2it_services { grid-column: 2; grid-row: 1 / -1; margin: 0; text-align: start; }
+}
+@media (min-width: 1500px) {
+	html.n2it-ads body.task-login #layout-content { grid-template-columns: 420px minmax(520px, 860px); }
+}

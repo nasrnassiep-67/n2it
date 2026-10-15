@@ -1,0 +1,150 @@
+/* N2IT branding for the Webuzo login pages (matches voip.n2it.co.za).
+   Installed by /root/webuzo-branding/apply.sh - edit the copy in /root/webuzo-branding/assets, then re-run it. */
+
+body {
+	background: #0f3d80;
+	background:
+		url('../images/n2it-login-art.svg') center / cover no-repeat fixed,
+		url('../images/n2it-login-pattern.svg') repeat fixed,
+		linear-gradient(to bottom, #0f3d80 0%, #0a2a5a 100%) fixed;
+	font-family: Arial, Helvetica, sans-serif;
+	overflow: auto;
+	min-height: 100vh;
+}
+.trail, #world { display: none !important; }
+
+/* Logo box + form box are separate rows in Webuzo's template; join them into one white card */
+.login-form {
+	background: #ffffff !important;
+	border-radius: 0 0 4px 4px !important;
+	margin-top: 0 !important;
+	padding: 20px 30px 30px !important;
+	box-shadow: 0 1px 20px rgba(0, 0, 0, 0.35);
+	z-index: 2;
+}
+.login-form.bg-transparent {
+	border-radius: 4px 4px 0 0 !important;
+	margin-top: 40px !important;
+	padding: 30px 30px 0 !important;
+	z-index: 1;
+}
+.login-form.bg-transparent img {
+	width: 300px !important;
+	max-width: 100%;
+	height: auto;
+}
+
+.login-form label { color: #282828; font-size: 13px; }
+.login-form input,
+.login-form .form-control {
+	border: 1px solid #c8d1dc;
+	border-radius: 4px;
+	padding: 10px 12px;
+	font-size: 14px;
+	height: auto;
+}
+.login-form .form-control:focus {
+	border-color: #145ab6;
+	box-shadow: 0 0 0 3px rgba(20, 90, 182, 0.18);
+}
+
+.login-form .btn-primary {
+	background: #0f3d80 !important;
+	border-color: #0f3d80 !important;
+	border-radius: 3px !important;
+	padding: 10px !important;
+	font-weight: 600;
+}
+.login-form .btn-primary:hover,
+.login-form .btn-primary:focus {
+	background: #145ab6 !important;
+	border-color: #145ab6 !important;
+}
+
+.fpass-link a,
+.login-link a { color: #0f3d80; font-size: 12px; }
+.fpass-link a:hover,
+.login-link a:hover { color: #145ab6; }
+.fpass-success, .fpass-success a { color: #ffffff; }
+
+/* Email / Web Hosting pills under the card */
+#n2it_app_links {
+	position: relative;
+	z-index: 3;
+	text-align: center;
+	margin: 22px auto 30px;
+	font-size: 13px;
+	color: #ffffff;
+}
+#n2it_app_links .apps {
+	display: flex;
+	justify-content: center;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+#n2it_app_links .apps a {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 16px;
+	background: #ffffff;
+	color: #1f2933;
+	border: 1px solid #dfe5ee;
+	border-radius: 999px;
+	text-decoration: none;
+	font-weight: 600;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	transition: transform .12s, border-color .12s;
+}
+#n2it_app_links .apps a:hover {
+	transform: translateY(-1px);
+	border-color: #145ab6;
+}
+#n2it_app_links .apps svg {
+	width: 20px;
+	height: 20px;
+	fill: #0f3d80;
+}
+
+@media (max-width: 480px) {
+	.login-form, .login-form.bg-transparent { padding-left: 18px !important; padding-right: 18px !important; }
+	.login-form.bg-transparent { margin-top: 16px !important; }
+}
+
+/* Small screens: dot pattern only (the artwork would sit behind the card) */
+@media (max-width: 900px) {
+	body {
+		background:
+			url('../images/n2it-login-pattern.svg') repeat fixed,
+			linear-gradient(to bottom, #0f3d80 0%, #0a2a5a 100%) fixed;
+	}
+}
+
+/* ---- Services panel (login-kit panel/n2it-services.*; html.n2it-ads is set when it is mounted) ----
+   Main login page only. The card is two Bootstrap rows (logo + form) inside .container; the panel and the
+   pills are appended to that same .container, so nothing Webuzo or Turnstile owns gets moved. */
+html.n2it-ads .container > .row > .col-md-4 { flex: 0 0 auto; width: min(420px, 100%); }
+html.n2it-ads .container > #n2it_app_links { margin-bottom: 0; }
+
+/* Wide screens: card (and pills) in a 420px left column, services panel beside it spanning all rows.
+   The last row is 1fr so the panel's height goes there instead of stretching the logo/form rows apart. */
+@media (min-width: 1100px) {
+	html.n2it-ads body > .container {
+		display: grid;
+		grid-template-columns: 420px minmax(520px, 620px);
+		grid-template-rows: auto auto auto auto 1fr;
+		column-gap: 48px;
+		justify-content: center;
+		align-items: start;
+		max-width: none;
+		padding-bottom: 30px;
+	}
+	html.n2it-ads .container > .row { grid-column: 1; margin-left: 0; margin-right: 0; margin-top: 0 !important; }
+	html.n2it-ads .container > .row > .col-md-4 { width: 100%; padding-left: 0; padding-right: 0; }
+	html.n2it-ads .container > .login-error { top: 0; margin: 40px 0 -20px; max-width: none; }
+	html.n2it-ads .container > #n2it_app_links { grid-column: 1; }
+	html.n2it-ads .container > #n2it_services { grid-column: 2; grid-row: 1 / -1; margin: 40px 0 0; }
+}
+@media (min-width: 1500px) {
+	html.n2it-ads body > .container { grid-template-columns: 420px minmax(520px, 860px); }
+}

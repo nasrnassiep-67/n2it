@@ -1,0 +1,99 @@
+/* wp-login.php in the same style as the Webuzo (2083/2087) and webmail (2096) logins. */
+body.login {
+	background: #0f3d80;
+	background:
+		url('../img/hero-art.svg') center / cover no-repeat fixed,
+		url('../img/pattern.svg') repeat fixed,
+		linear-gradient(to bottom, #0f3d80 0%, #0a2a5a 100%) fixed;
+	font-family: Arial, Helvetica, sans-serif;
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+@media (max-width: 900px) {
+	body.login {
+		background:
+			url('../img/pattern.svg') repeat fixed,
+			linear-gradient(to bottom, #0f3d80 0%, #0a2a5a 100%) fixed;
+	}
+}
+#login { width: 360px; max-width: calc(100vw - 32px); padding: 24px 0 0; margin: 0 auto; }
+
+/* Logo + form = one white card */
+.login h1 {
+	background: #fff;
+	border-radius: 4px 4px 0 0;
+	padding: 30px 30px 10px;
+	box-shadow: 0 1px 20px rgba(0, 0, 0, .35);
+	clip-path: inset(-30px -30px 0 -30px);
+}
+.login h1 a {
+	background-image: url('../img/n2it-logo-login.png') !important;
+	background-size: contain !important;
+	background-position: center !important;
+	width: 100% !important;
+	height: 112px !important;
+	margin: 0 !important;
+}
+.login form {
+	margin-top: 0 !important;
+	border: 0 !important;
+	border-radius: 0 0 4px 4px;
+	padding: 16px 30px 28px !important;
+	box-shadow: 0 1px 20px rgba(0, 0, 0, .35) !important;
+	clip-path: inset(0 -30px -30px -30px);
+}
+.login label { color: #282828; font-size: 13px; }
+.login form .input, .login input[type=text], .login input[type=password], .login input[type=email] {
+	border: 1px solid #c8d1dc;
+	border-radius: 4px;
+	font-size: 15px;
+	padding: 6px 10px;
+}
+.login form .input:focus, .login input:focus { border-color: #145ab6 !important; box-shadow: 0 0 0 3px rgba(20, 90, 182, .18) !important; }
+.login .button.wp-hide-pw { color: #0f3d80; }
+.login .button.wp-hide-pw:focus { border-color: #145ab6; box-shadow: 0 0 0 1px #145ab6; }
+.wp-core-ui .button-primary {
+	background: #0f3d80 !important;
+	border-color: #0f3d80 !important;
+	border-radius: 3px;
+	font-weight: 600;
+	box-shadow: none;
+	text-shadow: none;
+}
+.wp-core-ui .button-primary:hover, .wp-core-ui .button-primary:focus { background: #145ab6 !important; border-color: #145ab6 !important; }
+.login .forgetmenot label { color: #5b6776; }
+
+/* Messages sit inside the card width */
+.login .message, .login .notice, .login #login_error {
+	border-radius: 4px;
+	margin: 0 0 12px;
+	box-shadow: 0 1px 8px rgba(0, 0, 0, .2);
+}
+
+/* Links under the card */
+.login #nav, .login #backtoblog { text-align: center; margin: 16px 0 0; padding: 0; }
+.login #nav a, .login #backtoblog a { color: rgba(255, 255, 255, .85) !important; }
+.login #nav a:hover, .login #backtoblog a:hover { color: #fff !important; text-decoration: underline; }
+.login .privacy-policy-page-link { display: none; }
+.language-switcher { display: none; }
+
+/* Email / Web Hosting pills (same as the panel logins) */
+#n2it_app_links { text-align: center; margin: 22px auto 30px; font-size: 13px; }
+#n2it_app_links .apps { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+#n2it_app_links .apps a {
+	display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+	background: #fff; color: #1f2933; border: 1px solid #dfe5ee; border-radius: 999px;
+	text-decoration: none; font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+	transition: transform .12s, border-color .12s;
+}
+#n2it_app_links .apps a:hover { transform: translateY(-1px); border-color: #145ab6; }
+#n2it_app_links .apps svg { width: 20px; height: 20px; fill: #0f3d80; }
+
+/* Turnstile bot check inside the card */
+.login .n2it-turnstile { margin: 4px 0 16px; min-height: 65px; }
+
+/* WordPress's "Remember Me" help bubble showed as an empty white box at the left edge in Firefox.
+   Keep it hidden until the "?" actually opens it. */
+.login .wp-tooltip, .wp-tooltip__bubble { display: none !important; }

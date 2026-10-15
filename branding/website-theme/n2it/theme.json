@@ -1,0 +1,103 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/theme.json",
+	"version": 3,
+	"settings": {
+		"appearanceTools": true,
+		"color": {
+			"defaultPalette": false,
+			"defaultGradients": false,
+			"palette": [
+				{ "slug": "base", "name": "White", "color": "#ffffff" },
+				{ "slug": "contrast", "name": "Ink", "color": "#1f2933" },
+				{ "slug": "navy", "name": "N2IT Navy", "color": "#0f3d80" },
+				{ "slug": "navy-deep", "name": "N2IT Deep Navy", "color": "#0a2a5a" },
+				{ "slug": "navy-ink", "name": "N2IT Night", "color": "#061a3a" },
+				{ "slug": "blue", "name": "N2IT Blue", "color": "#145ab6" },
+				{ "slug": "sky", "name": "Sky", "color": "#2f8fe0" },
+				{ "slug": "muted", "name": "Muted text", "color": "#5b6776" },
+				{ "slug": "line", "name": "Line", "color": "#dfe5ee" },
+				{ "slug": "mist", "name": "Mist", "color": "#f3f6fa" }
+			],
+			"gradients": [
+				{ "slug": "navy", "name": "Navy", "gradient": "linear-gradient(180deg, #0f3d80 0%, #0a2a5a 100%)" }
+			]
+		},
+		"layout": { "contentSize": "760px", "wideSize": "1280px" },
+		"typography": {
+			"fluid": true,
+			"fontFamilies": [
+				{
+					"name": "Inter",
+					"slug": "inter",
+					"fontFamily": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+					"fontFace": [
+						{ "fontFamily": "Inter", "fontStyle": "normal", "fontWeight": "100 900", "fontDisplay": "swap", "src": [ "file:./assets/fonts/Inter-Variable.woff2" ] }
+					]
+				},
+				{
+					"name": "Mono",
+					"slug": "mono",
+					"fontFamily": "\"Fira Code\", ui-monospace, SFMono-Regular, Menlo, monospace",
+					"fontFace": [
+						{ "fontFamily": "Fira Code", "fontStyle": "normal", "fontWeight": "300 700", "fontDisplay": "swap", "src": [ "file:./assets/fonts/FiraCode-VariableFont_wght.woff2" ] }
+					]
+				}
+			],
+			"fontSizes": [
+				{ "slug": "small", "name": "Small", "size": "0.875rem", "fluid": false },
+				{ "slug": "medium", "name": "Medium", "size": "1rem", "fluid": false },
+				{ "slug": "large", "name": "Large", "size": "1.25rem", "fluid": { "min": "1.125rem", "max": "1.25rem" } },
+				{ "slug": "x-large", "name": "Extra large", "size": "2.5rem", "fluid": { "min": "1.85rem", "max": "2.5rem" } },
+				{ "slug": "xx-large", "name": "Huge", "size": "3.6rem", "fluid": { "min": "2.3rem", "max": "3.6rem" } }
+			]
+		},
+		"spacing": {
+			"spacingSizes": [
+				{ "slug": "20", "name": "Tiny", "size": "0.5rem" },
+				{ "slug": "30", "name": "XS", "size": "1rem" },
+				{ "slug": "40", "name": "S", "size": "1.5rem" },
+				{ "slug": "50", "name": "M", "size": "clamp(2rem, 4vw, 3rem)" },
+				{ "slug": "60", "name": "L", "size": "clamp(3.5rem, 7vw, 6rem)" },
+				{ "slug": "70", "name": "XL", "size": "clamp(4rem, 8vw, 7rem)" }
+			]
+		}
+	},
+	"styles": {
+		"color": { "background": "var:preset|color|base", "text": "var:preset|color|contrast" },
+		"typography": {
+			"fontFamily": "var:preset|font-family|inter",
+			"fontSize": "var:preset|font-size|medium",
+			"lineHeight": "1.6",
+			"letterSpacing": "0"
+		},
+		"spacing": { "blockGap": "1.25rem" },
+		"elements": {
+			"link": {
+				"color": { "text": "var:preset|color|blue" },
+				"typography": { "textDecoration": "none" },
+				":hover": { "color": { "text": "var:preset|color|navy" }, "typography": { "textDecoration": "underline" } }
+			},
+			"heading": {
+				"color": { "text": "var:preset|color|navy-ink" },
+				"typography": { "fontFamily": "var:preset|font-family|inter", "fontWeight": "650", "lineHeight": "1.12", "letterSpacing": "-0.025em" }
+			},
+			"h1": { "typography": { "fontSize": "var:preset|font-size|xx-large", "letterSpacing": "-0.035em" } },
+			"h2": { "typography": { "fontSize": "var:preset|font-size|x-large", "letterSpacing": "-0.03em" } },
+			"h3": { "typography": { "fontSize": "var:preset|font-size|large", "letterSpacing": "-0.015em" } },
+			"button": {
+				"color": { "background": "var:preset|color|navy-ink", "text": "var:preset|color|base" },
+				"border": { "radius": "8px" },
+				"typography": { "fontWeight": "600", "fontSize": "var:preset|font-size|small" },
+				"spacing": { "padding": { "top": "0.8rem", "bottom": "0.8rem", "left": "1.35rem", "right": "1.35rem" } },
+				":hover": { "color": { "background": "var:preset|color|blue", "text": "var:preset|color|base" } }
+			}
+		},
+		"blocks": {
+			"core/navigation": { "typography": { "fontSize": "0.9rem", "fontWeight": "500" } }
+		}
+	},
+	"templateParts": [
+		{ "name": "header", "title": "Header", "area": "header" },
+		{ "name": "footer", "title": "Footer", "area": "footer" }
+	]
+}
