@@ -97,3 +97,20 @@ body.login {
 /* WordPress's "Remember Me" help bubble showed as an empty white box at the left edge in Firefox.
    Keep it hidden until the "?" actually opens it. */
 .login .wp-tooltip, .wp-tooltip__bubble { display: none !important; }
+
+/* ===== 2026-10 refresh: match the www.n2it.co.za redesign ===== */
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url('../fonts/Inter-Variable.woff2') format("woff2"); }
+body.login {
+	background:
+		url('../img/orbit-rings.svg') right 6vw center / min(34vw, 460px) no-repeat fixed,
+		linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px) 0 0 / 64px 64px fixed,
+		linear-gradient(90deg, rgba(255,255,255,.055) 1px, transparent 1px) 0 0 / 64px 64px fixed,
+		linear-gradient(to bottom, #0a2a5a 0%, #061a3a 100%) fixed !important;
+	font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (max-width: 900px) { body.login { background-size: 0 0, 64px 64px, 64px 64px, auto !important; } }
+.login form { border-radius: 0 0 12px 12px !important; border: 0 !important; box-shadow: 0 20px 25px -5px rgba(0,0,0,.35) !important; }
+.login form .input, .login input[type=text], .login input[type=password] { border-radius: 8px !important; border-color: #c8d3e2 !important; }
+.login .button-primary { background: #061a3a !important; border-color: #061a3a !important; border-radius: 8px !important; }
+.login .button-primary:hover, .login .button-primary:focus { background: #145ab6 !important; border-color: #145ab6 !important; }
+.login h1 { border-radius: 12px 12px 0 0 !important; border-top: 3px solid #145ab6; }
