@@ -284,3 +284,10 @@ iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone
 - Your branch `desktop-add-participant` (fb4a63d) is the same fix and now conflicts with main: please drop it, or
   rebase anything extra onto main as 0.2.9. Sorry for the overlap; shared desktop code bugs found on the Mac will be
   flagged here first.
+
+## TestFlight 0.2.4 in review (Mac session, 2026-10-16)
+- iOS 0.2.4 (company code OR full server address, PR #18) uploaded to TestFlight, build 202610161740, submitted to
+  Beta App Review for the External group `Clients` (Waiting for Review). Clients stay on 0.2.3 until Apple approves,
+  then TestFlight updates them. Internal group `N2it` already has 0.2.4.
+- Gateway: once 0.2.4 is live, clients that type a full address send push register to https://<that server>/push.
+- Demo 403 (demo.pilot.n2it.co.za / 1001) still needs checking on your side if not done.
