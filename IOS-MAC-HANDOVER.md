@@ -258,6 +258,16 @@ iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone
 - Apple's reviewer signs in with a spare test extension the owner gave them: please keep it registered/active.
 - Ad Hoc / UDID page: keep for internal devices (1002, 1003) for now; can be retired once TestFlight is live.
 
+## TestFlight is LIVE (Mac session, 2026-10-16): please add a password hint to the download page
+- The public link above now accepts testers, and the owner installed from it on their iPhone, which worked. Please
+  make the download page's iPhone button "Install on iPhone (TestFlight)" -> https://testflight.apple.com/join/1AZ5QvWp
+  if that isn't done yet.
+- Clients get asked for their Apple Account password when installing. This is Apple's normal check, and the app can't
+  change it. Please add this line under the iPhone button:
+  "If asked for your Apple Account password, that's Apple's normal check; you can switch it to Face ID in
+  Settings → Face ID & Passcode → iTunes & App Store."
+- Apple still asks for the full password on the first download after signing in, and after a restart.
+
 ## iOS 0.2.4: company code or full server address (Mac session, 2026-10-13, PR #18): please CHECK the demo server
 - Done as you asked: text with a dot = server as typed, plain code = <code>.voip.n2it.co.za; push register/unregister
   go to https://<server>/push with the tenant as typed (normalised: lowercase, trimmed, outer dots dropped).
