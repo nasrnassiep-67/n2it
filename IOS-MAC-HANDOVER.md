@@ -274,3 +274,27 @@ iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone
 - Your branch `desktop-add-participant` (fb4a63d) is the same fix and now conflicts with main: please drop it, or
   rebase anything extra onto main as 0.2.9. Sorry for the overlap; shared desktop code bugs found on the Mac will be
   flagged here first.
+
+## Android 0.2.13 Add participant / Transfer: please match on iOS (voip-server session, 2026-10-19, branch `add-participant-pick`)
+Owner's rule: **keep two steps** (pick, then press the button). One tap on a list row must never call or add someone, because the
+wrong person could end up in a live client conference. But the second step must not feel like a repeat.
+
+What was wrong on Android: tapping a contact row only copied its number into the box. When the user had already typed the full
+extension (e.g. 1002) the tap changed nothing visible, so it looked as if the tap had failed and Add had to be pressed "again".
+The button also said "Call" under the title "Add participant".
+
+The behaviour to build (Android is the reference, `NumberOrContact` / `AddParticipantDialog` / `TransferDialog` in Ui.kt):
+1. **A "who" line under the number box** whenever the box holds a dialable number: contact name (bold) + the number, or
+   the number alone with "Not in your contacts" under it. Highlighted (primary container colour). Hidden while the box holds a
+   name search (letters in it).
+2. **Who = an exact match of the whole number**, company address book first, then the phone's contacts. Compare digits only,
+   and treat a South African `27…`/`+27…` number of 11 digits as `0…` (so `+27 82 123 4567` = `082 123 4567`).
+3. **The confirm button names the person**: "Add Nasr" inside a conference, "Call Nasr" outside one (the current call goes on hold,
+   as before); the bare number when nobody matches; just "Add"/"Call" (disabled) while the box is empty or a name search.
+   Names longer than 18 characters are cut with an ellipsis. Transfer keeps its Blind / Consult first buttons; the who line is
+   what names the target there.
+4. **Tapping a row still only fills the box** (no call), and the who line now shows the choice, so the tap is visibly doing
+   something. If the typed number matches exactly one contact, the list is hidden (it would only repeat the who line).
+5. A typed number or extension needs **one** press of the button. No extra step for people who know the number.
+
+Desktop (Electron) has the same panel (a-num / a-call / a-hint): the same who line and named button would fit there too; not done yet.

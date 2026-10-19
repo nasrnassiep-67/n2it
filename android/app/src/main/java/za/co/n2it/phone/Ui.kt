@@ -733,12 +733,23 @@ private fun AudioRouteButton() {
     }
 }
 
-/**
- * Number box for Add participant and Transfer: type an extension or number, or search by name; the company address
- * book and the phone's contacts that match are listed under it and a tap fills in the number.
- */
+/** The contacts the number box searches: the company address book and the phone's own. */
+private class ContactBook(val company: List<PhoneContact>, val phone: List<PhoneContact>) {
+    /** Who a typed or tapped number is: the contact whose whole number is the same, company address book first. */
+    fun whois(target: String): PhoneContact? {
+        val key = numberKey(target)
+        if (key.length < 2) return null
+        return (company + phone).firstOrNull { numberKey(it.number) == key }
+    }
+}
+/** A number for comparing: digits only, and a South African 27… number written as 0… (so 082 123 4567 = +27 82 123 4567). */
+private fun numberKey(n: String): String {
+    val d = SipManager.cleanNumber(n).filter { it.isDigit() }
+    return if (d.length == 11 && d.startsWith("27")) "0" + d.substring(2) else d
+}
+/** The company address book is loaded once per app run (see companyCache); the phone's contacts each time the box opens. */
 @Composable
-private fun NumberOrContact(target: String, onChange: (String) -> Unit) {
+private fun rememberContactBook(): ContactBook {
     val ctx = LocalContext.current
     val phone = remember { loadContacts(ctx) }
     var company by remember { mutableStateOf(companyCache) }
@@ -748,15 +759,45 @@ private fun NumberOrContact(target: String, onChange: (String) -> Unit) {
             companyCache = company
         }
     }
+    return ContactBook(company, phone)
+}
+/** Names a person on a button: short enough for one line. */
+private fun shortLabel(s: String) = if (s.length > 18) s.take(17).trimEnd() + "…" else s
+
+/**
+ * Number box for Add participant and Transfer: type an extension or number, or search by name; the company address
+ * book and the phone's contacts that match are listed under it and a tap fills in the number. Whatever is in the box,
+ * a highlighted line says who it will reach (the contact's name, or "Not in your contacts" for a number nobody has
+ * saved), so a typed number needs one press of the button and a tapped contact visibly changes something.
+ */
+@Composable
+private fun NumberOrContact(book: ContactBook, target: String, onChange: (String) -> Unit) {
+    val company = book.company
+    val phone = book.phone
     val q = target.trim()
     val digits = q.filter { it.isDigit() }
     fun matches(c: PhoneContact) = q.isBlank() || c.name.contains(q, true) ||
         (digits.length >= 2 && c.number.filter { it.isDigit() }.contains(digits))
     val list = (company.filter(::matches).map { it to true } + phone.filter(::matches).map { it to false }).take(60)
+    val number = dialable(target)
+    val who = book.whois(target)
     Column {
         OutlinedTextField(target, onChange, label = { Text("Name, extension or number") }, singleLine = true,
             modifier = Modifier.fillMaxWidth())
-        if (list.isNotEmpty()) LazyColumn(Modifier.heightIn(max = 260.dp).padding(top = 4.dp)) {
+        if (number != null) Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Person, null)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(who?.name?.ifBlank { number } ?: number, style = MaterialTheme.typography.titleSmall, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                    Text(if (who != null) number else "Not in your contacts", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        // a list that only repeats the person named above would just be a second thing to tap
+        if (list.isNotEmpty() && !(who != null && list.size == 1)) LazyColumn(Modifier.heightIn(max = 260.dp).padding(top = 4.dp)) {
             items(list) { (c, isCompany) ->
                 ListItem(modifier = Modifier.clickable { onChange(SipManager.cleanNumber(c.number)) },
                     leadingContent = { Icon(if (isCompany) Icons.Default.Business else Icons.Default.Person, null) },
@@ -773,28 +814,33 @@ private fun dialable(target: String) = SipManager.cleanNumber(target).takeIf { n
 @Composable
 private fun AddParticipantDialog(inConference: Boolean, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
     var target by remember { mutableStateOf("") }
+    val book = rememberContactBook()
     val number = dialable(target)
+    val name = number?.let { book.whois(target)?.name?.ifBlank { null } ?: it }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add participant") },
         text = { Column {
-            NumberOrContact(target) { target = it }
+            NumberOrContact(book, target) { target = it }
             Spacer(Modifier.height(8.dp))
             Text(if (inConference) "They join the conference when they answer."
                 else "The current call goes on hold. Tap Merge calls once they answer.", style = MaterialTheme.typography.bodySmall)
         } },
-        confirmButton = { TextButton({ number?.let(onAdd) }, enabled = number != null) { Text("Call") } },
+        confirmButton = { TextButton({ number?.let(onAdd) }, enabled = number != null) {
+            Text(if (name == null) (if (inConference) "Add" else "Call") else (if (inConference) "Add " else "Call ") + shortLabel(name), maxLines = 1)
+        } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
 
 @Composable
 private fun TransferDialog(onDismiss: () -> Unit, onBlind: (String) -> Unit, onConsult: (String) -> Unit) {
     var target by remember { mutableStateOf("") }
+    val book = rememberContactBook()
     val number = dialable(target)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Transfer to") },
-        text = { NumberOrContact(target) { target = it } },
+        text = { NumberOrContact(book, target) { target = it } },
         confirmButton = { TextButton({ number?.let(onBlind) }, enabled = number != null) { Text("Blind") } },
         dismissButton = { Row { TextButton({ number?.let(onConsult) }, enabled = number != null) { Text("Consult first") }
             TextButton(onDismiss) { Text("Cancel") } } })
