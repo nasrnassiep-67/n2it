@@ -291,3 +291,13 @@ iPhone, calls FROM and TO a Snom / Yealink should ring and stay up. If an iPhone
   then TestFlight updates them. Internal group `N2it` already has 0.2.4.
 - Gateway: once 0.2.4 is live, clients that type a full address send push register to https://<that server>/push.
 - Demo 403 (demo.pilot.n2it.co.za / 1001) still needs checking on your side if not done.
+
+## TestFlight 0.2.4 is LIVE for clients (Mac session, 2026-10-19): please finalize the download page
+- Apple approved 0.2.4 (build 202610161740) for the External group `Clients`; it auto-updated the owner's iPhone on
+  2026-10-18. Clients now get 0.2.4 from the public link.
+- Public link (final): **https://testflight.apple.com/join/1AZ5QvWp**. Please set the download page's iPhone button to
+  "Install on iPhone (TestFlight)" pointing there, and keep the password hint under it (see the 2026-10-16 section).
+- The Ad Hoc / UDID page can stay for internal devices (1002, 1003) or be retired; the owner has not chosen yet.
+- Still open on the PBX side: the demo 403 (demo.pilot.n2it.co.za / 1001) is parked; the owner said not to chase it now.
+- Mac session will not change the download page or the gateway. Real-device checks on 0.2.4 (calls to 1002 and 6500,
+  audio route button) are still to be done on the owner's iPhone.
