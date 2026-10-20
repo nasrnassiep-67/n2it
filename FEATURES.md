@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.2.12**, **desktop 0.2.9** (Windows, Mac, Linux), **iOS 0.2.4** (Ad Hoc from the Mac; TestFlight in review).
+Current versions: **Android 0.2.13**, **desktop 0.2.9** (Windows, Mac, Linux), **iOS 0.2.4** (Ad Hoc from the Mac; TestFlight in review).
 
 | Feature | Android | Desktop | iOS |
 |---|:-:|:-:|:-:|
@@ -19,6 +19,7 @@ Current versions: **Android 0.2.12**, **desktop 0.2.9** (Windows, Mac, Linux), *
 | Add participant + merge into a conference (mixed on the phone) | ✓ | ✓ | ✓ |
 | Conference screen: one card per person (name, number, status), drop one person (0.2.8 / desktop 0.2.5) | ✓ | ✓ | ✗ |
 | Add participant / Transfer: pick from company and phone contacts, typed numbers cleaned (0.2.5) | ✓ | ✗ | ✗ |
+| Add participant / Transfer: a highlighted line names who the number reaches (or "Not in your contacts"); the Add button names them (0.2.13) | ✓ | ✗ | ✗ |
 | Call waiting: second call beeps instead of ringing over the current call | ✓ | ✓ | CallKit |
 | Auto hold while a GSM / WhatsApp / Teams call is up, resume after | ✓ | ✓ (mic in use) | CallKit |
 | Voicemail: waiting badge, one-tap dial | ✓ | ✓ | ✓ |
@@ -38,6 +39,12 @@ Current versions: **Android 0.2.12**, **desktop 0.2.9** (Windows, Mac, Linux), *
 | Dark mode | system | ✓ | system |
 
 ## History (newest first)
+- Android 0.2.13 (2026-10-19, branch `add-participant-pick`): Add participant / Transfer number box. Tapping a contact only copied
+  its number into the box, so after typing a full extension (1002) the tap changed nothing and Add had to be pressed "again".
+  Now a highlighted line under the box says who the number reaches (contact name + number, or "Not in your contacts"),
+  the Add button names them ("Add Nasr", "Call Nasr" outside a conference), and a list that would only repeat the one
+  matching contact is hidden. A typed number needs one press; a tapped contact is visibly chosen. Still two steps on purpose
+  (pick, then press the button): one tap must not call or add the wrong person into a live conference.
 - Desktop 0.2.9 (2026-10-13): Microsoft Store package (MSIX/AppX, identity N2ITSolutions.N2ITPhone, Store ID 9P1RH1TKPLDB),
   built unsigned by CI for Partner Center; in the Store build tel:/callto:/sip: come from the package manifest.
 - Desktop 0.2.8 (2026-10-13): the in-call Add button (conference) did nothing, because Electron has no window.prompt();

@@ -28,6 +28,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.DateFormat
@@ -167,10 +169,43 @@ private fun pickDndTime(ctx: Context, onPicked: (Long) -> Unit) {
     }.show()
 }
 
+/**
+ * SIP password box. KeyboardType.Password tells the keyboard it is a password, so it does not autocorrect, suggest or
+ * capitalise a pasted 20-character password (2026-10-20: a pasted password reached the PBX changed). Invisible
+ * characters a chat app adds when it is copied (spaces, line breaks, zero-width marks) are dropped; the eye shows it.
+ */
+@Composable
+fun PasswordField(value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    var show by remember { mutableStateOf(false) }
+    OutlinedTextField(value, { onChange(it.filter { c -> !c.isWhitespace() && !c.isISOControl() && c !in "\u200B\u200C\u200D\u2060\uFEFF" }) },
+        label = { Text("Password") }, singleLine = true, modifier = modifier,
+        visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+        trailingIcon = {
+            IconButton({ show = !show }) {
+                Icon(if (show) Icons.Default.VisibilityOff else Icons.Default.Visibility, if (show) "Hide password" else "Show password")
+            }
+        })
+}
+
+/** What to tell the user when the PBX refused the sign-in or did not answer (null = registered). */
+fun signInProblem(o: SipManager.RegOutcome?, domain: String): String? = when (o) {
+    is SipManager.RegOutcome.Ok -> null
+    is SipManager.RegOutcome.Failed -> when (o.code) {
+        401, 403, 407 -> "Wrong extension or password. Check them and try again."
+        404 -> "Extension not found at $domain."
+        else -> "The PBX refused the sign-in (${o.reason.ifBlank { o.code.toString() }})."
+    }
+    null -> "No answer from $domain. Check the company code and your internet connection."
+}
+
 @Composable
 fun LoginScreen(done: () -> Unit) {
     val ctx = LocalContext.current
     var acc by remember { mutableStateOf(Account.load(ctx)) }
+    var busy by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(24.dp).systemBarsPadding()) {
         Spacer(Modifier.weight(1f))
         Text("N2IT Phone", fontSize = 32.sp)
@@ -180,11 +215,18 @@ fun LoginScreen(done: () -> Unit) {
             supportingText = { Text(if (acc.domain.isEmpty()) "Your company code, or the full server address" else "Connects to ${acc.domain}") })
         OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") },
             singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        OutlinedTextField(acc.password, { acc = acc.copy(password = it) }, label = { Text("Password") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
+        PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
         Spacer(Modifier.height(16.dp))
-        Button(onClick = { Account.save(ctx, acc); SipManager.configure(acc); done() },
-            enabled = acc.isConfigured, modifier = Modifier.fillMaxWidth()) { Text("Sign in") }
+        Button(onClick = {
+                busy = true; problem = null
+                scope.launch {
+                    val p = signInProblem(SipManager.verify(acc), acc.domain)
+                    busy = false
+                    if (p == null) { Account.save(ctx, acc); done() } else { problem = p; SipManager.stopRegistering() }
+                }
+            },
+            enabled = acc.isConfigured && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Signing in…" else "Sign in") }
+        problem?.let { Spacer(Modifier.height(8.dp)); Text(it, color = Red) }
         Spacer(Modifier.weight(1f))
         VersionText()
     }
@@ -381,13 +423,15 @@ fun VoicemailTab() {
 fun SettingsTab(onSignOut: () -> Unit) {
     val ctx = LocalContext.current
     var acc by remember { mutableStateOf(Account.load(ctx)) }
+    var busy by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         StatusRow(); Spacer(Modifier.height(4.dp)); DndButton(); Spacer(Modifier.height(8.dp))
         OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Client (e.g. n2it)") },
             singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text(acc.domain) })
         OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(acc.password, { acc = acc.copy(password = it) }, label = { Text("Password") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+        PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(acc.port.toString(), { acc = acc.copy(port = it.toIntOrNull() ?: acc.port) }, label = { Text("Port") },
                 singleLine = true, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -403,7 +447,16 @@ fun SettingsTab(onSignOut: () -> Unit) {
             Text("Encrypt call audio (SRTP)", Modifier.weight(1f))
             Switch(acc.srtp, { acc = acc.copy(srtp = it) })
         }
-        Button(onClick = { Account.save(ctx, acc); SipManager.configure(acc) }, modifier = Modifier.fillMaxWidth()) { Text("Save & Register") }
+        Button(onClick = {
+                busy = true; saved = null
+                scope.launch {
+                    val p = signInProblem(SipManager.verify(acc), acc.domain)
+                    busy = false
+                    if (p == null) { Account.save(ctx, acc); saved = "Saved and registered." }
+                    else { saved = p + " Nothing was changed."; SipManager.configure(Account.load(ctx)) }   // keep the working account
+                }
+            }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Checking…" else "Save & Register") }
+        saved?.let { Text(it, color = if (it.startsWith("Saved")) Color.Unspecified else Red, style = MaterialTheme.typography.bodySmall) }
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
         AccountsSection(onActiveChanged = { acc = it }, onNoneLeft = onSignOut)
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
@@ -492,6 +545,10 @@ private fun AccountsSection(onActiveChanged: (Account) -> Unit, onNoneLeft: () -
 @Composable
 private fun AddAccountDialog(onDismiss: () -> Unit, onAdd: (Account) -> Unit) {
     var a by remember { mutableStateOf(Account()) }
+    val ctx = LocalContext.current
+    var busy by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add account") },
@@ -500,11 +557,19 @@ private fun AddAccountDialog(onDismiss: () -> Unit, onAdd: (Account) -> Unit) {
                 supportingText = { Text(if (a.domain.isEmpty()) "e.g. n2it" else "Connects to ${a.domain}") })
             OutlinedTextField(a.user, { a = a.copy(user = it) }, label = { Text("Extension") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            OutlinedTextField(a.password, { a = a.copy(password = it) }, label = { Text("Password") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation())
+            PasswordField(a.password, { a = a.copy(password = it) })
             Text("It becomes the active account; the current one stays in the list.", style = MaterialTheme.typography.bodySmall)
+            problem?.let { Text(it, color = Red, style = MaterialTheme.typography.bodySmall) }
         } },
-        confirmButton = { TextButton({ onAdd(a.copy(tenant = a.tenant.trim(), user = a.user.trim())) }, enabled = a.isConfigured) { Text("Add") } },
+        confirmButton = { TextButton({
+                val next = a.copy(tenant = a.tenant.trim(), user = a.user.trim())
+                busy = true; problem = null
+                scope.launch {
+                    val p = signInProblem(SipManager.verify(next), next.domain)
+                    busy = false
+                    if (p == null) onAdd(next) else { problem = p; SipManager.configure(Account.load(ctx)) }   // back to the active one
+                }
+            }, enabled = a.isConfigured && !busy) { Text(if (busy) "Checking…" else "Add") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
 
@@ -733,12 +798,23 @@ private fun AudioRouteButton() {
     }
 }
 
-/**
- * Number box for Add participant and Transfer: type an extension or number, or search by name; the company address
- * book and the phone's contacts that match are listed under it and a tap fills in the number.
- */
+/** The contacts the number box searches: the company address book and the phone's own. */
+private class ContactBook(val company: List<PhoneContact>, val phone: List<PhoneContact>) {
+    /** Who a typed or tapped number is: the contact whose whole number is the same, company address book first. */
+    fun whois(target: String): PhoneContact? {
+        val key = numberKey(target)
+        if (key.length < 2) return null
+        return (company + phone).firstOrNull { numberKey(it.number) == key }
+    }
+}
+/** A number for comparing: digits only, and a South African 27… number written as 0… (so 082 123 4567 = +27 82 123 4567). */
+private fun numberKey(n: String): String {
+    val d = SipManager.cleanNumber(n).filter { it.isDigit() }
+    return if (d.length == 11 && d.startsWith("27")) "0" + d.substring(2) else d
+}
+/** The company address book is loaded once per app run (see companyCache); the phone's contacts each time the box opens. */
 @Composable
-private fun NumberOrContact(target: String, onChange: (String) -> Unit) {
+private fun rememberContactBook(): ContactBook {
     val ctx = LocalContext.current
     val phone = remember { loadContacts(ctx) }
     var company by remember { mutableStateOf(companyCache) }
@@ -748,15 +824,45 @@ private fun NumberOrContact(target: String, onChange: (String) -> Unit) {
             companyCache = company
         }
     }
+    return ContactBook(company, phone)
+}
+/** Names a person on a button: short enough for one line. */
+private fun shortLabel(s: String) = if (s.length > 18) s.take(17).trimEnd() + "…" else s
+
+/**
+ * Number box for Add participant and Transfer: type an extension or number, or search by name; the company address
+ * book and the phone's contacts that match are listed under it and a tap fills in the number. Whatever is in the box,
+ * a highlighted line says who it will reach (the contact's name, or "Not in your contacts" for a number nobody has
+ * saved), so a typed number needs one press of the button and a tapped contact visibly changes something.
+ */
+@Composable
+private fun NumberOrContact(book: ContactBook, target: String, onChange: (String) -> Unit) {
+    val company = book.company
+    val phone = book.phone
     val q = target.trim()
     val digits = q.filter { it.isDigit() }
     fun matches(c: PhoneContact) = q.isBlank() || c.name.contains(q, true) ||
         (digits.length >= 2 && c.number.filter { it.isDigit() }.contains(digits))
     val list = (company.filter(::matches).map { it to true } + phone.filter(::matches).map { it to false }).take(60)
+    val number = dialable(target)
+    val who = book.whois(target)
     Column {
         OutlinedTextField(target, onChange, label = { Text("Name, extension or number") }, singleLine = true,
             modifier = Modifier.fillMaxWidth())
-        if (list.isNotEmpty()) LazyColumn(Modifier.heightIn(max = 260.dp).padding(top = 4.dp)) {
+        if (number != null) Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Person, null)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(who?.name?.ifBlank { number } ?: number, style = MaterialTheme.typography.titleSmall, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                    Text(if (who != null) number else "Not in your contacts", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        // a list that only repeats the person named above would just be a second thing to tap
+        if (list.isNotEmpty() && !(who != null && list.size == 1)) LazyColumn(Modifier.heightIn(max = 260.dp).padding(top = 4.dp)) {
             items(list) { (c, isCompany) ->
                 ListItem(modifier = Modifier.clickable { onChange(SipManager.cleanNumber(c.number)) },
                     leadingContent = { Icon(if (isCompany) Icons.Default.Business else Icons.Default.Person, null) },
@@ -773,28 +879,33 @@ private fun dialable(target: String) = SipManager.cleanNumber(target).takeIf { n
 @Composable
 private fun AddParticipantDialog(inConference: Boolean, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
     var target by remember { mutableStateOf("") }
+    val book = rememberContactBook()
     val number = dialable(target)
+    val name = number?.let { book.whois(target)?.name?.ifBlank { null } ?: it }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add participant") },
         text = { Column {
-            NumberOrContact(target) { target = it }
+            NumberOrContact(book, target) { target = it }
             Spacer(Modifier.height(8.dp))
             Text(if (inConference) "They join the conference when they answer."
                 else "The current call goes on hold. Tap Merge calls once they answer.", style = MaterialTheme.typography.bodySmall)
         } },
-        confirmButton = { TextButton({ number?.let(onAdd) }, enabled = number != null) { Text("Call") } },
+        confirmButton = { TextButton({ number?.let(onAdd) }, enabled = number != null) {
+            Text(if (name == null) (if (inConference) "Add" else "Call") else (if (inConference) "Add " else "Call ") + shortLabel(name), maxLines = 1)
+        } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
 
 @Composable
 private fun TransferDialog(onDismiss: () -> Unit, onBlind: (String) -> Unit, onConsult: (String) -> Unit) {
     var target by remember { mutableStateOf("") }
+    val book = rememberContactBook()
     val number = dialable(target)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Transfer to") },
-        text = { NumberOrContact(target) { target = it } },
+        text = { NumberOrContact(book, target) { target = it } },
         confirmButton = { TextButton({ number?.let(onBlind) }, enabled = number != null) { Text("Blind") } },
         dismissButton = { Row { TextButton({ number?.let(onConsult) }, enabled = number != null) { Text("Consult first") }
             TextButton(onDismiss) { Text("Cancel") } } })

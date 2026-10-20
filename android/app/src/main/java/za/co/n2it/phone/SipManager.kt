@@ -17,6 +17,8 @@ import android.os.VibratorManager
 import android.provider.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import org.linphone.core.*
 import org.linphone.core.Account as LpAccount
 
@@ -40,6 +42,9 @@ object SipManager {
     lateinit var appContext: Context; private set
 
     private val _registered = MutableStateFlow(false)
+    /** The PBX's answer to the latest registration, for the sign-in check (null = no answer yet). */
+    sealed interface RegOutcome { object Ok : RegOutcome; data class Failed(val code: Int, val reason: String) : RegOutcome }
+    private val _outcome = MutableStateFlow<RegOutcome?>(null)
     private val _status = MutableStateFlow("Not registered")
     private val _call = MutableStateFlow<CallInfo?>(null)
     private val _muted = MutableStateFlow(false)
@@ -68,6 +73,11 @@ object SipManager {
     private val listener = object : CoreListenerStub() {
         override fun onAccountRegistrationStateChanged(core: Core, account: LpAccount, state: RegistrationState, message: String) {
             _registered.value = state == RegistrationState.Ok
+            when (state) {
+                RegistrationState.Ok -> _outcome.value = RegOutcome.Ok
+                RegistrationState.Failed -> _outcome.value = RegOutcome.Failed(account.errorInfo?.protocolCode ?: 0, message)
+                else -> {}
+            }
             if (state == RegistrationState.Ok) subscribeVoicemail()
             _status.value = when (state) {
                 RegistrationState.Ok -> "Registered"
@@ -228,6 +238,21 @@ object SipManager {
         setDnd(dndPrefs().getLong("until", 0).takeIf { it > 0 })   // survives restarts; clears itself if expired
         configure(Account.load(appContext))
     }
+
+    /**
+     * Sign-in check: registers [acc] and waits for the PBX's answer, so a wrong extension or password is said at once
+     * instead of the app opening with a red "Failed: Forbidden". null = no answer within [timeoutMs] (wrong company code,
+     * no internet). After a refusal the caller stops it ([stopRegistering]) or puts the previous account back: retrying a
+     * wrong password every minute gets the phone's whole network banned by the PBX (fail2ban).
+     */
+    suspend fun verify(acc: za.co.n2it.phone.Account, timeoutMs: Long = 12_000): RegOutcome? {
+        if (!started) return null
+        _outcome.value = null
+        configure(acc)
+        return withTimeoutOrNull(timeoutMs) { _outcome.first { it != null } }
+    }
+
+    fun stopRegistering() { if (started) { core.clearAccounts(); core.clearAllAuthInfo() } }
 
     fun configure(acc: za.co.n2it.phone.Account) {
         if (!started || !acc.isConfigured) return
