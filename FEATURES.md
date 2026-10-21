@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.2.13**, **desktop 0.2.9** (Windows, Mac, Linux), **iOS 0.2.4** (Ad Hoc from the Mac; TestFlight in review).
+Current versions: **Android 0.2.13**, **desktop 0.2.10** (Windows, Mac, Linux), **iOS 0.2.4** (Ad Hoc from the Mac; TestFlight in review).
 
 | Feature | Android | Desktop | iOS |
 |---|:-:|:-:|:-:|
