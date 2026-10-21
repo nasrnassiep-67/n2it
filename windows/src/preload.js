@@ -25,4 +25,5 @@ contextBridge.exposeInMainWorld('appShell', {
   state: (st) => ipcRenderer.send('app:state', st),
   startup: () => ipcRenderer.invoke('startup:get'),
   setStartup: (on) => ipcRenderer.invoke('startup:set', on),
+  refocus: () => ipcRenderer.send('app:refocus'),
 })

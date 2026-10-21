@@ -1,3 +1,6 @@
+// Native boxes steal the keyboard focus on Windows (see app:refocus in main.js): hand it back after each one.
+const say = (m) => { window.alert(m); appShell.refocus() }
+const ask = (m) => { const ok = window.confirm(m); appShell.refocus(); return ok }
 // WebRTC softphone: JsSIP over WSS to FusionPBX at wss://<code>.voip.n2it.co.za/wss. Public port 443: nginx
 // proxies /wss to FreeSWITCH's WSS listener (7443 is the XGS VPN portal from outside).
 const BASE = 'voip.n2it.co.za'
@@ -318,7 +321,7 @@ const login = (a) => ({ tenant: a.tenant.trim(), user: a.user.trim(), pass: a.pa
 const key = (a) => `${domain(a.tenant)}|${a.user.trim()}`
 /** Make [a] the active account (registers it); the previous one stays in the list. Device settings and DND stay. */
 async function useAccount(a) {
-  if (calls.length) { alert('Finish the call to switch accounts.'); return }
+  if (calls.length) { say('Finish the call to switch accounts.'); return }
   await activate(a, [acc && login(acc), ...(acc?.saved || [])].filter((x) => x && key(x) !== key(a)))
 }
 async function activate(a, saved) {
@@ -329,13 +332,13 @@ async function activate(a, saved) {
 }
 /** Log [a] out and forget it; with no account left, back to the sign-in screen. */
 async function logOut(a) {
-  if (calls.length) { alert('Finish the call first.'); return }
-  if (!confirm(`Log out of extension ${a.user} (${domain(a.tenant)})? It is removed from this computer.`)) return
+  if (calls.length) { say('Finish the call first.'); return }
+  if (!ask(`Log out of extension ${a.user} (${domain(a.tenant)})? It is removed from this computer.`)) return
   if (key(a) !== key(acc)) { acc.saved = acc.saved.filter((x) => key(x) !== key(a)); await store.save(acc); renderAccounts(); return }
   const [next, ...rest] = acc.saved || []
   if (next) { await activate(next, rest); return }
   retire(ua); ua = null; await store.clear(); acc = null; directory = []
-  show('settings', false); show('login', true); status('Not registered'); signedIn(false)
+  show('settings', false); show('login', true); status('Not registered'); signedIn(false); $('tenant').focus()
 }
 function renderAccounts() {
   $('s-accounts').replaceChildren(...[acc, ...(acc.saved || [])].map((a) => {
@@ -350,7 +353,7 @@ function renderAccounts() {
   }))
 }
 $('s-add').onclick = () => {
-  if (calls.length) { alert('Finish the call to add an account.'); return }
+  if (calls.length) { say('Finish the call to add an account.'); return }
   adding = true
   for (const id of ['tenant', 'user', 'pass']) $(id).value = ''
   $('domain').textContent = ''; show('login-cancel', true); show('settings', false); show('login', true)
@@ -587,7 +590,7 @@ for (const b of document.querySelectorAll('#dnd-pick [data-hours]')) b.onclick =
 $('dnd-morning').onclick = () => setDnd(nextMorning())
 $('dnd-set').onclick = () => {
   const t = new Date($('dnd-at').value).getTime(), now = Date.now()
-  if (!(t > now && t <= now + MAX_DND)) { alert('Choose a time within the next 2 weeks.'); return }
+  if (!(t > now && t <= now + MAX_DND)) { say('Choose a time within the next 2 weeks.'); return }
   setDnd(t)
 }
 $('dnd-stop').onclick = $('dnd-off').onclick = () => setDnd(null)
@@ -701,7 +704,7 @@ function renderRecent() {
 for (const b of document.querySelectorAll('.seg button')) b.onclick = () => {
   recentFilter = b.dataset.f; for (const x of document.querySelectorAll('.seg button')) x.classList.toggle('sel', x === b); renderRecent()
 }
-$('s-clear-recent').onclick = () => { if (acc && confirm('Clear the recent calls list on this computer?')) { ls.set(recentKey(), []); renderRecent() } }
+$('s-clear-recent').onclick = () => { if (acc && ask('Clear the recent calls list on this computer?')) { ls.set(recentKey(), []); renderRecent() } }
 
 // ---- Side bar: open or closed (remembered); on a narrow window it slides over the keypad ----
 const sideOpen = () => !document.body.classList.contains('side-closed')

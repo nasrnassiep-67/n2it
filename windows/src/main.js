@@ -143,6 +143,9 @@ ipcMain.handle('account:load', () => {
 })
 ipcMain.handle('account:save', (_e, acc) => fs.writeFileSync(file(), safeStorage.encryptString(JSON.stringify(acc))))
 ipcMain.handle('app:version', () => app.getVersion())
+// A native alert()/confirm() takes keyboard focus away from the page on Windows and does not give it back: the inputs
+// then ignore typing until the window is clicked away and back. The page asks for the focus back after each box.
+ipcMain.on('app:refocus', () => { if (!win) return; win.blur(); win.focus(); win.webContents.focus() })
 ipcMain.handle('account:clear', () => { try { fs.unlinkSync(file()) } catch {} })
 
 // Company contacts (extensions + shared FusionPBX contacts) from the PBX, fetched here rather than in the page:
