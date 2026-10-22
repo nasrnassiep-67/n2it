@@ -75,6 +75,8 @@ private final class SipCall {
     var reinviting = false
     /// Blind or attended transfer sent (REFER): hang up once the PBX says it worked.
     var transferring = false
+    /// Rung from a conference (Add participant): moved into the room as soon as they answer.
+    var autoMerge = false
 
     init(incoming: Bool, callId: String, number: String, name: String?) {
         self.incoming = incoming; self.callId = callId; self.number = number; self.name = name
@@ -414,7 +416,19 @@ final class SipManager: ObservableObject, SipUaEvents {
 
     /// Mirror the calls into UI state: one call, or a held call plus a consult call.
     private func publish() {
-        let live = liveCalls()
+        if let conf = confCall, !endedStates.contains(conf.state) {
+            let others = liveCalls().filter { $0 !== conf && !$0.transferring }
+            let ringing = others.map { ($0.name ?? $0.number) + ($0.answered ? " (on hold)" : " (ringing)") }
+            let people = confPeople.map { $0.label } + ringing
+            activeCall = CallInfo(number: people.joined(separator: ", "), state: conf.state, incoming: false, name: nil)
+            inConference = true; participants = people
+            onHold = conf.localHold
+            consulting = others.contains { $0.answered && !$0.autoMerge }
+            return
+        }
+        inConference = false; participants = []
+        let all = liveCalls()
+        let live = all.count > 1 ? all.filter { !$0.transferring } : all
         guard let c = currentCall() ?? ringingCall() ?? live.first else {
             activeCall = nil; onHold = false; consulting = false; return
         }
@@ -426,6 +440,10 @@ final class SipManager: ObservableObject, SipUaEvents {
     private func setState(_ c: SipCall, _ s: CallState) {
         c.state = s
         if s == .StreamsRunning && !c.incoming { CallKitManager.shared.sipConnected() }
+        if s == .StreamsRunning {
+            if c === confCall && !pendingMerge.isEmpty { let list = pendingMerge; pendingMerge = []; moveIntoRoom(list) }
+            if c.autoMerge && confCall != nil { c.autoMerge = false; moveIntoRoom([c]) }
+        }
         publish()
     }
 
@@ -444,16 +462,18 @@ final class SipManager: ObservableObject, SipUaEvents {
 
     /// Rings `number`; false when it could not be dialled (not connected, or not a valid number).
     @discardableResult
-    func invite(_ number: String) -> Bool {
+    func invite(_ number: String) -> Bool { startCall(number) != nil }
+
+    private func startCall(_ number: String) -> SipCall? {
         let n = cleanNumber(number)
         notice = nil
-        guard !n.isEmpty, ua.connected else { notice = "Not connected to the PBX"; return false }
+        guard !n.isEmpty, ua.connected else { notice = "Not connected to the PBX"; return nil }
         let target = n.contains("@") ? "sip:\(n)" : "sip:\(n)@\(ua.domain)"
         let c = SipCall(incoming: false, callId: ua.token(22), number: SipMsg.userOf(target), name: name(for: SipMsg.userOf(target)))
         calls.append(c)
         muted = muted && liveCalls().count > 1
         setState(c, .OutgoingInit)
-        guard let media = newMedia(c) else { fail(c, "No audio"); return true }
+        guard let media = newMedia(c) else { fail(c, "No audio"); return c }
         media.offer { [weak self] sdp in
             guard let self, !endedStates.contains(c.state) else { return }
             guard let sdp, !c.hangupWanted else {
@@ -468,7 +488,7 @@ final class SipManager: ObservableObject, SipUaEvents {
             c.invite = inv
             self.ua.request(inv, onRetry: { c.invite = $0 }) { [weak self] res in self?.inviteAnswered(c, target, res) }
         }
-        return true
+        return c
     }
 
     private func newMedia(_ c: SipCall) -> CallMedia? {
@@ -616,6 +636,11 @@ final class SipManager: ObservableObject, SipUaEvents {
         addRecent(c.number, incoming: c.incoming, missed: c.incoming && !c.answered && !c.elsewhere, name: c.name)
         userHeld.removeAll { $0 === c }
         consultHoldDone(c)
+        if c === confCall {
+            confCall = nil; confRoom = nil; confPeople = []; pendingMerge = []
+            liveCalls().forEach { $0.autoMerge = false }
+        }
+        if c.autoMerge { confCall?.media?.setMuted(muted) }
         // Another call may still be up (held caller after a consult)
         if liveCalls().isEmpty {
             CallKitManager.shared.sipEnded()
@@ -767,11 +792,51 @@ final class SipManager: ObservableObject, SipUaEvents {
         if let held, held.localHold { userHeld.removeAll { $0 === held }; setHold(held, false) }
     }
 
-    /// Add participant: 3-way calls move to a conference room on the PBX in a later build. Until then the number is
-    /// rung like a consult call (the first caller on hold).
-    func addParticipant(_ number: String) { consult(number) }
+    // MARK: 3-way calls: a conference room on the PBX (port of Android 0.3.1)
+    // FusionPBX's global "nb-conference" dialplan: *30 + 2-7 digits joins room <digits>@<company domain> (every tenant
+    // has it). Merge = we join a new random room, then transfer each person into it (REFER); the PBX mixes the audio.
+    private var confCall: SipCall?
+    private var confRoom: String?
+    private var confPeople: [(id: String, label: String)] = []
+    private var pendingMerge: [SipCall] = []
 
-    func merge() { notice = "3-way calls come in a later build" }
+    /// Add participant: in a conference, ring `number` with the room left as it is (holding it would play hold music
+    /// to everyone; only our microphone is muted there) and move them in when they answer. Otherwise hold the call and
+    /// ring `number` (a consult), then Merge calls.
+    func addParticipant(_ number: String) {
+        guard let conf = confCall else { consult(number); return }
+        guard let c = startCall(number) else { notice = "Could not call \(cleanNumber(number))"; return }
+        c.autoMerge = true
+        conf.media?.setMuted(true)
+        publish()
+    }
+
+    /// Merge calls: everyone who has answered joins one conference with us.
+    func merge() {
+        let answered = liveCalls().filter { $0.answered && $0 !== confCall && !$0.transferring }
+        if confCall != nil { moveIntoRoom(answered); return }
+        guard answered.count >= 2 else { notice = "Wait for them to answer, then merge"; return }
+        let room = "*30" + String((0..<7).map { _ in "0123456789".randomElement()! })
+        guard let c = startCall(room) else { notice = "Could not start the conference"; return }
+        confRoom = room; confCall = c
+        pendingMerge = answered
+        publish()
+    }
+
+    private func moveIntoRoom(_ list: [SipCall]) {
+        guard let room = confRoom else { return }
+        for c in list where !endedStates.contains(c.state) && c.answered {
+            confPeople.removeAll { $0.id == c.callId }
+            confPeople.append((c.callId, c.name ?? c.number))
+            refer(c, "<sip:\(room)@\(ua.domain)>")
+        }
+        // Back to the room: unmute there, and off hold if a consult had put it on hold
+        if let conf = confCall {
+            conf.media?.setMuted(muted)
+            if conf.localHold { userHeld.removeAll { $0 === conf }; setHold(conf, false) }
+        }
+        publish()
+    }
 
     /// Attended transfer, step 2: connect the held caller to the consulted party (REFER with Replaces); the PBX joins
     /// them and drops us.
