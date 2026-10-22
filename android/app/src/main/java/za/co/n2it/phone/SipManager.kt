@@ -145,6 +145,7 @@ object SipManager : SipUa.Events {
     fun init(context: Context) {
         if (started) return
         appContext = context.applicationContext
+        CrashLog.install(appContext)
         ua = SipUa(this)
         // Shows on the PBX (registrations, logs) instead of "Unknown".
         ua.userAgent = "N2IT Phone Android/${BuildConfig.VERSION_NAME}"
@@ -161,7 +162,7 @@ object SipManager : SipUa.Events {
     private var network: Network? = null
     private fun watchNetwork() {
         val cm = appContext.getSystemService(ConnectivityManager::class.java) ?: return
-        cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+        try { cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(n: Network) {
                 main.post {
                     val changed = network != null && network != n
@@ -169,7 +170,7 @@ object SipManager : SipUa.Events {
                     if (changed) ua.reconnectNow()
                 }
             }
-        })
+        }) } catch (e: SecurityException) { /* no network permission: reconnects happen on the next failure instead */ }
     }
 
     // ---- Registration ----

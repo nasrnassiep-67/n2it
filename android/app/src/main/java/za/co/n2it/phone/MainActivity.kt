@@ -21,6 +21,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 
 // N2IT brand colours (same as the PBX theme: blue #145ab6, navy #0f3d80), instead of the wallpaper's colours.
 private val N2itLight = lightColorScheme(primary = Color(0xFF145AB6), onPrimary = Color.White,
@@ -33,12 +43,20 @@ private val N2itDark = darkColorScheme(primary = Color(0xFF8FB8EE), onPrimary = 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        SipManager.init(this)
+        CrashLog.install(this)
+        // Test builds: the last crash is shown before anything starts again (starting could crash the same way)
+        val report = CrashLog.take(this)
+        if (report == null) SipManager.init(this)
         setContent {
             val ctx = LocalContext.current
             val dark = isSystemInDarkTheme()
             MaterialTheme(colorScheme = if (dark) N2itDark else N2itLight) {
                 Surface {
+                    var crash by remember { mutableStateOf(report) }
+                    crash?.let { text ->
+                        CrashScreen(text) { SipManager.init(this@MainActivity); crash = null }
+                        return@Surface
+                    }
                     var perms by remember { mutableStateOf(false) }
                     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
                         perms = true
@@ -95,5 +113,21 @@ class MainActivity : ComponentActivity() {
             // Some makers hide the dialog: the battery optimisation list instead
             try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: ActivityNotFoundException) {}
         }
+    }
+}
+
+/** The last crash's error, to copy and send to N2IT; Continue starts the app again. */
+@Composable
+private fun CrashScreen(text: String, onContinue: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
+        Text("N2IT Phone stopped last time", style = MaterialTheme.typography.titleLarge)
+        Text("Please tap Copy and send this to N2IT, then Continue.", Modifier.padding(vertical = 8.dp))
+        Row {
+            Button({ clipboard.setText(AnnotatedString(text)) }) { Text("Copy") }
+            Spacer(Modifier.width(12.dp))
+            OutlinedButton(onContinue) { Text("Continue") }
+        }
+        Text(text, Modifier.padding(top = 12.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodySmall)
     }
 }
