@@ -473,6 +473,15 @@ private fun EchoSection() {
     val echo by SipManager.echo.collectAsState()
     Text("Echo cancellation", style = MaterialTheme.typography.titleSmall)
     Text(echo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val hw by SipManager.phoneEchoCanceller.collectAsState()
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Use the phone's own echo canceller")
+            Text("Off: N2IT's echo canceller (recommended). Try on only if people hear themselves. Applies from the next call.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(hw, { SipManager.setPhoneEchoCanceller(it) })
+    }
     val gate by SipManager.backgroundFilter.collectAsState()
     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {

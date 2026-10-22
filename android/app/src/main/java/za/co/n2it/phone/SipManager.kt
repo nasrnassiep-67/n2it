@@ -151,6 +151,7 @@ object SipManager : SipUa.Events {
         ua.userAgent = "N2IT Phone Android/${BuildConfig.VERSION_NAME}"
         router = AudioRouter(appContext) { onDevicesChanged() }
         _gate.value = appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getBoolean("gate", true)
+        _hwAec.value = Rtc.hwAec(appContext)
         started = true
         updateRoutes()
         watchNetwork()
@@ -718,6 +719,14 @@ object SipManager : SipUa.Events {
 
     // Background voices (owner 2026-10-08: on speaker, people talking a few paces away came through to the other side).
     // WebRTC's noise suppression; read when a call's audio starts, so a change applies to the next call.
+    private val _hwAec = MutableStateFlow(false)
+    /** Settings: the phone's own echo canceller instead of WebRTC's; applies from the next call. */
+    val phoneEchoCanceller: StateFlow<Boolean> = _hwAec
+    fun setPhoneEchoCanceller(on: Boolean) {
+        _hwAec.value = on
+        appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).edit().putBoolean("hw_aec", on).apply()
+    }
+
     fun setBackgroundFilter(on: Boolean) {
         _gate.value = on
         appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).edit().putBoolean("gate", on).apply()

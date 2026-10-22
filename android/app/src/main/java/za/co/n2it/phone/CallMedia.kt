@@ -26,18 +26,34 @@ import org.webrtc.audio.JavaAudioDeviceModule
 object Rtc {
     private var factory: PeerConnectionFactory? = null
     private var adm: JavaAudioDeviceModule? = null
+    private var initialised = false
+    private var builtWithHwAec = false
 
-    fun factory(context: Context): PeerConnectionFactory = factory ?: run {
-        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
-            .createInitializationOptions())
-        // The phone's own echo canceller and noise suppressor where it has them (tuned by the maker for its speaker and
-        // microphones), WebRTC's software ones on top otherwise.
+    /** "Use the phone's own echo canceller" (Settings). Off = WebRTC's software canceller (as Google Meet); on = the
+     *  maker's built-in one. 0.3.0 test 2026-10-22: on the HONOR the built-in one let a mobile caller hear herself. */
+    fun hwAec(context: Context) = context.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getBoolean("hw_aec", false)
+
+    fun factory(context: Context): PeerConnectionFactory {
+        val hw = hwAec(context)
+        factory?.let { if (hw == builtWithHwAec) return it }
+        release()
+        if (!initialised) {
+            PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
+                .createInitializationOptions())
+            initialised = true
+        }
         val a = JavaAudioDeviceModule.builder(context.applicationContext)
-            .setUseHardwareAcousticEchoCanceler(true)
-            .setUseHardwareNoiseSuppressor(true)
+            .setUseHardwareAcousticEchoCanceler(hw)
+            .setUseHardwareNoiseSuppressor(hw)
             .createAudioDeviceModule()
-        adm = a
-        PeerConnectionFactory.builder().setAudioDeviceModule(a).createPeerConnectionFactory().also { factory = it }
+        adm = a; builtWithHwAec = hw
+        return PeerConnectionFactory.builder().setAudioDeviceModule(a).createPeerConnectionFactory().also { factory = it }
+    }
+
+    /** Only between calls: the next call builds a new one with the current settings. */
+    private fun release() {
+        factory?.dispose(); factory = null
+        adm?.release(); adm = null
     }
 }
 
