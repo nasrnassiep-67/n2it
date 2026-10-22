@@ -91,7 +91,8 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
         val cfg = PeerConnection.RTCConfiguration(listOf(
             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-            bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+            // Balanced, as browsers: FreeSWITCH offers no BUNDLE group, which max-bundle refuses ("no BUNDLE group")
+            bundlePolicy = PeerConnection.BundlePolicy.BALANCED
             rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
             tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
