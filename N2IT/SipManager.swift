@@ -77,6 +77,9 @@ private final class SipCall {
     var transferring = false
     /// Rung from a conference (Add participant): moved into the room as soon as they answer.
     var autoMerge = false
+    /// Incoming: our answer SDP, made while it rings (nil = could not be made); `prepareDone` once that finished.
+    var prepared: String?
+    var prepareDone = false
 
     init(incoming: Bool, callId: String, number: String, name: String?) {
         self.incoming = incoming; self.callId = callId; self.number = number; self.name = name
@@ -378,6 +381,15 @@ final class SipManager: ObservableObject, SipUaEvents {
                           localCseq: 1)
         calls.append(c)
         ua.reply(req, 180, "Ringing", toTag: c.localTag, extra: [("Contact", ua.contact)])
+        // Make the answer while it rings (2026-10-22: about 2 s of silence after Answer while WebRTC gathered its
+        // addresses). No audio flows before Answer: CallKit only hands over the audio session then.
+        if let media = newMedia(c) {
+            media.answer(req.body) { [weak self] sdp in
+                guard let self, !endedStates.contains(c.state) else { return }
+                c.prepared = sdp; c.prepareDone = true
+                if c.answering { self.sendAnswer(c) }
+            }
+        }
         CallKitManager.shared.sipIncoming(caller: number, name: name)
         publish()
     }
@@ -588,20 +600,24 @@ final class SipManager: ObservableObject, SipUaEvents {
         guard let c = ringingCall(), let req = c.invite else { return }
         c.answering = true
         muted = muted && !liveCalls().filter({ $0 !== c && $0.state != .IncomingReceived }).isEmpty
+        c.media?.setMuted(muted)
         setState(c, .Connected)
-        guard let media = newMedia(c) else { ua.reply(req, 488, "Not Acceptable Here", toTag: c.localTag); end(c); return }
-        media.answer(req.body) { [weak self] sdp in
-            guard let self, !endedStates.contains(c.state) else { return }
-            guard let sdp else {
-                self.ua.reply(req, 488, "Not Acceptable Here", toTag: c.localTag)
-                self.problem("Answer failed: \(media.lastError ?? "no audio")", req.body)
-                self.end(c); return
-            }
-            self.ua.reply(req, 200, "OK", toTag: c.localTag,
-                          extra: [("Contact", self.ua.contact), ("Allow", SipUa.allow), ("Supported", "replaces, outbound")], body: sdp)
-            c.answered = true; c.answering = false
-            self.setState(c, .StreamsRunning)
+        if c.media == nil { ua.reply(req, 488, "Not Acceptable Here", toTag: c.localTag); end(c); return }
+        if c.prepareDone { sendAnswer(c) }   // otherwise sent the moment the answer is ready
+    }
+
+    /// The answer made while it rang goes to the PBX: the call connects at once.
+    private func sendAnswer(_ c: SipCall) {
+        guard let req = c.invite, !c.answered, !endedStates.contains(c.state) else { return }
+        guard let sdp = c.prepared else {
+            ua.reply(req, 488, "Not Acceptable Here", toTag: c.localTag)
+            problem("Answer failed: \(c.media?.lastError ?? "no audio")", req.body)
+            end(c); return
         }
+        ua.reply(req, 200, "OK", toTag: c.localTag,
+                 extra: [("Contact", ua.contact), ("Allow", SipUa.allow), ("Supported", "replaces, outbound")], body: sdp)
+        c.answered = true; c.answering = false
+        setState(c, .StreamsRunning)
     }
 
     /// Ends the call in front of the user (or declines the ringing one).

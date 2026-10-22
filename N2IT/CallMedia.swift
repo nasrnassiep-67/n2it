@@ -71,9 +71,9 @@ final class CallMedia: NSObject, RTCPeerConnectionDelegate {
     func peerConnection(_ pc: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
         DispatchQueue.main.async {
             self.candidates += 1
-            // Go once candidates have been quiet for 1 s (a dead interface or slow STUN server would otherwise hold the
-            // call up for ~40 s)
-            if self.gathered != nil { self.quiet?.cancel(); self.quiet = later(1) { [weak self] in self?.gatherDone() } }
+            // Go once candidates have been quiet for 0.5 s (a dead interface or slow STUN server would otherwise hold the
+            // call up for ~40 s; 1 s added a second to every call)
+            if self.gathered != nil { self.quiet?.cancel(); self.quiet = later(0.5) { [weak self] in self?.gatherDone() } }
         }
     }
     func peerConnection(_ pc: RTCPeerConnection, didChange newState: RTCIceGatheringState) {
