@@ -74,11 +74,14 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
     func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload,
                       for type: PKPushType, completion: @escaping () -> Void) {
         let caller = payload.dictionaryPayload["caller"] as? String ?? "Incoming call"
+        dlog("VoIP push received (caller \(caller))")
         SipManager.shared.checkDnd()
         if SipManager.shared.dndActive {
             CallKitManager.shared.reportPushDeclined(caller: caller, completion: completion)
         } else {
-            CallKitManager.shared.reportPushIncoming(caller: caller, completion: completion)
+            // "caller" is the name when the PBX has one; "number" is the number (to match a declined push to its INVITE)
+            let number = payload.dictionaryPayload["number"] as? String ?? caller
+            CallKitManager.shared.reportPushIncoming(caller: caller, number: number, completion: completion)
         }
         // The SIP socket is probably dead after suspension: re-register so the PBX delivers the INVITE.
         SipManager.shared.wake()

@@ -125,10 +125,16 @@ struct DndButton: View {
 }
 
 struct VersionText: View {
+    @EnvironmentObject var sip: SipManager
+    @State private var taps = 0
     var body: some View {
         HStack {
-            Text("Version: \(SipManager.appVersion)").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+            Text("Version: \(SipManager.appVersion)" + (sip.tester ? " · tester tools on" : ""))
+                .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
         }
+        .contentShape(Rectangle())
+        // 7 taps turn the tester tools on or off (Last call problem, the call screen's audio line)
+        .onTapGesture { taps += 1; if taps >= 7 { taps = 0; sip.tester.toggle() } }
     }
 }
 
@@ -218,6 +224,8 @@ struct CallView: View {
                 Text(sip.activeCall?.number ?? "").font(.title3).foregroundStyle(.secondary)
             }
             Text(label).foregroundStyle(.secondary)
+            if sip.tester, let d = sip.audioDiag { Text(d).font(.caption2.monospaced()).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal) }
+            if let n = sip.notice { Text(n).font(.footnote).foregroundStyle(.orange).multilineTextAlignment(.center).padding(.horizontal) }
             Spacer()
             // While dialling: mute and the audio button already, so the user can pick the car or speaker before they answer.
             if !connected && !ringingIn {
@@ -344,12 +352,16 @@ struct SettingsView: View {
                     TextField("Company code or server", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("Password", text: $acc.password)
-                    TextField("Port", value: $acc.port, format: .number.grouping(.never)).keyboardType(.numberPad)
                     TextField("Voicemail number", text: $acc.voicemailNumber).keyboardType(.numbersAndPunctuation)
-                    Picker("Transport", selection: $acc.transport) {
-                        ForEach(SipTransport.allCases) { Text($0.rawValue).tag($0) }
+                }
+                Section(header: Text("Audio"), footer: Text("Takes effect from the next call.")) {
+                    Toggle("Filter out background voices", isOn: Binding(get: { sip.backgroundFilter }, set: { sip.backgroundFilter = $0 }))
+                }
+                if sip.tester, let problem = sip.lastProblem {
+                    Section("Last call problem") {
+                        Text(problem).font(.caption2.monospaced()).lineLimit(8)
+                        Button("Copy details") { UIPasteboard.general.string = problem }
                     }
-                    Toggle("Encrypt call audio (SRTP)", isOn: $acc.srtp)
                 }
                 Button("Save & Register") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken() }
                 AccountsSection(onActiveChanged: { acc = $0 }, onNoneLeft: onSignOut)
