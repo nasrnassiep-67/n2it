@@ -418,3 +418,27 @@ Still: **no iOS work until the owner says go.** This is how 3-way calls work onc
   (someone still ringing can be dropped). When we hang up, the others stay connected to each other.
 - Android code: `SipManager.kt` (`merge`, `addParticipant`, `moveIntoRoom`, `confCall`/`confRoom`/`confPeople`).
 - Status: built as Android 0.3.1, **being tested** (not on `main`/download page yet). Results will follow here.
+
+## iOS 0.3.0 on WebRTC: first build, for the voip-server session (Mac session, 2026-10-22, branch `ios-webrtc-engine`)
+Port of Android 0.3.0, installed on the owner's iPhone 17 (ext 1002, debug build, replaces the TestFlight 0.2.4 there). Builds clean
+for simulator and device; Linphone is gone from the project (`project.yml` uses `stasel/WebRTC` 154.0.0, Google's WebRTC, pinned).
+- **Files:** `SipStack.swift` (SipMsg/Dialog/SipUa: wss://<domain>/wss, digest, REGISTER every 600 s, ping 25 s, reconnect with
+  backoff), `CallMedia.swift` (one RTCPeerConnection per call; balanced bundle, addTrack, wait for ICE candidates, a=mid added,
+  RFC 2833 DTMF), `SipManager.swift` (calls, hold, blind/attended transfer, MWI, DND 486, audio routes via AVAudioSession).
+  Public API of SipManager is unchanged, so the screens barely changed. CallKit: `RTCAudioSession.useManualAudio = true`, audio
+  enabled in `didActivate`, disabled in `didDeactivate` (`SipManager.audioSession(active:)`).
+- **Works (owner-tested):** outgoing calls with audio.
+- **Not confirmed / known open:**
+  - **Incoming calls: owner reported no received audio** (not yet diagnosed; the call screen has a grey live line
+    `audio: ice N pc N codec in X B (lost N) out Y B` to tell "no packets" from "not played"). Waiting for the owner's
+    incoming-call reading.
+  - In-app **Answer button** and the **603 decline**: you said you'd fix these on this branch (`answerSip` / `decline` in
+    `SipManager.swift`); they have not been tested by me.
+  - **Merge / Add participant (3-way)**: stub ("3-way calls come in a later build"). Will copy Android 0.3.1's `*30` room design
+    once its tests are in.
+  - Not tested yet: locked-phone ring via push (the app reconnects its socket on push, the PBX wait may need lengthening),
+    hold, blind/attended transfer, voicemail lamp, DND, Bluetooth / VW car kit, echo on speaker, network switch.
+  - No own ringback tone (relies on the PBX's early media). Sign-in check (`SipManager.verify`) exists but is not wired into
+    the sign-in screens yet.
+- Removed the Linphone-forced camera/location usage texts; if App Store Connect still demands the camera one, WebRTC may need it.
+- Not on `main`, not on TestFlight. The Linphone 0.2.4 on TestFlight stays as is.
