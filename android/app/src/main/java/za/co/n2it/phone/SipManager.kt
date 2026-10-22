@@ -327,7 +327,7 @@ object SipManager : SipUa.Events {
         val heldByThem = Regex("a=(sendonly|inactive)").containsMatchIn(req.body) || req.body.contains("c=IN IP4 0.0.0.0")
         media.answer(req.body) { sdp ->
             if (c.state in ended) return@answer
-            if (sdp == null) { ua.reply(req, 488, "Not Acceptable Here", c.localTag); return@answer }
+            if (sdp == null) { ua.reply(req, 488, "Not Acceptable Here", c.localTag); problem("PBX re-offer refused: ${media.lastError}", req.body); return@answer }
             ua.reply(req, 200, "OK", c.localTag, listOf("Contact" to ua.contact, "Allow" to SipUa.ALLOW), sdp)
             c.remoteHold = heldByThem
             if (!c.localHold) setState(c, if (heldByThem) CallState.PausedByRemote else CallState.StreamsRunning)
@@ -347,6 +347,7 @@ object SipManager : SipUa.Events {
         val media = newMedia(c)
         media.offer { sdp ->
             if (c.state in ended) return@offer
+            if (sdp == null) problem("Call failed: ${c.media?.lastError ?: "no audio"}", null)
             if (sdp == null || c.hangupWanted) { fail(c, if (sdp == null) "No audio" else null); return@offer }
             val inv = SipMsg("INVITE $target SIP/2.0").add("Via", ua.via()).add("Max-Forwards", "70")
                 .add("To", "<$target>").add("From", "<${ua.aor}>;tag=${c.localTag}").add("Call-ID", c.callId)
@@ -377,6 +378,7 @@ object SipManager : SipUa.Events {
                 }
                 when {
                     res.hasSdp -> c.media?.remoteAnswer(res.body, provisional = true) { ok ->
+                        if (!ok) problem("Early media refused: ${c.media?.lastError}", res.body)
                         if (ok && c.state !in ended && !c.answered) { c.earlyMedia = true; stopRingback(); setState(c, CallState.OutgoingEarlyMedia) }
                     }
                     res.status == 180 -> { if (!c.earlyMedia) { startRingback(); setState(c, CallState.OutgoingRinging) } }
@@ -389,7 +391,9 @@ object SipManager : SipUa.Events {
                 dialogFrom(c, target, res)
                 ack(c, res)
                 c.answered = true; c.connectedAt = System.currentTimeMillis()
-                if (res.hasSdp) c.media?.remoteAnswer(res.body, provisional = false)
+                if (res.hasSdp) c.media?.remoteAnswer(res.body, provisional = false) { ok ->
+                    if (!ok) problem("Answer from PBX refused: ${c.media?.lastError}", res.body)
+                }
                 setState(c, CallState.Connected)
                 setState(c, CallState.StreamsRunning)
                 if (c.hangupWanted) hangupCall(c)
@@ -428,7 +432,11 @@ object SipManager : SipUa.Events {
         setState(c, CallState.Connected)
         newMedia(c).answer(req.body) { sdp ->
             if (c.state in ended) return@answer
-            if (sdp == null) { ua.reply(req, 488, "Not Acceptable Here", c.localTag); _notice.value = "Call failed: audio not accepted"; end(c); return@answer }
+            if (sdp == null) {
+                ua.reply(req, 488, "Not Acceptable Here", c.localTag)
+                problem("Answer failed: ${c.media?.lastError ?: "no audio"}", req.body)
+                end(c); return@answer
+            }
             ua.reply(req, 200, "OK", c.localTag, listOf("Contact" to ua.contact, "Allow" to SipUa.ALLOW, "Supported" to "replaces, outbound"), sdp)
             c.answered = true; c.answering = false; c.connectedAt = System.currentTimeMillis()
             setState(c, CallState.StreamsRunning)
@@ -489,6 +497,15 @@ object SipManager : SipUa.Events {
 
     /** "082 123-4567", "(012) 345 6789" → digits; a typed SIP address (with @) is only trimmed. */
     fun cleanNumber(number: String) = number.trim().let { n -> if ('@' in n) n.filterNot { it.isWhitespace() } else n.filter { it in "+0123456789*#" } }
+
+    private val _problem = MutableStateFlow<String?>(null)
+    /** Test builds: the last call problem in WebRTC's own words (Settings shows it with Copy). */
+    val lastProblem: StateFlow<String?> = _problem
+    private fun problem(what: String, sdp: String?) {
+        _problem.value = "N2IT Phone ${BuildConfig.VERSION_NAME}, ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())}\n$what" +
+            (sdp?.let { "\n--- SDP from PBX ---\n$it" } ?: "")
+        android.widget.Toast.makeText(appContext, what, android.widget.Toast.LENGTH_LONG).show()
+    }
 
     private val _notice = MutableStateFlow<String?>(null)
     /** A short message for the call screen (e.g. the second call could not be placed); cleared by the screen. */

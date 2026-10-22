@@ -461,6 +461,7 @@ fun SettingsTab(onSignOut: () -> Unit) {
         AccountsSection(onActiveChanged = { acc = it }, onNoneLeft = onSignOut)
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
         EchoSection()
+        ProblemSection()
         Spacer(Modifier.height(16.dp))
         VersionText()
     }
@@ -480,6 +481,21 @@ private fun EchoSection() {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(gate, { SipManager.setBackgroundFilter(it) })
+    }
+}
+
+/** Test builds: the last call problem in WebRTC's own words, to copy and send to N2IT. */
+@Composable
+private fun ProblemSection() {
+    val problem by SipManager.lastProblem.collectAsState()
+    val text = problem ?: return
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    HorizontalDivider(Modifier.padding(vertical = 16.dp))
+    Text("Last call problem", style = MaterialTheme.typography.titleSmall)
+    Text(text.lineSequence().take(2).joinToString("\n"), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    OutlinedButton({ clipboard.setText(androidx.compose.ui.text.AnnotatedString(text)) }, modifier = Modifier.padding(top = 6.dp)) {
+        Text("Copy details")
     }
 }
 

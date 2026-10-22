@@ -119,7 +119,7 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
     private fun setLocal(desc: SessionDescription, done: (String?) -> Unit) {
         pc.setLocalDescription(object : Sdp() {
             override fun onSetSuccess() { main.post { if (closed) done(null) else afterGathering(done) } }
-            override fun onSetFailure(error: String?) { main.post { done(null) } }
+            override fun onSetFailure(error: String?) { main.post { lastError = "local: $error"; done(null) } }
         }, desc)
     }
 
@@ -127,7 +127,7 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
     fun offer(done: (String?) -> Unit) {
         pc.createOffer(object : Sdp() {
             override fun onCreateSuccess(desc: SessionDescription) { main.post { if (closed) done(null) else setLocal(desc, done) } }
-            override fun onCreateFailure(error: String?) { main.post { done(null) } }
+            override fun onCreateFailure(error: String?) { main.post { lastError = "offer: $error"; done(null) } }
         }, MediaConstraints())
     }
 
@@ -139,12 +139,22 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
                     if (closed) { done(null); return@post }
                     pc.createAnswer(object : Sdp() {
                         override fun onCreateSuccess(desc: SessionDescription) { main.post { if (closed) done(null) else setLocal(desc, done) } }
-                        override fun onCreateFailure(error: String?) { main.post { done(null) } }
+                        override fun onCreateFailure(error: String?) { main.post { lastError = "answer: $error"; done(null) } }
                     }, MediaConstraints())
                 }
             }
-            override fun onSetFailure(error: String?) { main.post { done(null) } }
-        }, SessionDescription(SessionDescription.Type.OFFER, remote))
+            override fun onSetFailure(error: String?) { main.post { lastError = "remote offer: $error"; done(null) } }
+        }, SessionDescription(SessionDescription.Type.OFFER, withMids(remote)))
+    }
+
+    /** WebRTC's own words for the last failure, for the tester to send to N2IT. */
+    var lastError: String? = null; private set
+
+    /** FreeSWITCH's SDP has no a=mid (old-style WebRTC); newer WebRTC wants one per m= line: 0, 1, … in order. */
+    private fun withMids(sdp: String): String {
+        if (sdp.contains("a=mid:")) return sdp
+        var i = 0
+        return sdp.split("\r\n").joinToString("\r\n") { line -> if (line.startsWith("m=")) "$line\r\na=mid:${i++}" else line }
     }
 
     private var lastRemote: String? = null
@@ -156,8 +166,8 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
         val type = if (provisional) SessionDescription.Type.PRANSWER else SessionDescription.Type.ANSWER
         pc.setRemoteDescription(object : Sdp() {
             override fun onSetSuccess() { main.post { done(true) } }
-            override fun onSetFailure(error: String?) { main.post { done(false) } }
-        }, SessionDescription(type, remote))
+            override fun onSetFailure(error: String?) { main.post { lastError = "remote answer: $error"; done(false) } }
+        }, SessionDescription(type, withMids(remote)))
     }
 
     /** Our hold: we keep sending (the PBX plays music to them) but tell the PBX we do not want audio back. */
