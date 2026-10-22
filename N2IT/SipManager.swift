@@ -107,6 +107,11 @@ final class SipManager: ObservableObject, SipUaEvents {
     @Published var lastProblem: String?
     /// Test builds: live state of the call's audio connection, shown small on the call screen.
     @Published var audioDiag: String?
+    /// Tester tools (Last call problem, the call screen's audio line): hidden from clients (owner 2026-10-22); 7 taps on
+    /// the version number in Settings turn them on or off on this phone.
+    @Published var tester = UserDefaults.standard.bool(forKey: "tester") {
+        didSet { UserDefaults.standard.set(tester, forKey: "tester") }
+    }
 
     /// "0.3.0", from MARKETING_VERSION in project.yml.
     static let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"

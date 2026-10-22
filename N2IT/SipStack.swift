@@ -9,10 +9,13 @@ import CryptoKit
  * Everything runs on the main thread, so the call logic in SipManager needs no locks.
  */
 
-/// Test builds: timestamped line on the Xcode / devicectl console (start lines only, never passwords).
-func dlog(_ s: String) {
+/// Debug builds only: timestamped line on the Xcode / devicectl console (start lines only, never passwords). Release
+/// builds (TestFlight, App Store) log nothing (security review 2026-10-22).
+func dlog(_ s: @autoclosure () -> String) {
+    #if DEBUG
     let f = DateFormatter(); f.dateFormat = "HH:mm:ss.SSS"
-    print("[N2IT \(f.string(from: Date()))] \(s)")
+    print("[N2IT \(f.string(from: Date()))] \(s())")
+    #endif
 }
 
 @discardableResult
