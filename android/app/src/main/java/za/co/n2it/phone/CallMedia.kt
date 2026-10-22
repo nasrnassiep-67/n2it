@@ -12,6 +12,7 @@ import org.webrtc.MediaStream
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpReceiver
+import org.webrtc.RtpSender
 import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
@@ -50,7 +51,10 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
     private val source: AudioSource
     private val track: AudioTrack
     private val pc: PeerConnection
-    private val transceiver: RtpTransceiver
+    private val sender: RtpSender
+    /** Our audio's transceiver; for a call the PBX offered it only exists once its offer is applied. */
+    private val transceiver: RtpTransceiver? get() = pc.transceivers.firstOrNull { it.sender.id() == sender.id() }
+    private var candidates = 0
     private var closed = false
     private var gathered: (() -> Unit)? = null
     private val quiet = Runnable { gatherDone() }
@@ -60,10 +64,11 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
         override fun onIceCandidate(candidate: IceCandidate) {
             // Like the desktop: go once candidates have been quiet for 1 s (a dead interface or slow STUN server
             // would otherwise hold the call up for ~40 s)
-            main.post { if (gathered != null) { main.removeCallbacks(quiet); main.postDelayed(quiet, 1000) } }
+            main.post { candidates++; if (gathered != null) { main.removeCallbacks(quiet); main.postDelayed(quiet, 1000) } }
         }
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
-            if (state == PeerConnection.IceGatheringState.COMPLETE) main.post { gatherDone() }
+            // "Complete" with no address at all is not done (0.3.0 test: an answer with none, the PBX hung up): wait for the 4 s cap
+            if (state == PeerConnection.IceGatheringState.COMPLETE) main.post { if (candidates > 0) gatherDone() }
         }
         override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
             if (state == PeerConnection.PeerConnectionState.FAILED) main.post { if (!closed) onFailed() }
@@ -99,8 +104,9 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
             keyType = PeerConnection.KeyType.ECDSA
         }
         pc = factory.createPeerConnection(cfg, observer) ?: error("WebRTC could not start")
-        transceiver = pc.addTransceiver(track, RtpTransceiver.RtpTransceiverInit(
-            RtpTransceiver.RtpTransceiverDirection.SEND_RECV, listOf("n2it")))
+        // addTrack, not addTransceiver: only a track added this way is reused for the PBX's offer (JSEP); a transceiver
+        // made by addTransceiver is left aside and the call answered "recvonly" with no microphone (0.3.0 test, 12:19)
+        sender = pc.addTrack(track, listOf("n2it"))
     }
 
     private fun gatherDone() {
@@ -112,8 +118,13 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
 
     /** Our SDP once the candidates are in (or after 4 s at most). */
     private fun afterGathering(done: (String?) -> Unit) {
-        if (pc.iceGatheringState() == PeerConnection.IceGatheringState.COMPLETE) { done(pc.localDescription?.description); return }
-        gathered = { done(pc.localDescription?.description) }
+        val result = {
+            val sdp = pc.localDescription?.description
+            if (sdp != null && !sdp.contains("a=candidate")) { lastError = "no network address for the audio (ICE gathered nothing)"; done(null) }
+            else done(sdp)
+        }
+        if (candidates > 0 && pc.iceGatheringState() == PeerConnection.IceGatheringState.COMPLETE) { result(); return }
+        gathered = result
         main.postDelayed(cap, 4000)
     }
 
@@ -173,7 +184,7 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
 
     /** Our hold: we keep sending (the PBX plays music to them) but tell the PBX we do not want audio back. */
     fun setHold(held: Boolean) {
-        transceiver.direction = if (held) RtpTransceiver.RtpTransceiverDirection.SEND_ONLY else RtpTransceiver.RtpTransceiverDirection.SEND_RECV
+        transceiver?.direction = if (held) RtpTransceiver.RtpTransceiverDirection.SEND_ONLY else RtpTransceiver.RtpTransceiverDirection.SEND_RECV
     }
 
     fun setMuted(muted: Boolean) { if (!closed) track.setEnabled(!muted) }
@@ -181,7 +192,7 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
     /** Keypad tone inside the audio (RFC 2833 telephone-event), like desk phones; FreeSWITCH ignores SIP INFO. */
     fun sendDigit(d: Char) {
         if (closed) return
-        val dtmf = transceiver.sender.dtmf() ?: return
+        val dtmf = sender.dtmf() ?: return
         if (dtmf.canInsertDtmf()) dtmf.insertDtmf(d.toString(), 160, 80)
     }
 
