@@ -171,6 +171,7 @@ object SipManager : SipUa.Events {
         router = AudioRouter(appContext) { onDevicesChanged() }
         _gate.value = appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getBoolean("gate", true)
         _hwAec.value = Rtc.hwAec(appContext)
+        _tester.value = isTester(appContext)
         started = true
         updateRoutes()
         watchNetwork()
@@ -551,7 +552,17 @@ object SipManager : SipUa.Events {
     private fun problem(what: String, sdp: String?) {
         _problem.value = "N2IT Phone ${BuildConfig.VERSION_NAME}, ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())}\n$what" +
             (sdp?.let { "\n--- SDP from PBX ---\n$it" } ?: "")
-        android.widget.Toast.makeText(appContext, what, android.widget.Toast.LENGTH_LONG).show()
+        if (_tester.value) android.widget.Toast.makeText(appContext, what, android.widget.Toast.LENGTH_LONG).show()
+    }
+
+    // Tester tools (Last call problem, error pop-ups, crash report): hidden from clients (owner 2026-10-22); tapping the
+    // version number in Settings 7 times turns them on or off on this phone.
+    private val _tester = MutableStateFlow(false)
+    val testerMode: StateFlow<Boolean> = _tester
+    fun isTester(context: Context) = context.getSharedPreferences("n2it", Context.MODE_PRIVATE).getBoolean("tester", false)
+    fun setTesterMode(on: Boolean) {
+        _tester.value = on
+        appContext.getSharedPreferences("n2it", Context.MODE_PRIVATE).edit().putBoolean("tester", on).apply()
     }
 
     private val _notice = MutableStateFlow<String?>(null)

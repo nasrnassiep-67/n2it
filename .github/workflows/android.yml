@@ -1,4 +1,4 @@
-name: Android debug APK
+name: Android APK
 on:
   push:
     branches: [main]
@@ -25,23 +25,25 @@ jobs:
           else
             echo "::warning::N2IT_KEYSTORE_B64 secret not set: APK signed with a throwaway debug key (users must uninstall first)"
           fi
-      - name: Build debug APK
+      - name: Build release APK
         working-directory: android
         env:
           N2IT_KEYSTORE_PASSWORD: ${{ secrets.N2IT_KEYSTORE_PASSWORD }}
-        run: gradle assembleDebug --no-daemon
+        run: |
+          [ -n "$N2IT_KEYSTORE_PASSWORD" ] || { echo "::error::release build needs the N2IT signing key (secrets)"; exit 1; }
+          gradle assembleRelease --no-daemon
       - name: Show signing certificate
-        run: $(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)/apksigner verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -i 'DN\|SHA-256'
+        run: $(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)/apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk | grep -i 'DN\|SHA-256'
       - uses: actions/upload-artifact@v4
         with:
-          name: n2it-phone-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: n2it-phone-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
       - name: Publish as the "latest" release (stable download link)
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk n2it-phone.apk
+          cp android/app/build/outputs/apk/release/app-release.apk n2it-phone.apk
           gh release delete latest --cleanup-tag -y || true
-          gh release create latest n2it-phone.apk --prerelease --title "N2IT Phone (latest test build)" \
-            --notes "Debug build of commit ${GITHUB_SHA::7}. Install on Android (allow unknown apps), then sign in with company code, extension and password."
+          gh release create latest n2it-phone.apk --prerelease --title "N2IT Phone (latest)" \
+            --notes "Release build of commit ${GITHUB_SHA::7}. Install on Android (allow unknown apps), then sign in with company code, extension and password."

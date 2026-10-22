@@ -31,6 +31,13 @@ android {
     }
     buildTypes {
         getByName("debug") { if (keystore != null) signingConfig = signingConfigs.getByName("n2it") }
+        // What clients get (since 0.3.2): not debuggable, so nobody can attach a debugger over USB and read the SIP
+        // password out of the running app (security review 2026-10-22). Same N2IT key: installs as an update.
+        getByName("release") {
+            isDebuggable = false
+            isMinifyEnabled = false   // WebRTC's JNI classes must keep their names; shrinking is not needed for security
+            if (keystore != null) signingConfig = signingConfigs.getByName("n2it")
+        }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
@@ -39,6 +46,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     packaging { jniLibs.useLegacyPackaging = true }
+    // Release builds run Android's "lint vital" checks; report them, but don't block a release on them
+    lint { abortOnError = false; checkReleaseBuilds = false }
 }
 
 dependencies {

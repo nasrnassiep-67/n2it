@@ -461,7 +461,7 @@ fun SettingsTab(onSignOut: () -> Unit) {
         AccountsSection(onActiveChanged = { acc = it }, onNoneLeft = onSignOut)
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
         EchoSection()
-        ProblemSection()
+        if (SipManager.testerMode.collectAsState().value) ProblemSection()
         Spacer(Modifier.height(16.dp))
         VersionText()
     }
@@ -509,9 +509,22 @@ private fun ProblemSection() {
 }
 
 @Composable
-private fun VersionText() = Text("Version: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall,
-    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth(),
-    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+private fun VersionText() {
+    // 7 taps turn the tester tools on or off (Last call problem, error pop-ups, crash report)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var taps by remember { mutableStateOf(0) }
+    Text("Version: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+            if (++taps >= 7) {
+                taps = 0
+                val on = !SipManager.testerMode.value
+                SipManager.setTesterMode(on)
+                android.widget.Toast.makeText(ctx, if (on) "Tester tools on" else "Tester tools off", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        },
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+}
 
 /**
  * Saved accounts (e.g. a reseller testing several clients). One is active at a time: only it is registered and
