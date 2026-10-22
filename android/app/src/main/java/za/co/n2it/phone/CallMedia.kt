@@ -56,29 +56,6 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
     private val quiet = Runnable { gatherDone() }
     private val cap = Runnable { gatherDone() }
 
-    init {
-        val c = MediaConstraints().apply {
-            mandatory += MediaConstraints.KeyValuePair("googEchoCancellation", "true")
-            mandatory += MediaConstraints.KeyValuePair("googAutoGainControl", "true")
-            mandatory += MediaConstraints.KeyValuePair("googNoiseSuppression", noiseFilter.toString())
-            mandatory += MediaConstraints.KeyValuePair("googHighpassFilter", "true")
-        }
-        source = factory.createAudioSource(c)
-        track = factory.createAudioTrack("n2it-mic", source)
-        val cfg = PeerConnection.RTCConfiguration(listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())).apply {
-            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-            bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
-            rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
-            tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
-            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
-            keyType = PeerConnection.KeyType.ECDSA
-        }
-        pc = factory.createPeerConnection(cfg, observer) ?: error("WebRTC could not start")
-        transceiver = pc.addTransceiver(track, RtpTransceiver.RtpTransceiverInit(
-            RtpTransceiver.RtpTransceiverDirection.SEND_RECV, listOf("n2it")))
-    }
-
     private val observer = object : PeerConnection.Observer {
         override fun onIceCandidate(candidate: IceCandidate) {
             // Like the desktop: go once candidates have been quiet for 1 s (a dead interface or slow STUN server
@@ -100,6 +77,29 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
         override fun onDataChannel(channel: DataChannel) {}
         override fun onRenegotiationNeeded() {}
         override fun onAddTrack(receiver: RtpReceiver, streams: Array<out MediaStream>) {}
+    }
+
+    init {
+        val c = MediaConstraints().apply {
+            mandatory += MediaConstraints.KeyValuePair("googEchoCancellation", "true")
+            mandatory += MediaConstraints.KeyValuePair("googAutoGainControl", "true")
+            mandatory += MediaConstraints.KeyValuePair("googNoiseSuppression", noiseFilter.toString())
+            mandatory += MediaConstraints.KeyValuePair("googHighpassFilter", "true")
+        }
+        source = factory.createAudioSource(c)
+        track = factory.createAudioTrack("n2it-mic", source)
+        val cfg = PeerConnection.RTCConfiguration(listOf(
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())).apply {
+            sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
+            bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
+            rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
+            tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
+            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
+            keyType = PeerConnection.KeyType.ECDSA
+        }
+        pc = factory.createPeerConnection(cfg, observer) ?: error("WebRTC could not start")
+        transceiver = pc.addTransceiver(track, RtpTransceiver.RtpTransceiverInit(
+            RtpTransceiver.RtpTransceiverDirection.SEND_RECV, listOf("n2it")))
     }
 
     private fun gatherDone() {
