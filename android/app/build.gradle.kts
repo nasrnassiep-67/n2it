@@ -11,8 +11,8 @@ android {
         applicationId = "za.co.n2it.softphone"
         minSdk = 26
         targetSdk = 34
-        versionCode = 25
-        versionName = "0.2.14"
+        versionCode = 26
+        versionName = "0.3.0"
         fun prop(n: String) = (project.findProperty(n) as String? ?: "").replace("\"", "\\\"")
         buildConfigField("String", "DEV_TENANT", "\"${prop("sipTenant")}\"")
         buildConfigField("String", "DEV_USER", "\"${prop("sipUser")}\"")
@@ -49,5 +49,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("org.linphone:linphone-sdk-android:5.3.95")
+    // Calls: WebRTC (BSD) for audio, OkHttp (Apache 2.0) for the SIP WebSocket. No Linphone (AGPLv3) since 0.3.0.
+    implementation("io.github.webrtc-sdk:android:144.7559.15")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

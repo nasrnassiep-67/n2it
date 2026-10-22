@@ -57,8 +57,8 @@ fun App(onSignedIn: () -> Unit, onSignedOut: () -> Unit) {
 
     var minimised by callMinimised
     // A new incoming call, or the end of the call, always brings the call screen back.
-    LaunchedEffect(call == null, call?.state == org.linphone.core.Call.State.IncomingReceived) {
-        if (call == null || call?.state == org.linphone.core.Call.State.IncomingReceived) minimised = false
+    LaunchedEffect(call == null, call?.state == CallState.IncomingReceived) {
+        if (call == null || call?.state == CallState.IncomingReceived) minimised = false
     }
     if (call != null && !minimised) { CallScreen(call!!, onMinimise = { minimised = true }); return }
     if (!loggedIn) {
@@ -461,23 +461,26 @@ fun SettingsTab(onSignOut: () -> Unit) {
         AccountsSection(onActiveChanged = { acc = it }, onNoneLeft = onSignOut)
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
         EchoSection()
+        ProblemSection()
         Spacer(Modifier.height(16.dp))
         VersionText()
     }
 }
 
-/** Echo on speakerphone: the result of this phone's tuning and a button to tune again (e.g. after a phone update). */
+/** Echo cancellation runs by itself (WebRTC); the background-voices filter can be switched off. */
 @Composable
 private fun EchoSection() {
     val echo by SipManager.echo.collectAsState()
-    val call by SipManager.call.collectAsState()
     Text("Echo cancellation", style = MaterialTheme.typography.titleSmall)
-    Text(echo.ifEmpty { "Not tuned yet on this phone" }, style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Text("If people hear themselves when you are on speaker, tune again in a quiet room. It plays a few beeps.",
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    OutlinedButton({ SipManager.tuneEcho() }, enabled = call == null && !echo.startsWith("Tuning…"), modifier = Modifier.padding(top = 6.dp)) {
-        Text("Tune echo cancellation")
+    Text(echo, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val hw by SipManager.phoneEchoCanceller.collectAsState()
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Use the phone's own echo canceller")
+            Text("Off: N2IT's echo canceller (recommended). Try on only if people hear themselves. Applies from the next call.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(hw, { SipManager.setPhoneEchoCanceller(it) })
     }
     val gate by SipManager.backgroundFilter.collectAsState()
     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -487,6 +490,21 @@ private fun EchoSection() {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(gate, { SipManager.setBackgroundFilter(it) })
+    }
+}
+
+/** Test builds: the last call problem in WebRTC's own words, to copy and send to N2IT. */
+@Composable
+private fun ProblemSection() {
+    val problem by SipManager.lastProblem.collectAsState()
+    val text = problem ?: return
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    HorizontalDivider(Modifier.padding(vertical = 16.dp))
+    Text("Last call problem", style = MaterialTheme.typography.titleSmall)
+    Text(text.lineSequence().take(2).joinToString("\n"), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    OutlinedButton({ clipboard.setText(androidx.compose.ui.text.AnnotatedString(text)) }, modifier = Modifier.padding(top = 6.dp)) {
+        Text("Copy details")
     }
 }
 
@@ -579,14 +597,14 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
     var pad by remember { mutableStateOf(false) }
     var transferTo by remember { mutableStateOf<Boolean?>(null) }  // null = closed, false = blind, true = attended
     var adding by remember { mutableStateOf(false) }
-    val connected = call.onHold || call.state == org.linphone.core.Call.State.StreamsRunning || call.state == org.linphone.core.Call.State.Connected
-    val ringingIn = call.state == org.linphone.core.Call.State.IncomingReceived
+    val connected = call.onHold || call.state == CallState.StreamsRunning || call.state == CallState.Connected
+    val ringingIn = call.state == CallState.IncomingReceived
     val label = if (call.conference) "Conference · ${call.participants.size + 1} people" else when (call.state) {
-        org.linphone.core.Call.State.IncomingReceived -> "Incoming call"
-        org.linphone.core.Call.State.OutgoingInit, org.linphone.core.Call.State.OutgoingProgress -> "Calling…"
-        org.linphone.core.Call.State.OutgoingRinging, org.linphone.core.Call.State.OutgoingEarlyMedia -> "Ringing…"
-        org.linphone.core.Call.State.StreamsRunning, org.linphone.core.Call.State.Connected -> "Connected"
-        org.linphone.core.Call.State.Paused, org.linphone.core.Call.State.Pausing -> "On hold"
+        CallState.IncomingReceived -> "Incoming call"
+        CallState.OutgoingInit, CallState.OutgoingProgress -> "Calling…"
+        CallState.OutgoingRinging, CallState.OutgoingEarlyMedia -> "Ringing…"
+        CallState.StreamsRunning, CallState.Connected -> "Connected"
+        CallState.Paused, CallState.Pausing -> "On hold"
         else -> ""
     }
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {

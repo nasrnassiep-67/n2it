@@ -339,3 +339,63 @@ phone's whole network after 6 failures in 60 s). Android reference: `PasswordFie
    whitespace and zero-width characters (U+200B-D, U+2060, U+FEFF) from what is pasted.
 The owner decided against invite links / email sign-in / QR: sign-in stays company code + extension + password.
 
+
+## Leaving Linphone: Android 0.3.0 on WebRTC, findings for iOS (voip-server session, 2026-10-22, branch `android-webrtc-engine`)
+**Do not build anything for iOS yet.** Nasr and Ebrahim want to review the plan first; the owner will say when.
+
+**Why.** Belledonne's closed-source licence for Liblinphone costs €16,200 (iOS only) to €19,800 (iOS + Android), plus
+yearly renewals for updates: not affordable. Under the free AGPLv3 the complete app source must be published, also for
+TestFlight / Ad Hoc / APK builds already given to clients (Julien Favre-Bulle, Belledonne, 2026-10-22). Decision: rebuild
+the calling engine natively (owner chose native over Flutter) on WebRTC (BSD) + our own SIP client. The screens,
+CallKit, push and accounts stay. Ebrahim confirmed in writing that N2IT owns all app code he wrote. Linphone builds
+already handed out (Android <= 0.2.14, the current iOS TestFlight/Ad Hoc build) still owe their source to the people who
+got them: pending owner decision. Never submit a Linphone build to the App Store.
+
+**How Android 0.3.0 works** (copy this design to Swift when told to):
+- `SipStack.kt`: SIP over a secure WebSocket, `wss://<company>.voip.n2it.co.za/wss` on port 443 (nginx passes it to
+  FreeSWITCH's WSS listener, the same path the desktop JsSIP app uses). Subprotocol `sip`; Via `SIP/2.0/WSS <rnd>.invalid`;
+  Contact `<sip:<rnd>@<rnd>.invalid;transport=ws>`; REGISTER every 600 s; digest MD5 for 401/407; WebSocket pings every
+  25 s (the PBX answers them, checked). A wrong password is not retried (fail2ban).
+- `CallMedia.kt`: one WebRTC PeerConnection per call. All ICE candidates go in the SDP (FreeSWITCH does not do trickle
+  ICE): wait until gathering completes, or 1 s with no new candidate, 4 s at most. DTMF = RFC 2833 via the sender's
+  DtmfSender. Hold = our transceiver direction sendonly + re-INVITE.
+- `SipManager.kt`: calls, hold, blind transfer (REFER), attended transfer (REFER with Replaces: to-tag = our remote tag,
+  from-tag = our local tag), voicemail lamp (SUBSCRIBE message-summary), DND (486), decline (603), call waiting.
+- No 3-way calls yet: next is a conference room on the PBX (calls REFERred into it) instead of mixing on the phone.
+
+**What FreeSWITCH offers a WebSocket client** (Local SDP, 2026-10-22): `RTP/SAVPF` G722, PCMU, PCMA, telephone-event 101,
+CN; DTLS `a=setup:actpass` + sha-256 fingerprint; `a=rtcp-mux`; one host candidate 197.189.233.254; old-style SSRC/msid
+lines; **no `a=mid` and no `a=group:BUNDLE`**. No Opus (mod_opus is not loaded), so calls run G.722 to the PBX, which
+converts to G.729/G.711 for the trunks.
+
+**Bugs found while testing on Android 0.3.0, avoid them on iOS:**
+1. `bundlePolicy = maxBundle` makes WebRTC refuse every FreeSWITCH offer ("max-bundle configured but session description
+   has no BUNDLE group", 488 on answer). Use **balanced** (the browser default).
+2. Missing `a=mid`: the app adds `a=mid:0…` per m= line before applying the PBX's SDP (harmless, kept).
+3. Add the microphone with **`addTrack`**, not `addTransceiver`. A transceiver from addTransceiver is not reused for the
+   PBX's offer, so the answer said `a=recvonly` and sent no audio (answered call, no audio, 12:19).
+4. Never send an answer without ICE candidates. Once WebRTC reported gathering complete with none: the answer had port 9 and no
+   candidates, and the PBX hung up at once (INCOMPATIBLE_DESTINATION). Now: wait for at least one, else fail with a reason.
+5. Echo: with the phone's **built-in** echo canceller (HONOR) a mobile caller heard herself on our call. Default is now
+   WebRTC's software canceller, with a Settings switch "Use the phone's own echo canceller" (default off). On iOS use
+   WebRTC's normal voice-processing audio unit (it has Apple's echo canceller); retest echo on speaker.
+6. Android needed ACCESS_NETWORK_STATE (Linphone used to add it): crash on start without it.
+7. Make errors visible: the app shows WebRTC's exact error (toast + Settings > Last call problem > Copy details). That
+   turned guesswork into one-build fixes. Do the same on iOS.
+
+**Tested on Android 0.3.0 (owner's HONOR, ext 1000 @ n2it, 2026-10-22):** internal calls both ways ✅; outside calls both
+ways incl. MTN 073 908 0355 ✅; Bluetooth earbuds connected mid-call, audio moved over ✅; call pickup `**1000` ✅;
+1000 dialling 1000 (rings own other devices) ✅; hold/resume ✅ (but the echo in point 5). Still to test: voicemail PIN
+(DTMF), echo after the software-canceller build, WhatsApp/GSM auto-hold, idle 15 min + Wi-Fi/mobile switch, VW car kit,
+blind/attended transfer. Watch: the PBX's MOS for audio from 0.3.0 averaged 3.2 against 4.5 for Linphone from the same
+phone; the low ones had hold/pickup tests in them, so not proven yet.
+
+**iOS plan (for when the owner says go):**
+- WebRTC for iOS: Google's WebRTC framework (BSD) as a Swift package; port SipStack/CallMedia/SipManager from Kotlin.
+- CallKit + WebRTC: `RTCAudioSession.sharedInstance().useManualAudio = true`; set `isAudioEnabled = true` in CallKit's
+  `didActivate audioSession`, false in `didDeactivate`. Getting this order wrong gives "answered but no audio".
+- Push stays as it is: the PBX wake-up (n2it_push_wake.lua) and gateway do not care about TLS vs WebSocket. The app must
+  open the WebSocket and register fast after a VoIP push; the PBX's wait before giving up may need lengthening.
+- Answer pressed on CallKit before the INVITE arrives: keep the answer and accept when the INVITE comes.
+- iOS cannot keep a socket in the background; push remains the only way to ring a closed app.
+- Remove the camera usage text that Linphone forced on us; then App Store submission (closed source).
