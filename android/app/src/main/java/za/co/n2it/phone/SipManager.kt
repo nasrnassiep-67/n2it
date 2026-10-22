@@ -66,6 +66,9 @@ private class Call(val incoming: Boolean, val callId: String, val number: String
     var transferring = false
     /** Rung from a conference (Add participant): moved into the room as soon as they answer. */
     var autoMerge = false
+    /** Incoming: our answer SDP, made while it rings (null = could not be made); [prepareDone] once that finished. */
+    var prepared: String? = null
+    var prepareDone = false
 }
 
 object SipManager : SipUa.Events {
@@ -331,6 +334,16 @@ object SipManager : SipUa.Events {
         PhoneService.notifyIncoming(appContext, name?.let { "$it ($number)" } ?: number, busy)
         if (busy) quietRing() else { startRingtone(); startVibrate() }
         publish()
+        // Make the answer while it rings (0.3.1 test 2026-10-22: about 2 s of silence after Answer while WebRTC gathered
+        // its addresses). Microphone and speaker stay off until Answer. That switch is shared by every call (WebRTC's
+        // audio state), so it is left alone when another call is up: turning it off would silence that call.
+        val media = newMedia(c)
+        if (!hasActiveCall()) media.setAudioActive(false)
+        media.answer(req.body) { sdp ->
+            if (c.state in ended) return@answer
+            c.prepared = sdp; c.prepareDone = true
+            if (c.answering) sendAnswer(c)
+        }
     }
 
     /** The PBX's offer inside a call (its re-INVITE or UPDATE): hold by them, music on hold, a transfer on its side. */
@@ -382,7 +395,7 @@ object SipManager : SipUa.Events {
     private fun newMedia(c: Call) = CallMedia(appContext, _gate.value) {
         // The audio connection failed for good (network gone): end the call instead of leaving it silent
         if (c.state !in ended) { _notice.value = "Call audio lost"; hangupCall(c) }
-    }.also { c.media = it; it.setMuted(_muted.value) }
+    }.also { c.media = it; it.setMuted(_muted.value); it.setAudioActive(true) }
 
     private fun inviteAnswered(c: Call, target: String, res: SipMsg) {
         if (c.state in ended) {
@@ -444,22 +457,28 @@ object SipManager : SipUa.Events {
 
     fun answer() {
         val c = ringingCall() ?: return
-        val req = c.invite ?: return
         c.answering = true
         stopQuietRing(); PhoneService.clearIncoming(appContext)
         _muted.value = _muted.value && hasActiveCall()
         setState(c, CallState.Connected)
-        newMedia(c).answer(req.body) { sdp ->
-            if (c.state in ended) return@answer
-            if (sdp == null) {
-                ua.reply(req, 488, "Not Acceptable Here", c.localTag)
-                problem("Answer failed: ${c.media?.lastError ?: "no audio"}", req.body)
-                end(c); return@answer
-            }
-            ua.reply(req, 200, "OK", c.localTag, listOf("Contact" to ua.contact, "Allow" to SipUa.ALLOW, "Supported" to "replaces, outbound"), sdp)
-            c.answered = true; c.answering = false; c.connectedAt = System.currentTimeMillis()
-            setState(c, CallState.StreamsRunning)
+        c.media?.setMuted(_muted.value)
+        c.media?.setAudioActive(true)
+        if (c.prepareDone) sendAnswer(c)   // otherwise sent the moment the answer is ready
+    }
+
+    /** The answer made while it rang goes to the PBX: the call connects at once. */
+    private fun sendAnswer(c: Call) {
+        val req = c.invite ?: return
+        if (c.answered || c.state in ended) return
+        val sdp = c.prepared
+        if (sdp == null) {
+            ua.reply(req, 488, "Not Acceptable Here", c.localTag)
+            problem("Answer failed: ${c.media?.lastError ?: "no audio"}", req.body)
+            end(c); return
         }
+        ua.reply(req, 200, "OK", c.localTag, listOf("Contact" to ua.contact, "Allow" to SipUa.ALLOW, "Supported" to "replaces, outbound"), sdp)
+        c.answered = true; c.answering = false; c.connectedAt = System.currentTimeMillis()
+        setState(c, CallState.StreamsRunning)
     }
 
     /** Decline the ringing call: the PBX carries on (other phones of the extension, voicemail). */
@@ -498,6 +517,7 @@ object SipManager : SipUa.Events {
 
     private fun end(c: Call) {
         if (c.state != CallState.Error) c.state = CallState.End
+        c.media?.setAudioActive(true)   // a call that rang unanswered must not leave the shared microphone switch off
         c.media?.close(); c.media = null
         calls.remove(c)
         val missed = c.incoming && !c.answered && !c.elsewhere
