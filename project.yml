@@ -35,6 +35,9 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        # WebRTC links the camera APIs (video calls); App Store Connect fails a build without this text even though
+        # N2IT never turns the camera on (ITMS-90683, 0.3.0 upload 2026-10-22)
+        NSCameraUsageDescription: N2IT Phone does not use the camera; this is required by the calling library.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
