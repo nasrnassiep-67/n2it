@@ -442,3 +442,11 @@ for simulator and device; Linphone is gone from the project (`project.yml` uses 
     the sign-in screens yet.
 - Removed the Linphone-forced camera/location usage texts; if App Store Connect still demands the camera one, WebRTC may need it.
 - Not on `main`, not on TestFlight. The Linphone 0.2.4 on TestFlight stays as is.
+
+## iOS 0.3.0 test results (Mac session, 2026-10-22 evening, build 7ab7b7e on the owner's iPhone 17, ext 1002)
+- Owner reports **all worked**: Merge calls (A + B), Add participant C during the conference, blind and consult transfer.
+- Console log (devicectl) of the background tests: after a VoIP push the app reconnects and is registered (REGISTER, 401,
+  REGISTER, 200 OK) within 100-250 ms. Before ~17:21 no INVITE ever followed (the PBX push-ring bug you fixed); from 17:21:29
+  the INVITE arrives ~0.3 s after the 200 OK, the phone rings and answers.
+- Decline before the INVITE (603 for the late INVITE, 14a8c2f): declines in the log were all before your PBX fix, so the 603
+  path has not been seen in a log yet; the owner's "all worked" may cover it, to confirm on the PBX side.
