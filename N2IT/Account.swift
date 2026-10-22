@@ -1,12 +1,8 @@
 import Foundation
-import linphonesw
 
 enum SipTransport: String, CaseIterable, Identifiable, Codable {
     case udp = "UDP", tcp = "TCP", tls = "TLS"
     var id: String { rawValue }
-    var linphone: TransportType {
-        switch self { case .udp: return .Udp; case .tcp: return .Tcp; case .tls: return .Tls }
-    }
 }
 
 struct Account: Codable {

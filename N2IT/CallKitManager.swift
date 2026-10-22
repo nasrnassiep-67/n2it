@@ -1,7 +1,6 @@
 import Foundation
 import CallKit
 import AVFoundation
-import linphonesw
 
 /// Bridges calls to iOS CallKit so incoming calls ring on the lock screen,
 /// and so the audio session stays alive in the background.
@@ -51,7 +50,7 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         }
     }
 
-    /// Called when Linphone sees the INVITE. Reuses the push's CallKit call if there is one.
+    /// Called when the SIP client sees the INVITE. Reuses the push's CallKit call if there is one.
     func sipIncoming(caller: String, name: String?) {
         pendingTimeout?.cancel()
         if uuid == nil {
