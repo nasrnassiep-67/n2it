@@ -86,7 +86,7 @@ class PhoneService : Service() {
             .setSmallIcon(R.drawable.ic_stat_n2it)
             .setContentIntent(open(this))
             .setOngoing(true)
-        if (call == null || call.state == org.linphone.core.Call.State.IncomingReceived) {
+        if (call == null || call.state == CallState.IncomingReceived) {
             val until = SipManager.dndUntil.value
             if (until != null) {   // orange, with Turn off: DND must not be forgotten
                 val text = "Please disable DND to receive calls. Until " +
@@ -102,7 +102,7 @@ class PhoneService : Service() {
         val status = when {
             call.conference -> "Conference · ${call.participants.size + 1} people"
             call.onHold -> "On hold"
-            call.state == org.linphone.core.Call.State.StreamsRunning || call.state == org.linphone.core.Call.State.Connected -> "Ongoing call"
+            call.state == CallState.StreamsRunning || call.state == CallState.Connected -> "Ongoing call"
             else -> "Calling…"
         }
         b.setContentTitle(who).setContentText(status)

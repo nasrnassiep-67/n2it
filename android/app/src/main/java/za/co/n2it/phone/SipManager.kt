@@ -6,6 +6,8 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.media.ToneGenerator
 import android.os.Handler
@@ -19,10 +21,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
-import org.linphone.core.*
-import org.linphone.core.Account as LpAccount
 
-data class CallInfo(val number: String, val state: Call.State, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false,
+/** Where a call is; the names are the ones the screens and the notification have always used. */
+enum class CallState {
+    IncomingReceived, OutgoingInit, OutgoingProgress, OutgoingRinging, OutgoingEarlyMedia,
+    Connected, StreamsRunning, Pausing, Paused, Resuming, PausedByRemote, End, Error, Released
+}
+
+data class CallInfo(val number: String, val state: CallState, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false,
                     val conference: Boolean = false, val participants: List<Participant> = emptyList(), val name: String? = null)
 /** One other person in a conference (the conference screen gives each one a card). [id] is the SIP Call-ID. */
 /** [name] is the caller ID name the PBX sent (e.g. "Nasr" for 1002), when there is one. */
@@ -36,10 +42,36 @@ enum class AudioRoute { Earpiece, Speaker, Bluetooth, Headset }
 /** A route the phone can use right now; [name] is the device's own name for Bluetooth ("VW BT 1234"). */
 data class AudioOption(val route: AudioRoute, val name: String)
 
-object SipManager {
-    private lateinit var core: Core
+/** One call: its SIP dialog and its audio. */
+private class Call(val incoming: Boolean, val callId: String, val number: String, val name: String?) {
+    var state = if (incoming) CallState.IncomingReceived else CallState.OutgoingInit
+    val localTag = java.util.UUID.randomUUID().toString().take(10)
+    /** Outgoing: our INVITE (kept for CANCEL, replaced by the password retry). Incoming: the PBX's INVITE. */
+    var invite: SipMsg? = null
+    var dialog: Dialog? = null
+    var media: CallMedia? = null
+    var connectedAt = 0L
+    var answered = false
+    var answering = false
+    /** Answered on another phone of the extension (the PBX's CANCEL says so): not a missed call. */
+    var elsewhere = false
+    var gotProvisional = false
+    var earlyMedia = false
+    /** Hang up asked for before the PBX answered anything: CANCEL as soon as it does. */
+    var hangupWanted = false
+    var localHold = false
+    var remoteHold = false
+    var reinviting = false
+    /** Blind or attended transfer sent (REFER): hang up once the PBX says it worked. */
+    var transferring = false
+}
+
+object SipManager : SipUa.Events {
     private var started = false
     lateinit var appContext: Context; private set
+    private lateinit var ua: SipUa
+    private lateinit var router: AudioRouter
+    private val calls = mutableListOf<Call>()
 
     private val _registered = MutableStateFlow(false)
     /** The PBX's answer to the latest registration, for the sign-in check (null = no answer yet). */
@@ -55,11 +87,11 @@ object SipManager {
     private val _silenced = MutableStateFlow(false)
     /** The ringing call was silenced (Silence button, volume key): it keeps ringing for the caller, quietly here. */
     val silenced: StateFlow<Boolean> = _silenced
-    private val _echo = MutableStateFlow("")
-    /** Echo tuning result for the Settings screen ("" = not tuned yet on this phone). */
+    private val _echo = MutableStateFlow("Automatic: no tuning needed")
+    /** Echo cancellation status for the Settings screen. WebRTC's canceller adapts by itself during each call. */
     val echo: StateFlow<String> = _echo
     private val _gate = MutableStateFlow(true)
-    /** "Filter out background voices" (Settings): Linphone's noise gate on the microphone. */
+    /** "Filter out background voices" (Settings): WebRTC's noise suppression on the microphone. */
     val backgroundFilter: StateFlow<Boolean> = _gate
     val registered: StateFlow<Boolean> = _registered
     val status: StateFlow<String> = _status
@@ -70,173 +102,95 @@ object SipManager {
     val recents: StateFlow<List<RecentCall>> = _recents
     val hasVoicemail: StateFlow<Boolean> = _voicemail
 
-    private val listener = object : CoreListenerStub() {
-        override fun onAccountRegistrationStateChanged(core: Core, account: LpAccount, state: RegistrationState, message: String) {
-            _registered.value = state == RegistrationState.Ok
-            when (state) {
-                RegistrationState.Ok -> _outcome.value = RegOutcome.Ok
-                RegistrationState.Failed -> _outcome.value = RegOutcome.Failed(account.errorInfo?.protocolCode ?: 0, message)
-                else -> {}
-            }
-            if (state == RegistrationState.Ok) subscribeVoicemail()
-            _status.value = when (state) {
-                RegistrationState.Ok -> "Registered"
-                RegistrationState.Progress -> "Registering…"
-                RegistrationState.Failed -> "Failed: $message"
-                else -> "Not registered"
-            }
-        }
-
-        override fun onCallStateChanged(core: Core, call: Call, state: Call.State, message: String) {
-            val number = call.remoteAddress.username ?: "Unknown"
-            val incoming = call.dir == Call.Dir.Incoming
-            when (state) {
-                Call.State.End, Call.State.Error, Call.State.Released -> {
-                    if (state != Call.State.Released) {
-                        val missed = incoming && (call.callLog?.status == Call.Status.Missed || dndRefused.remove(call))
-                        _recents.value = listOf(RecentCall(number, System.currentTimeMillis(), incoming, missed)) + _recents.value
-                    }
-                    PhoneService.clearIncoming(appContext)
-                    if (core.calls.none { it !== call && it.state == Call.State.IncomingReceived }) stopQuietRing()
-                    userHeld.remove(call)
-                    consultHoldDone(call)
-                    // Another call may still be up (held caller after a consult, or the rest of a conference).
-                    if (liveCalls(except = call).isEmpty()) {
-                        _call.value = null; _muted.value = false; routeChosen = false
-                        releaseFocus(); updateProximity()
-                        if (core.callsNb == 0) PhoneService.setInCall(appContext, false)
-                    } else publish()
-                }
-                Call.State.IncomingReceived -> {
-                    checkDnd()
-                    if (dndActive()) {
-                        // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none).
-                        // Other phones on the same extension (e.g. a desk phone) keep ringing.
-                        dndRefused.add(call)
-                        call.decline(Reason.Busy)
-                        return
-                    }
-                    // On a GSM / WhatsApp call: no ringtone over that call, a call-waiting beep in the earpiece instead
-                    // (owner 2026-10-08). The notification still offers Answer, Decline and Silence.
-                    val busy = PhoneService.otherAppInCall(appContext)
-                    _silenced.value = false
-                    val name = sipName(call)
-                    _call.value = CallInfo(number, state, true, name = name)
-                    PhoneService.notifyIncoming(appContext, name?.let { "$it ($number)" } ?: number, busy)
-                    if (busy) quietRing() else startVibrate()
-                }
-                else -> {
-                    if (state == Call.State.Paused) consultHoldDone(call)
-                    if (state != Call.State.IncomingReceived && core.calls.none { it.state == Call.State.IncomingReceived }) stopQuietRing()
-                    // Outgoing call placed, or incoming call answered: the user is in the app right now,
-                    // so this is when Android lets the service take the microphone.
-                    if (state == Call.State.OutgoingInit || state == Call.State.Connected) {
-                        PhoneService.setInCall(appContext, true)
-                        if (state == Call.State.Connected) takeFocus()
-                        // First call: Bluetooth if connected (car, headset), else a wired headset, else the earpiece.
-                        if (!routeChosen) { routeChosen = true; _route.value = defaultRoute() }
-                        applyRoute()
-                    }
-                    // Streams restart after hold/resume and on answer: keep them on the chosen device.
-                    if (state == Call.State.StreamsRunning) applyRoute()
-                    publish()
-                }
-            }
-        }
-
-        // Echo tuning (owner 2026-10-08: callers heard themselves when this phone was on speaker). Linphone plays a few
-        // beeps and measures how long this phone's speaker takes to reach its microphone, which its echo canceller needs;
-        // without it the canceller guesses and on some phones (HONOR 90) lets the caller's voice back through.
-        override fun onEcCalibrationResult(core: Core, status: EcCalibratorStatus, delayMs: Int) {
-            val text = when (status) {
-                EcCalibratorStatus.Done -> "Tuned for this phone (${delayMs} ms)"
-                EcCalibratorStatus.DoneNoEcho -> "Tuned: this phone cancels echo itself"
-                EcCalibratorStatus.Failed -> "Tuning failed: try again in a quiet room"
-                else -> return
-            }
-            _echo.value = text
-            appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).edit().putString("result", text).apply()
-        }
-
-        // PBX NOTIFY for message-summary: "Messages-Waiting: yes" / "Voice-Message: 2/0 (0/0)"
-        // Bluetooth or a headset connected/disconnected (e.g. the car's hands-free picks up the phone mid-call).
-        override fun onAudioDevicesListUpdated(core: Core) {
-            val before = _routes.value.map { it.route }
-            updateRoutes()
-            if (liveCalls().isEmpty()) return
-            val now = _routes.value.map { it.route }
-            when {
-                AudioRoute.Bluetooth in now && AudioRoute.Bluetooth !in before -> setAudioRoute(AudioRoute.Bluetooth)
-                _route.value !in now -> setAudioRoute(defaultRoute())
-            }
-        }
-
-        override fun onNotifyReceived(core: Core, event: Event, notifiedEvent: String, body: Content?) {
-            if (!notifiedEvent.equals("message-summary", true)) return
-            val text = body?.utf8Text ?: return
-            val waiting = Regex("Messages-Waiting:\\s*yes", RegexOption.IGNORE_CASE).containsMatchIn(text)
-            val newCount = Regex("Voice-Message:\\s*(\\d+)/", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            _voicemail.value = waiting || newCount > 0
-        }
-    }
-
-    private val ended = setOf(Call.State.End, Call.State.Error, Call.State.Released)
-    private fun liveCalls(except: Call? = null) = core.calls.filter { it !== except && it.state !in ended }
+    private val ended = setOf(CallState.End, CallState.Error, CallState.Released)
+    private fun liveCalls(except: Call? = null) = calls.filter { it !== except && it.state !in ended }
     /** A call of ours that is up (not just ringing in). */
-    fun hasActiveCall() = started && liveCalls().any { it.state != Call.State.IncomingReceived }
-    private fun conference(): Conference? = liveCalls().firstNotNullOfOrNull { it.conference }
+    fun hasActiveCall() = started && liveCalls().any { it.state != CallState.IncomingReceived }
+    /** The call in front of the user: the one not on hold. */
+    private fun currentCall() = liveCalls().firstOrNull { it.state != CallState.IncomingReceived && !it.localHold }
+    private fun ringingCall() = liveCalls().firstOrNull { it.state == CallState.IncomingReceived && !it.answering }
 
-    /** Mirror the calls into UI state: one call, a held call plus a consult call, or a conference. */
+    /** Mirror the calls into UI state: one call, or a held call plus a consult call. */
     private fun publish() {
         updateProximity()
-        val calls = liveCalls()
-        val conf = conference()
-        if (conf != null) {
-            val people = calls.filter { it.conference != null }.map { c ->
-                Participant(c.callLog.callId ?: c.remoteAddress.asStringUriOnly(), c.remoteAddress.username ?: "Unknown", when (c.state) {
-                    Call.State.OutgoingInit, Call.State.OutgoingProgress, Call.State.OutgoingRinging, Call.State.OutgoingEarlyMedia -> Participant.Status.Ringing
-                    Call.State.Paused, Call.State.Pausing, Call.State.PausedByRemote -> Participant.Status.OnHold
-                    else -> Participant.Status.Talking
-                }, sipName(c))
-            }
-            _call.value = CallInfo(people.joinToString(", ") { it.number }, Call.State.StreamsRunning, false,
-                consulting = calls.any { it.conference == null }, conference = true, participants = people)
-            return
-        }
-        val call = core.currentCall ?: calls.firstOrNull() ?: return
-        val held = call.state == Call.State.Paused || call.state == Call.State.Pausing
-        _call.value = CallInfo(call.remoteAddress.username ?: "Unknown", call.state, call.dir == Call.Dir.Incoming,
-            held, calls.size > 1, name = sipName(call))
+        val live = liveCalls()
+        val c = currentCall() ?: ringingCall() ?: live.firstOrNull()
+        if (c == null) { _call.value = null; return }
+        _call.value = CallInfo(c.number, c.state, c.incoming, c.state == CallState.Paused || c.state == CallState.Pausing,
+            live.size > 1, name = c.name)
     }
 
-    /** The caller ID name the other side sent, if it is a real name and not just the number again. */
-    private fun sipName(c: Call): String? =
-        c.remoteAddress.displayName?.trim()?.takeIf { it.isNotEmpty() && it != c.remoteAddress.username }
+    private fun setState(c: Call, s: CallState) {
+        c.state = s
+        when (s) {
+            CallState.OutgoingInit, CallState.Connected -> {
+                // Outgoing call placed, or incoming call answered: the user is in the app right now,
+                // so this is when Android lets the service take the microphone.
+                PhoneService.setInCall(appContext, true)
+                router.startCall()
+                if (s == CallState.Connected) takeFocus()
+                // First call: Bluetooth if connected (car, headset), else a wired headset, else the earpiece.
+                if (!routeChosen) { routeChosen = true; updateRoutes(); _route.value = defaultRoute() }
+                applyRoute()
+            }
+            CallState.StreamsRunning -> applyRoute()
+            else -> {}
+        }
+        if (s != CallState.IncomingReceived && liveCalls().none { it.state == CallState.IncomingReceived }) stopQuietRing()
+        publish()
+    }
 
     /** Safe to call repeatedly; the service and the activity both call it. */
     @Synchronized
     fun init(context: Context) {
         if (started) return
         appContext = context.applicationContext
-        core = Factory.instance().createCore(null, null, appContext)
-        core.addListener(listener)
-        core.isEchoCancellationEnabled = true   // without AEC, speakerphone audio loops back into the mic
-        _echo.value = context.applicationContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getString("result", "") ?: ""
-        _gate.value = context.applicationContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getBoolean("gate", true)
-        applyGate()
+        ua = SipUa(this)
         // Shows on the PBX (registrations, logs) instead of "Unknown".
-        core.setUserAgent("N2IT Phone Android", BuildConfig.VERSION_NAME)
-        // STUN puts the phone's public address in the SDP, so the PBX can send audio before the phone does.
-        core.natPolicy = core.createNatPolicy().apply {
-            stunServer = "stun.l.google.com:19302"
-            isStunEnabled = true
-            isIceEnabled = false
-        }
-        core.start()
+        ua.userAgent = "N2IT Phone Android/${BuildConfig.VERSION_NAME}"
+        router = AudioRouter(appContext) { onDevicesChanged() }
+        _gate.value = appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).getBoolean("gate", true)
         started = true
         updateRoutes()
+        watchNetwork()
         setDnd(dndPrefs().getLong("until", 0).takeIf { it > 0 })   // survives restarts; clears itself if expired
         configure(Account.load(appContext))
+    }
+
+    /** Wi-Fi <-> mobile data: the old connection is dead; reconnect at once so calls keep ringing. */
+    private var network: Network? = null
+    private fun watchNetwork() {
+        val cm = appContext.getSystemService(ConnectivityManager::class.java) ?: return
+        cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(n: Network) {
+                main.post {
+                    val changed = network != null && network != n
+                    network = n
+                    if (changed) ua.reconnectNow()
+                }
+            }
+        })
+    }
+
+    // ---- Registration ----
+    override fun onRegistration(state: SipUa.RegState, code: Int, reason: String) {
+        _registered.value = state == SipUa.RegState.Ok
+        when (state) {
+            SipUa.RegState.Ok -> { _outcome.value = RegOutcome.Ok; subscribeVoicemail() }
+            SipUa.RegState.Failed -> _outcome.value = RegOutcome.Failed(code, reason)
+            else -> {}
+        }
+        _status.value = when (state) {
+            SipUa.RegState.Ok -> "Registered"
+            SipUa.RegState.Progress -> reason.ifEmpty { "Registering…" }
+            SipUa.RegState.Failed -> "Failed: $reason"
+            SipUa.RegState.None -> "Not registered"
+        }
+    }
+
+    override fun onTransportDown() {
+        // Calls cannot be controlled without the connection; their audio may still flow and the PBX keeps them up.
+        mwiTimer.let { main.removeCallbacks(it) }
     }
 
     /**
@@ -252,42 +206,28 @@ object SipManager {
         return withTimeoutOrNull(timeoutMs) { _outcome.first { it != null } }
     }
 
-    fun stopRegistering() { if (started) { core.clearAccounts(); core.clearAllAuthInfo() } }
+    fun stopRegistering() { if (started) ua.stop() }
 
+    /** Register [acc] over the secure WebSocket at wss://<company>.voip.n2it.co.za/wss (port 443, as the desktop app).
+     *  The account's port and transport (5061/TLS) were for Linphone and are not used. */
     fun configure(acc: za.co.n2it.phone.Account) {
         if (!started || !acc.isConfigured) return
-        core.clearAccounts(); core.clearAllAuthInfo()
-        val f = Factory.instance()
-        val auth = f.createAuthInfo(acc.user, null, acc.password, null, null, acc.domain)
-        val params = core.createAccountParams()
-        params.identityAddress = f.createAddress("sip:${acc.user}@${acc.domain}")
-        val server = f.createAddress("sip:${acc.domain}:${acc.port}")!!
-        server.transport = when (acc.transport) { "TCP" -> TransportType.Tcp; "TLS" -> TransportType.Tls; else -> TransportType.Udp }
-        params.serverAddress = server
-        // SRTP preferred, never required: calls from the trunk reach the phone unencrypted, and a mandatory SRTP
-        // answered them with 488 (outside callers never rang the app; internal calls arrive encrypted).
-        core.mediaEncryption = if (acc.srtp) MediaEncryption.SRTP else MediaEncryption.None
-        core.isMediaEncryptionMandatory = false
-        params.isRegisterEnabled = true
-        // Re-register every 10 min (default 1 h) and keep the connection alive: a mobile network drops an idle
-        // connection after a few minutes, and the PBX can only reach the phone over a live one.
-        params.expires = 600
-        core.isKeepAliveEnabled = true
-        val account = core.createAccount(params)
-        core.addAuthInfo(auth); core.addAccount(account); core.defaultAccount = account
+        ua.start(acc.user, acc.password, acc.domain)
     }
 
-    private var mwiSub: Event? = null
-
-    /** Manual SUBSCRIBE for voicemail (message-waiting) notifications. */
+    // ---- Voicemail lamp: SUBSCRIBE message-summary; the PBX NOTIFYs "Messages-Waiting: yes" / "Voice-Message: 2/0" ----
+    private val mwiTimer = Runnable { subscribeVoicemail() }
+    private var mwiCallId = ""
     private fun subscribeVoicemail() {
-        val addr = core.defaultAccount?.params?.identityAddress ?: return
-        mwiSub?.terminate()
-        mwiSub = core.createSubscribe(addr, "message-summary", 3600).also {
-            it.addCustomHeader("Accept", "application/simple-message-summary")
-            it.sendSubscribe(null)
-        }
+        main.removeCallbacks(mwiTimer)
+        if (mwiCallId.isEmpty()) mwiCallId = ua.token(22)
+        val sub = SipMsg("SUBSCRIBE ${ua.aor} SIP/2.0").add("Via", ua.via()).add("Max-Forwards", "70")
+            .add("To", "<${ua.aor}>").add("From", "<${ua.aor}>;tag=${ua.token(10)}").add("Call-ID", mwiCallId)
+            .add("CSeq", "${++mwiCseq} SUBSCRIBE").add("Contact", ua.contact).add("Event", "message-summary")
+            .add("Accept", "application/simple-message-summary").add("Expires", "3600").add("User-Agent", ua.userAgent)
+        ua.request(sub, onRetry = { mwiCseq = it.cseq }) { res -> if (res.status in 200..299) main.postDelayed(mwiTimer, 3000_000L) }
     }
+    private var mwiCseq = 0
 
     /** Another saved account becomes active: what was shown belongs to the previous one. */
     fun switchAccount(acc: za.co.n2it.phone.Account) {
@@ -296,17 +236,254 @@ object SipManager {
     }
 
     fun signOut(context: Context) {
-        if (started) { core.clearAccounts(); core.clearAllAuthInfo() }
+        if (started) ua.stop()
         za.co.n2it.phone.Account.clear(context)
         _registered.value = false; _status.value = "Not registered"; _recents.value = emptyList(); _voicemail.value = false
     }
 
-    /** Rings [number]; false when it could not be dialled (not registered, or not a valid number). */
+    // ---- Requests from the PBX ----
+    override fun onRequest(req: SipMsg) {
+        val c = calls.firstOrNull { it.callId == req.callId && it.state !in ended }
+        when (req.method) {
+            "INVITE" -> if (c == null) {
+                if (req.toTag != null) ua.reply(req, 481, "Call/Transaction Does Not Exist") else incoming(req)
+            } else offerFromPbx(c, req)
+            "ACK" -> {}
+            "CANCEL" -> {
+                ua.reply(req, 200, "OK")
+                if (c == null || c.answered) return
+                c.invite?.let { ua.reply(it, 487, "Request Terminated", c.localTag) }
+                // Answered on another phone of the extension: the PBX says "Call completed elsewhere" (cause 200)
+                val why = req.h("Reason") ?: ""
+                c.elsewhere = why.contains("cause=200") || why.contains("elsewhere", true)
+                end(c)
+            }
+            "BYE" -> { ua.reply(req, 200, "OK"); c?.let { end(it) } }
+            "UPDATE" -> if (c != null && req.hasSdp) offerFromPbx(c, req) else ua.reply(req, 200, "OK", extra = listOf("Contact" to ua.contact))
+            "NOTIFY" -> { ua.reply(req, 200, "OK"); notify(req) }
+            "OPTIONS" -> ua.reply(req, 200, "OK", extra = listOf("Allow" to SipUa.ALLOW, "Accept" to "application/sdp"))
+            "INFO", "MESSAGE" -> ua.reply(req, 200, "OK")
+            else -> ua.reply(req, 501, "Not Implemented")
+        }
+    }
+
+    private fun notify(req: SipMsg) {
+        val event = (req.h("Event") ?: "").substringBefore(';').trim()
+        if (event.equals("message-summary", true)) {
+            val text = req.body
+            val waiting = Regex("Messages-Waiting:\\s*yes", RegexOption.IGNORE_CASE).containsMatchIn(text)
+            val newCount = Regex("Voice-Message:\\s*(\\d+)/", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            _voicemail.value = waiting || newCount > 0
+            return
+        }
+        if (!event.equals("refer", true)) return
+        // How the transfer is going: "SIP/2.0 200 OK" when the other side answered
+        val c = calls.firstOrNull { it.callId == req.callId && it.transferring } ?: return
+        val code = Regex("SIP/2.0\\s+(\\d{3})").find(req.body)?.groupValues?.get(1)?.toIntOrNull() ?: return
+        when {
+            code in 200..299 -> hangupCall(c)
+            code >= 300 -> { c.transferring = false; _notice.value = "Transfer failed ($code)" }
+        }
+    }
+
+    private fun incoming(req: SipMsg) {
+        val from = req.h("From")
+        val number = SipMsg.userOf(SipMsg.uriOf(from)).ifEmpty { "Unknown" }
+        val name = SipMsg.nameOf(from)?.takeIf { it != number }
+        checkDnd()
+        if (dndActive()) {
+            // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none).
+            // Other phones on the same extension (e.g. a desk phone) keep ringing.
+            ua.reply(req, 486, "Busy Here", ua.token(10))
+            addRecent(number, incoming = true, missed = true)
+            return
+        }
+        if (!req.hasSdp) { ua.reply(req, 488, "Not Acceptable Here", ua.token(10)); return }
+        val c = Call(true, req.callId, number, name)
+        c.invite = req
+        c.dialog = Dialog(req.callId, c.localTag, req.fromTag ?: "", SipMsg.uriOf(req.h("To")), SipMsg.uriOf(from),
+            SipMsg.uriOf(req.h("Contact")).ifEmpty { SipMsg.uriOf(from) }, req.all("Record-Route").flatMap { it.split(',') }.map { it.trim() },
+            localCseq = 1, remoteName = name)
+        calls += c
+        ua.reply(req, 180, "Ringing", c.localTag, listOf("Contact" to ua.contact))
+        // On a GSM / WhatsApp call (or one of ours): no ringtone over that call, a call-waiting beep in the earpiece
+        // instead (owner 2026-10-08). The notification still offers Answer, Decline and Silence.
+        val busy = PhoneService.otherAppInCall(appContext) || hasActiveCall()
+        _silenced.value = false
+        PhoneService.notifyIncoming(appContext, name?.let { "$it ($number)" } ?: number, busy)
+        if (busy) quietRing() else { startRingtone(); startVibrate() }
+        publish()
+    }
+
+    /** The PBX's offer inside a call (its re-INVITE or UPDATE): hold by them, music on hold, a transfer on its side. */
+    private fun offerFromPbx(c: Call, req: SipMsg) {
+        val media = c.media
+        if (media == null || !req.hasSdp) {
+            ua.reply(req, if (req.hasSdp) 491 else 488, if (req.hasSdp) "Request Pending" else "Not Acceptable Here", c.localTag); return
+        }
+        if (c.reinviting) { ua.reply(req, 491, "Request Pending", c.localTag); return }
+        req.h("Contact")?.let { ct -> c.dialog?.remoteTarget = SipMsg.uriOf(ct) }
+        val heldByThem = Regex("a=(sendonly|inactive)").containsMatchIn(req.body) || req.body.contains("c=IN IP4 0.0.0.0")
+        media.answer(req.body) { sdp ->
+            if (c.state in ended) return@answer
+            if (sdp == null) { ua.reply(req, 488, "Not Acceptable Here", c.localTag); return@answer }
+            ua.reply(req, 200, "OK", c.localTag, listOf("Contact" to ua.contact, "Allow" to SipUa.ALLOW), sdp)
+            c.remoteHold = heldByThem
+            if (!c.localHold) setState(c, if (heldByThem) CallState.PausedByRemote else CallState.StreamsRunning)
+        }
+    }
+
+    // ---- Calls ----
+    /** Rings [number]; false when it could not be dialled (not connected, or not a valid number). */
     fun call(number: String): Boolean {
         val n = cleanNumber(number)
-        if (!started || n.isBlank()) return false
-        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return false
-        return core.invite(if ('@' in n) "sip:$n" else "sip:$n@$domain") != null
+        if (!started || n.isBlank() || !ua.connected) return false
+        val target = if ('@' in n) "sip:$n" else "sip:$n@${ua.domain}"
+        val c = Call(false, ua.token(22), SipMsg.userOf(target), null)
+        calls += c
+        _muted.value = _muted.value && liveCalls().size > 1
+        setState(c, CallState.OutgoingInit)
+        val media = newMedia(c)
+        media.offer { sdp ->
+            if (c.state in ended) return@offer
+            if (sdp == null || c.hangupWanted) { fail(c, if (sdp == null) "No audio" else null); return@offer }
+            val inv = SipMsg("INVITE $target SIP/2.0").add("Via", ua.via()).add("Max-Forwards", "70")
+                .add("To", "<$target>").add("From", "<${ua.aor}>;tag=${c.localTag}").add("Call-ID", c.callId)
+                .add("CSeq", "1 INVITE").add("Contact", ua.contact).add("Allow", SipUa.ALLOW)
+                .add("Supported", "replaces, outbound").add("User-Agent", ua.userAgent).add("Content-Type", "application/sdp")
+            inv.body = sdp
+            c.invite = inv
+            ua.request(inv, onRetry = { c.invite = it }) { res -> inviteAnswered(c, target, res) }
+        }
+        return true
+    }
+
+    private fun newMedia(c: Call) = CallMedia(appContext, _gate.value) {
+        // The audio connection failed for good (network gone): end the call instead of leaving it silent
+        if (c.state !in ended) { _notice.value = "Call audio lost"; hangupCall(c) }
+    }.also { c.media = it; it.setMuted(_muted.value) }
+
+    private fun inviteAnswered(c: Call, target: String, res: SipMsg) {
+        if (c.state in ended) {
+            if (res.status in 200..299) { dialogFrom(c, target, res); ack(c, res); c.dialog?.let { ua.request(ua.inDialog(it, "BYE")) {} } }
+            return
+        }
+        when {
+            res.status < 200 -> {
+                if (res.status > 100) {
+                    c.gotProvisional = true
+                    if (c.hangupWanted) { c.invite?.let { ua.cancel(it) }; return }
+                }
+                when {
+                    res.hasSdp -> c.media?.remoteAnswer(res.body, provisional = true) { ok ->
+                        if (ok && c.state !in ended && !c.answered) { c.earlyMedia = true; stopRingback(); setState(c, CallState.OutgoingEarlyMedia) }
+                    }
+                    res.status == 180 -> { if (!c.earlyMedia) { startRingback(); setState(c, CallState.OutgoingRinging) } }
+                    res.status > 100 && c.state == CallState.OutgoingInit -> setState(c, CallState.OutgoingProgress)
+                    res.status == 100 -> setState(c, CallState.OutgoingProgress)
+                }
+            }
+            res.status < 300 -> {
+                stopRingback()
+                dialogFrom(c, target, res)
+                ack(c, res)
+                c.answered = true; c.connectedAt = System.currentTimeMillis()
+                if (res.hasSdp) c.media?.remoteAnswer(res.body, provisional = false)
+                setState(c, CallState.Connected)
+                setState(c, CallState.StreamsRunning)
+                if (c.hangupWanted) hangupCall(c)
+            }
+            else -> fail(c, when (res.status) {
+                486, 600 -> "Busy"; 480 -> "Not available"; 404, 484 -> "Number not found"; 487 -> null
+                403 -> "Not allowed"; 408 -> "No answer"; 488 -> "Audio not accepted"; 503 -> res.reason.ifEmpty { "Not connected" }
+                else -> "${res.status} ${res.reason}".trim()
+            })
+        }
+    }
+
+    private fun dialogFrom(c: Call, target: String, res: SipMsg) {
+        if (c.dialog != null) return
+        c.dialog = Dialog(c.callId, c.localTag, res.toTag ?: "", ua.aor, SipMsg.uriOf(res.h("To")).ifEmpty { target },
+            SipMsg.uriOf(res.h("Contact")).ifEmpty { target },
+            res.all("Record-Route").flatMap { it.split(',') }.map { it.trim() }.reversed(), localCseq = c.invite?.cseq ?: 1)
+    }
+
+    private fun ack(c: Call, res: SipMsg) { c.dialog?.let { ua.send(ua.inDialog(it, "ACK", res.cseq)) } }
+
+    /** The call could not be made: say why (busy, rejected…) on the call screen instead of it just vanishing. */
+    private fun fail(c: Call, why: String?) {
+        stopRingback()
+        if (why != null) _notice.value = "Call failed: $why"
+        c.state = CallState.Error
+        end(c)
+    }
+
+    fun answer() {
+        val c = ringingCall() ?: return
+        val req = c.invite ?: return
+        c.answering = true
+        stopQuietRing(); PhoneService.clearIncoming(appContext)
+        _muted.value = _muted.value && hasActiveCall()
+        setState(c, CallState.Connected)
+        newMedia(c).answer(req.body) { sdp ->
+            if (c.state in ended) return@answer
+            if (sdp == null) { ua.reply(req, 488, "Not Acceptable Here", c.localTag); _notice.value = "Call failed: audio not accepted"; end(c); return@answer }
+            ua.reply(req, 200, "OK", c.localTag, listOf("Contact" to ua.contact, "Allow" to SipUa.ALLOW, "Supported" to "replaces, outbound"), sdp)
+            c.answered = true; c.answering = false; c.connectedAt = System.currentTimeMillis()
+            setState(c, CallState.StreamsRunning)
+        }
+    }
+
+    /** Decline the ringing call: the PBX carries on (other phones of the extension, voicemail). */
+    fun decline() {
+        val c = ringingCall() ?: return
+        c.invite?.let { ua.reply(it, 603, "Decline", c.localTag) }
+        stopQuietRing(); PhoneService.clearIncoming(appContext)
+        end(c)
+    }
+
+    /** Ends the call in front of the user (or the ringing one). */
+    fun hangup() {
+        val c = currentCall() ?: liveCalls().firstOrNull() ?: return
+        if (c.state == CallState.IncomingReceived && !c.answering) decline() else hangupCall(c)
+    }
+
+    private fun hangupCall(c: Call) {
+        if (c.state in ended) return
+        when {
+            c.answered -> c.dialog?.let { ua.request(ua.inDialog(it, "BYE")) {} }
+            c.incoming -> c.invite?.let { ua.reply(it, 603, "Decline", c.localTag) }
+            c.gotProvisional -> c.invite?.let { ua.cancel(it) }
+            // Nothing heard from the PBX yet: CANCEL (or BYE) as soon as it answers
+            else -> { c.hangupWanted = true; if (c.invite != null) return }
+        }
+        end(c)
+    }
+
+    /** Conference: hang up on one person. 3-way calls are not in this build yet. */
+    fun dropParticipant(id: String) { liveCalls().firstOrNull { it.callId == id }?.let { hangupCall(it) } }
+
+    private fun end(c: Call) {
+        if (c.state != CallState.Error) c.state = CallState.End
+        c.media?.close(); c.media = null
+        calls.remove(c)
+        val missed = c.incoming && !c.answered && !c.elsewhere
+        addRecent(c.number, c.incoming, missed)
+        if (c.incoming && !c.answered) PhoneService.clearIncoming(appContext)
+        if (ringingCall() == null) stopQuietRing()
+        if (calls.none { it.state == CallState.OutgoingRinging }) stopRingback()
+        userHeld.remove(c)
+        consultHoldDone(c)
+        // Another call may still be up (held caller after a consult)
+        if (liveCalls().isEmpty()) {
+            _call.value = null; _muted.value = false; routeChosen = false
+            router.endCall(); releaseFocus(); updateProximity()
+            PhoneService.setInCall(appContext, false)
+        } else publish()
+    }
+
+    private fun addRecent(number: String, incoming: Boolean, missed: Boolean) {
+        _recents.value = listOf(RecentCall(number, System.currentTimeMillis(), incoming, missed)) + _recents.value
     }
 
     /** "082 123-4567", "(012) 345 6789" → digits; a typed SIP address (with @) is only trimmed. */
@@ -317,16 +494,59 @@ object SipManager {
     val notice: StateFlow<String?> = _notice
     fun clearNotice() { _notice.value = null }
 
-    fun answer() { (ringingCall() ?: core.currentCall)?.accept(); stopQuietRing(); PhoneService.clearIncoming(appContext) }
-    private fun ringingCall() = core.calls.firstOrNull { it.state == Call.State.IncomingReceived }
-    /** Decline the ringing call: the PBX carries on (other phones of the extension, voicemail). */
-    fun decline() { ringingCall()?.decline(Reason.Declined); stopQuietRing(); PhoneService.clearIncoming(appContext) }
+    fun sendDigit(d: Char) { currentCall()?.media?.sendDigit(d) }
+    fun toggleMute() { _muted.value = !_muted.value; liveCalls().forEach { it.media?.setMuted(_muted.value) } }
 
+    // ---- Hold: re-INVITE with our audio "sendonly"; the PBX plays music on hold to the other side ----
+    private fun setHold(c: Call, held: Boolean, done: (Boolean) -> Unit = {}) {
+        val d = c.dialog; val media = c.media
+        if (d == null || media == null || !c.answered || c.reinviting || c.localHold == held) { done(false); return }
+        c.reinviting = true
+        c.localHold = held
+        setState(c, if (held) CallState.Pausing else CallState.Resuming)
+        media.setHold(held)
+        media.offer { sdp ->
+            if (c.state in ended) { c.reinviting = false; done(false); return@offer }
+            if (sdp == null) { c.reinviting = false; undoHold(c, held); done(false); return@offer }
+            val req = ua.inDialog(d, "INVITE").add("Allow", SipUa.ALLOW).add("Content-Type", "application/sdp")
+            req.body = sdp
+            ua.request(req, onRetry = { d.localCseq = it.cseq }) { res ->
+                if (res.status < 200) return@request
+                c.reinviting = false
+                if (c.state in ended) return@request
+                if (res.status < 300) {
+                    ua.send(ua.inDialog(d, "ACK", res.cseq))
+                    if (res.hasSdp) media.remoteAnswer(res.body, provisional = false)
+                    setState(c, if (held) CallState.Paused else if (c.remoteHold) CallState.PausedByRemote else CallState.StreamsRunning)
+                    done(true)
+                } else if (res.status == 491) {
+                    // Both sides changed the call at once: try again shortly (RFC 3261 says 2.1-4 s)
+                    c.localHold = !held
+                    main.postDelayed({ setHold(c, held, done) }, 2500)
+                } else { undoHold(c, held); done(false) }
+            }
+        }
+    }
+    private fun undoHold(c: Call, held: Boolean) {
+        c.localHold = !held; c.media?.setHold(!held)
+        setState(c, if (!held) CallState.Paused else CallState.StreamsRunning)
+        _notice.value = if (held) "Could not put the call on hold" else "Could not take the call off hold"
+    }
+
+    fun toggleHold() {
+        val c = currentCall() ?: liveCalls().firstOrNull { it.localHold } ?: return
+        if (c.localHold) {
+            // Resume (also after an automatic hold whose other call Android never reported as over): take the audio back
+            userHeld.remove(c); takeFocus(force = true); setHold(c, false)
+        } else { userHeld.add(c); setHold(c, true) }
+    }
+
+    // ---- Ringing ----
     /** Stop the ringtone (or call-waiting beep) of the ringing call; it keeps ringing for the caller until answered,
      *  declined or the PBX moves on (voicemail). */
     fun silence() {
         if (ringingCall() == null) return
-        core.stopRinging(); stopQuietRing(); _silenced.value = true
+        stopQuietRing(); _silenced.value = true
         PhoneService.silenceIncoming(appContext)
     }
     fun isRinging() = started && ringingCall() != null && !_silenced.value
@@ -339,8 +559,7 @@ object SipManager {
         override fun run() {
             if (ringingCall() == null || _silenced.value) { stopQuietRing(); return }
             // The other call ended while ours still rings: ring properly from now on (owner 2026-10-08)
-            if (!PhoneService.otherAppInCall(appContext)) { ringNormally(); return }
-            core.stopRinging()   // Linphone's ringtone, should it have started after us
+            if (!PhoneService.otherAppInCall(appContext) && !hasActiveCall()) { ringNormally(); return }
             if (beepTick++ % 4 == 0) {   // every 4 s (the other call is checked every second)
                 // The beep plays into the call audio, which another app's call (WhatsApp) may not let through, so a
                 // double buzz goes with it (owner 2026-10-12: "I would not have known my extension was ringing").
@@ -354,13 +573,19 @@ object SipManager {
         }
     }
 
-    /** Linphone's own ringtone cannot be restarted once stopped: play the phone's ringtone until answered, declined,
-     *  silenced or the caller gives up. */
+    /** The other call ended while ours still rings: the phone's ringtone and the normal notification. */
     private fun ringNormally() {
         main.removeCallbacks(beep); tone?.release(); tone = null
         PhoneService.ringAgain(appContext)
-        startVibrate()
+        startRingtone(); startVibrate()
+    }
+    /** The phone's own ringtone (the ringer volume and Silent/Vibrate apply), until answered, declined, silenced or the
+     *  caller gives up. */
+    private fun startRingtone() {
+        if (ringtone != null) return
         try {
+            val am = appContext.getSystemService(AudioManager::class.java)
+            if (am?.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
             val uri = RingtoneManager.getActualDefaultRingtoneUri(appContext, RingtoneManager.TYPE_RINGTONE) ?: return
             ringtone = RingtoneManager.getRingtone(appContext, uri)?.apply {
                 audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
@@ -370,14 +595,23 @@ object SipManager {
             }
         } catch (e: RuntimeException) { /* no ringtone: the notification still shows the call */ }
     }
-    /** Call-waiting beep instead of the ringtone while another app's call is up. */
-    private fun quietRing() { main.removeCallbacks(beep); beepTick = 0; core.stopRinging(); main.postDelayed(beep, 200) }
+    /** Call-waiting beep instead of the ringtone while another call is up. */
+    private fun quietRing() { main.removeCallbacks(beep); beepTick = 0; main.postDelayed(beep, 200) }
     private fun stopQuietRing() {
         main.removeCallbacks(beep)
         tone?.release(); tone = null
         ringtone?.stop(); ringtone = null
         stopVibrate()
     }
+
+    /** Ringing tone in the earpiece while the other side rings, when the PBX sends no ringing audio of its own. */
+    private var ringback: ToneGenerator? = null
+    private fun startRingback() {
+        if (ringback != null) return
+        try { ringback = ToneGenerator(AudioManager.STREAM_VOICE_CALL, 60).apply { startTone(ToneGenerator.TONE_SUP_RINGTONE) } }
+        catch (e: RuntimeException) { }
+    }
+    private fun stopRingback() { ringback?.let { it.stopTone(); it.release() }; ringback = null }
 
     /** Vibration while ringing (owner 2026-10-12: on Vibrate the phone stayed silent and still), like the phone's own
      *  dialler: Vibrate mode vibrates, Sound mode only with Android's "Vibrate for calls" on, Silent never. Stops with the
@@ -402,7 +636,7 @@ object SipManager {
             vibrating = true
         } catch (e: RuntimeException) { /* no vibration: the ringtone and notification still show the call */ }
     }
-    /** Call waiting while another app's call is up: a short double buzz (the beep alone may not get through). Silent
+    /** Call waiting while another call is up: a short double buzz (the beep alone may not get through). Silent
      *  mode stays silent; Sound and Vibrate both buzz. */
     private fun callWaitingBuzz() {
         try {
@@ -419,40 +653,21 @@ object SipManager {
         vibrating = false
         try { vibrator()?.cancel() } catch (e: RuntimeException) { }
     }
-    /** Ends the call in front of the user; in a conference with nobody else ringing, ends it for everyone. */
-    fun hangup() {
-        val c = core.currentCall
-        if (c != null && c.conference == null) { c.terminate(); return }
-        conference()?.terminate() ?: liveCalls().firstOrNull()?.terminate()
-    }
-    /** Conference: hang up on one person ([Participant.id]); everyone else stays connected. */
-    fun dropParticipant(id: String) {
-        liveCalls().firstOrNull { it.conference != null && (it.callLog.callId ?: it.remoteAddress.asStringUriOnly()) == id }?.terminate()
-    }
-    fun sendDigit(d: Char) { core.currentCall?.sendDtmf(d) }
-    fun toggleMute() { core.isMicEnabled = !core.isMicEnabled; _muted.value = !core.isMicEnabled }
 
     // ---- Audio route: earpiece / speaker / Bluetooth / wired headset ----
     private var routeChosen = false   // the first call of a session picked its route; later calls (consult, add) keep it
 
-    private fun routeOf(d: AudioDevice) = when (d.type) {
-        AudioDevice.Type.Earpiece -> AudioRoute.Earpiece
-        AudioDevice.Type.Speaker -> AudioRoute.Speaker
-        AudioDevice.Type.Bluetooth -> AudioRoute.Bluetooth   // hands-free profile (car kits, headsets); A2DP is music-only
-        AudioDevice.Type.Headset, AudioDevice.Type.Headphones -> AudioRoute.Headset
-        else -> null
-    }
-    private fun player(r: AudioRoute) = core.audioDevices.firstOrNull { routeOf(it) == r && it.hasCapability(AudioDevice.Capabilities.CapabilityPlay) }
-    /** Bluetooth and headsets use their own microphone when they have one; otherwise the phone's. */
-    private fun recorder(r: AudioRoute): AudioDevice? {
-        val mics = core.audioDevices.filter { it.hasCapability(AudioDevice.Capabilities.CapabilityRecord) }
-        val own = if (r == AudioRoute.Bluetooth || r == AudioRoute.Headset) mics.firstOrNull { routeOf(it) == r } else null
-        return own ?: mics.firstOrNull { it.type == AudioDevice.Type.Microphone }
-    }
+    private fun updateRoutes() { _routes.value = router.available() }
 
-    private fun updateRoutes() {
-        _routes.value = AudioRoute.entries.mapNotNull { r ->
-            player(r)?.let { AudioOption(r, if (r == AudioRoute.Bluetooth) it.deviceName else "") }
+    /** Bluetooth or a headset connected/disconnected (e.g. the car's hands-free picks up the phone mid-call). */
+    private fun onDevicesChanged() {
+        val before = _routes.value.map { it.route }
+        updateRoutes()
+        if (liveCalls().isEmpty()) return
+        val now = _routes.value.map { it.route }
+        when {
+            AudioRoute.Bluetooth in now && AudioRoute.Bluetooth !in before -> setAudioRoute(AudioRoute.Bluetooth)
+            _route.value !in now -> setAudioRoute(defaultRoute())
         }
     }
 
@@ -461,30 +676,9 @@ object SipManager {
         return listOf(AudioRoute.Bluetooth, AudioRoute.Headset, AudioRoute.Earpiece).firstOrNull { it in have } ?: AudioRoute.Speaker
     }
 
-    /** Point every live call (and a conference) at the chosen route, both ways: speaker and microphone. */
     private fun applyRoute() {
         if (!started) return
-        val out = player(_route.value) ?: return
-        val mic = recorder(_route.value)
-        // A running call keeps its own devices; the core setting only applies to calls started afterwards.
-        core.outputAudioDevice = out; mic?.let { core.inputAudioDevice = it }
-        // On the loudspeaker also the echo limiter: it turns this phone's microphone down while the other side talks,
-        // so their voice coming out of the speaker is not sent back to them (speakerphone works a little like a
-        // walkie-talkie when both talk at once). Earpiece, headset and Bluetooth do not need it.
-        val limiter = _route.value == AudioRoute.Speaker
-        // Bluetooth earbuds and car kits cancel echo themselves; our canceller on top, tuned for this phone's own speaker
-        // and not the Bluetooth delay, adds crackle (owner 2026-10-08: static on calls only with his earbuds).
-        val ownAec = _route.value != AudioRoute.Bluetooth
-        liveCalls().forEach { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it }; c.isEchoLimiterEnabled = limiter
-            c.isEchoCancellationEnabled = ownAec }
-        conference()?.let { c -> c.outputAudioDevice = out; mic?.let { c.inputAudioDevice = it } }
-        // A conference is mixed on this phone and its microphone/speaker run in the conference's own audio stream, which
-        // takes the limiter from the core setting, not from the calls (owner 2026-10-10: on speaker in a 3-way call
-        // both other parties heard themselves). Set it on the core, and rebuild that stream if it changed mid-conference.
-        if (core.isEchoLimiterEnabled != limiter) {
-            core.isEchoLimiterEnabled = limiter
-            conference()?.takeIf { it.isIn }?.let { c -> c.leave(); c.enter() }
-        }
+        router.apply(_route.value)
         updateProximity()
     }
 
@@ -494,7 +688,7 @@ object SipManager {
     private var proximity: android.os.PowerManager.WakeLock? = null
     private fun updateProximity() {
         val want = started && _route.value == AudioRoute.Earpiece &&
-            liveCalls().any { it.state != Call.State.IncomingReceived }
+            liveCalls().any { it.state != CallState.IncomingReceived }
         val lock = proximity ?: appContext.getSystemService(android.os.PowerManager::class.java)
             ?.takeIf { it.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK) }
             ?.newWakeLock(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "n2it:proximity")
@@ -505,51 +699,20 @@ object SipManager {
     }
 
     // Background voices (owner 2026-10-08: on speaker, people talking a few paces away came through to the other side).
-    // The noise gate turns the microphone down to 3% whenever the sound is quieter than someone speaking into the
-    // phone, so the room only gets through while you talk. Read when a call's audio starts: a change applies to the
-    // next call.
-    private fun applyGate() {
-        core.config.setInt("sound", "noisegate", if (_gate.value) 1 else 0)
-        core.config.setFloat("sound", "ng_thres", 0.03f)
-        core.config.setFloat("sound", "ng_floorgain", 0.03f)
-        // Echo limiter strength for the loudspeaker (owner 2026-10-10: on speaker the other side still heard
-        // themselves). Without these the limiter runs on mediastreamer's mild defaults and hardly turns the microphone
-        // down. Values recommended by Linphone for speakerphone: while the other side's voice plays (el_thres), the
-        // microphone drops hard (el_force) and stays down for 600 ms after they stop (el_sustain), so the tail of their
-        // voice in the room is not sent back. Only used on calls with the limiter on, i.e. on Speaker (applyRoute).
-        core.config.setString("sound", "el_type", "mic")
-        core.config.setFloat("sound", "el_thres", 0.03f)
-        core.config.setFloat("sound", "el_force", 100000f)
-        core.config.setFloat("sound", "el_speed", 0.03f)
-        core.config.setInt("sound", "el_sustain", 600)
-        core.config.setFloat("sound", "el_transmit_thres", 1.7f)
-    }
+    // WebRTC's noise suppression; read when a call's audio starts, so a change applies to the next call.
     fun setBackgroundFilter(on: Boolean) {
         _gate.value = on
         appContext.getSharedPreferences("n2it_echo", Context.MODE_PRIVATE).edit().putBoolean("gate", on).apply()
-        if (started) applyGate()
     }
 
-    /** Tune the echo canceller for this phone (a few seconds of beeps on the loudspeaker); not during a call. */
-    fun tuneEcho() {
-        if (!started || liveCalls().isNotEmpty()) return
-        _echo.value = "Tuning… (keep the phone still and quiet)"
-        if (core.startEchoCancellerCalibration() != 0) _echo.value = "Tuning failed: try again"
-    }
-    /** First start with the microphone allowed: tune once, so nobody has to know about it. */
-    fun tuneEchoOnce() { if (_echo.value.isEmpty() || _echo.value.startsWith("Tuning…")) tuneEcho() }
+    /** WebRTC's echo canceller tunes itself during each call: nothing to do (kept for the Settings screen). */
+    fun tuneEcho() {}
+    fun tuneEchoOnce() {}
 
     fun setAudioRoute(r: AudioRoute) {
-        if (!started || player(r) == null) return
+        if (!started || _routes.value.none { it.route == r }) return
         _route.value = r; routeChosen = true
         applyRoute()
-    }
-    fun toggleHold() {
-        val c = core.currentCall ?: core.calls.firstOrNull { it.state == Call.State.Paused } ?: return
-        if (c.state == Call.State.Paused) {
-            // Resume (also after an automatic hold whose other call Android never reported as over): take the audio back
-            userHeld.remove(c); takeFocus(force = true); c.resume()
-        } else { userHeld.add(c); c.pause() }
     }
 
     /*
@@ -557,8 +720,8 @@ object SipManager {
      * were heard at once). WhatsApp and other calling apps do not always show up as calls in Android's call list
      * (TelecomManager), but every one of them takes the audio focus when its call starts. So the app holds the focus for
      * the length of its calls and treats losing it to another app as "another call started": PhoneService's watcher then
-     * holds ours. Getting it back (the other call ended) resumes ours. Linphone may ask for the focus itself when a call
-     * connects or resumes; losses right after our own actions are ours, not another app's: the focus is simply taken back.
+     * holds ours. Getting it back (the other call ended) resumes ours. Losses right after our own actions (the audio
+     * starting) are ours, not another app's: the focus is simply taken back.
      */
     private var focusRequest: AudioFocusRequest? = null
     @Volatile var focusLost = false
@@ -599,36 +762,43 @@ object SipManager {
     /**
      * Another app (GSM, WhatsApp, Teams…) started or ended a call while ours is up. That app takes the
      * microphone and speaker, so hold ours (the PBX plays hold music to the other side), and resume it when
-     * the other call is over: resuming restarts the audio streams, which a running call would not get back.
+     * the other call is over.
      */
     fun onOtherAppCall(active: Boolean) {
         if (!started || active == otherAppCall) return
         otherAppCall = active
-        val conf = conference()
         if (active) {
-            if (conf != null) conf.leave()
-            liveCalls().filter { it.conference == null && it.state == Call.State.StreamsRunning }.forEach { it.pause() }
+            liveCalls().filter { it.answered && !it.localHold }.forEach { setHold(it, true) }
         } else {
-            focusGraceUntil = System.currentTimeMillis() + 3000   // Linphone may take the focus as the calls resume
-            if (conf != null && !conf.isIn) conf.enter()
-            liveCalls().filter { it.conference == null && it.state == Call.State.Paused && it !in userHeld }
-                .forEach { it.resume() }
+            focusGraceUntil = System.currentTimeMillis() + 3000
+            liveCalls().filter { it.localHold && it !in userHeld }.forEach { setHold(it, false) }
             main.postDelayed({ if (liveCalls().isNotEmpty()) takeFocus(force = true) }, 1500)
         }
     }
 
     /** When the longest-running call connected (for the notification timer), or null with no call. */
     fun callStartedAt(): Long? = if (!started) null
-        else liveCalls().maxOfOrNull { it.duration }?.let { System.currentTimeMillis() - it * 1000L }
+        else liveCalls().filter { it.connectedAt > 0 }.minOfOrNull { it.connectedAt }
 
-    /** Blind transfer: hand the current call to [number] and drop out. */
+    // ---- Transfer ----
+    /** Blind transfer: hand the current call to [number] and drop out once the PBX has taken it. */
     fun blindTransfer(number: String) {
-        val c = core.currentCall ?: core.calls.firstOrNull() ?: return
-        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
+        val c = currentCall() ?: liveCalls().firstOrNull { it.answered } ?: return
         val n = cleanNumber(number)
-        val target = n.takeIf { it.isNotBlank() }?.let { Factory.instance().createAddress(if ('@' in it) "sip:$it" else "sip:$it@$domain") }
-        if (target == null) { _notice.value = "Not a valid number"; return }
-        c.transferTo(target)
+        if (n.isBlank()) { _notice.value = "Not a valid number"; return }
+        refer(c, "<${if ('@' in n) "sip:$n" else "sip:$n@${ua.domain}"}>")
+    }
+
+    private fun refer(c: Call, referTo: String) {
+        val d = c.dialog ?: return
+        c.transferring = true
+        val req = ua.inDialog(d, "REFER").add("Refer-To", referTo).add("Referred-By", "<${ua.aor}>")
+        ua.request(req, onRetry = { d.localCseq = it.cseq }) { res ->
+            if (res.status < 200) return@request
+            if (res.status >= 300) { c.transferring = false; _notice.value = "Transfer refused (${res.status})"; return@request }
+            // Accepted: the PBX reports progress in NOTIFYs; if none comes, drop out anyway after 10 s
+            main.postDelayed({ if (c.transferring) hangupCall(c) }, 10_000L)
+        }
     }
 
     /** Attended transfer, step 1: put the caller on hold and ring [number]. The second call is placed once the hold
@@ -637,15 +807,15 @@ object SipManager {
     fun consult(number: String) {
         val n = cleanNumber(number)
         if (n.isBlank()) { _notice.value = "Not a valid number"; return }
-        val c = core.currentCall
-        if (c == null || c.state == Call.State.Paused) { placeConsult(n, null); return }
-        c.pause()
+        val c = currentCall()
+        if (c == null || c.localHold) { placeConsult(n, null); return }
         pendingConsult = n to c
         main.postDelayed(consultFallback, 3000)   // the hold never confirmed: dial anyway
+        setHold(c, true) { consultHoldDone(c) }
     }
     private var pendingConsult: Pair<String, Call>? = null
     private val consultFallback = Runnable { pendingConsult?.let { (n, held) -> pendingConsult = null; placeConsult(n, held) } }
-    /** Called from onCallStateChanged: the held call reached Paused (or ended). */
+    /** The held call reached Paused (or ended). */
     private fun consultHoldDone(call: Call) {
         val (n, held) = pendingConsult ?: return
         if (held !== call) return
@@ -656,41 +826,27 @@ object SipManager {
     private fun placeConsult(n: String, held: Call?) {
         if (call(n)) return
         _notice.value = "Could not call $n"
-        if (held != null && held.state == Call.State.Paused && held !in userHeld) held.resume()
+        if (held != null && held.localHold && held !in userHeld) setHold(held, false)
     }
 
-    /** Add participant, step 1: in a conference, invite [number] straight in; otherwise hold the call and ring
-     *  [number] (same as a consult), then [merge] once they answer. */
-    fun addParticipant(number: String) {
-        val conf = conference()
-        val domain = core.defaultAccount?.params?.identityAddress?.domain ?: return
-        if (conf != null) {
-            val n = cleanNumber(number)
-            val target = n.takeIf { it.isNotBlank() }?.let { Factory.instance().createAddress(if ('@' in it) "sip:$it" else "sip:$it@$domain") }
-            if (target == null) { _notice.value = "Not a valid number"; return }
-            conf.addParticipant(target)
-        } else consult(number)
-    }
+    /** Add participant: 3-way calls move to a conference room on the PBX in the next test build. Until then the
+     *  number is rung like a consult call (the first caller on hold). */
+    fun addParticipant(number: String) = consult(number)
 
-    /** Add participant, step 2: join every call into one conference, mixed on this phone (no PBX bridge needed). */
-    fun merge() {
-        val calls = liveCalls()
-        if (calls.size < 2) return
-        val conf = conference() ?: core.createConferenceWithParams(core.createConferenceParams(null).apply {
-            isVideoEnabled = false
-            isLocalParticipantEnabled = true
-            subject = "N2IT conference"
-        }) ?: return
-        calls.filter { it.conference == null }.forEach { conf.addParticipant(it) }
-    }
+    fun merge() { _notice.value = "3-way calls come in the next test build" }
 
-    /** Attended transfer, step 2: connect the held caller to the consulted party. */
+    /** Attended transfer, step 2: connect the held caller to the consulted party (REFER with Replaces); the PBX joins
+     *  them and drops us. */
     fun completeTransfer() {
-        val calls = core.calls
-        if (calls.size < 2) return
-        val held = calls.firstOrNull { it.state == Call.State.Paused } ?: return
-        val other = calls.firstOrNull { it !== held } ?: return
-        held.transferToAnother(other)
+        val held = liveCalls().firstOrNull { it.localHold } ?: return
+        val other = liveCalls().firstOrNull { it !== held } ?: return
+        val d = other.dialog
+        if (!other.answered || d == null) { _notice.value = "Wait for them to answer, or use Transfer"; return }
+        fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
+        val replaces = "${enc(d.callId)}%3Bto-tag%3D${enc(d.remoteTag)}%3Bfrom-tag%3D${enc(d.localTag)}"
+        refer(held, "<${d.remoteUri}?Replaces=$replaces>")
+        other.transferring = true   // the PBX ends this one too; drop it ourselves if it does not
+        main.postDelayed({ if (other.state !in ended && other.transferring && held.state in ended) hangupCall(other) }, 10_000L)
     }
 
     // ---- Do Not Disturb (this app only, always with an end time of at most 2 weeks) ----
@@ -698,7 +854,6 @@ object SipManager {
     private val _dndUntil = MutableStateFlow<Long?>(null)
     /** End of DND in epoch ms, or null when off. */
     val dndUntil: StateFlow<Long?> = _dndUntil
-    private val dndRefused = mutableSetOf<Call>()
     private val dndTimer = android.os.Handler(android.os.Looper.getMainLooper())
     private val dndExpire = Runnable { checkDnd() }
     private fun dndPrefs() = appContext.getSharedPreferences("n2it_dnd", Context.MODE_PRIVATE)
@@ -718,8 +873,8 @@ object SipManager {
     /** Ends an expired DND. The timer pauses while the phone sleeps, so this also runs on resume and on each call. */
     fun checkDnd() { if (_dndUntil.value != null && !dndActive()) setDnd(null) }
 
-    /** Re-read the sound cards, e.g. after the microphone permission was granted (the core started without it). */
-    fun reloadSoundDevices() { if (started) { core.reloadSoundDevices(); updateRoutes() } }
+    /** Re-read the audio devices, e.g. after the Bluetooth permission was granted. */
+    fun reloadSoundDevices() { if (started) updateRoutes() }
 
-    fun refresh() { if (started) core.refreshRegisters() }
+    fun refresh() { if (started) ua.refreshNow() }
 }
