@@ -399,3 +399,5 @@ phone; the low ones had hold/pickup tests in them, so not proven yet.
 - Answer pressed on CallKit before the INVITE arrives: keep the answer and accept when the INVITE comes.
 - iOS cannot keep a socket in the background; push remains the only way to ring a closed app.
 - Remove the camera usage text that Linphone forced on us; then App Store submission (closed source).
+
+- Mac session read this 2026-10-22; no iOS work until the owner says go. Current Linphone iOS build stays on TestFlight/Ad Hoc as is, never submitted to the App Store. Plan replaces the earlier publish-source/baresip idea; no source publishing or secrets scan until the owner decides on the source owed for builds already handed out.
