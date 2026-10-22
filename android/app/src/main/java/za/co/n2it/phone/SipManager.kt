@@ -64,6 +64,8 @@ private class Call(val incoming: Boolean, val callId: String, val number: String
     var reinviting = false
     /** Blind or attended transfer sent (REFER): hang up once the PBX says it worked. */
     var transferring = false
+    /** Rung from a conference (Add participant): moved into the room as soon as they answer. */
+    var autoMerge = false
 }
 
 object SipManager : SipUa.Events {
@@ -113,7 +115,17 @@ object SipManager : SipUa.Events {
     /** Mirror the calls into UI state: one call, or a held call plus a consult call. */
     private fun publish() {
         updateProximity()
-        val live = liveCalls()
+        val conf = confCall?.takeIf { it.state !in ended }
+        if (conf != null) {
+            val others = liveCalls().filter { it !== conf && !it.transferring }
+            val ringing = others.map { Participant(it.callId, it.number,
+                if (it.answered) Participant.Status.OnHold else Participant.Status.Ringing, it.name) }
+            val people = confPeople + ringing
+            _call.value = CallInfo(people.joinToString(", ") { it.name ?: it.number }, conf.state, false,
+                conf.localHold, consulting = others.any { it.answered && !it.autoMerge }, conference = true, participants = people)
+            return
+        }
+        val live = liveCalls().filter { !it.transferring || liveCalls().size == 1 }
         val c = currentCall() ?: ringingCall() ?: live.firstOrNull()
         if (c == null) { _call.value = null; return }
         _call.value = CallInfo(c.number, c.state, c.incoming, c.state == CallState.Paused || c.state == CallState.Pausing,
@@ -133,7 +145,11 @@ object SipManager : SipUa.Events {
                 if (!routeChosen) { routeChosen = true; updateRoutes(); _route.value = defaultRoute() }
                 applyRoute()
             }
-            CallState.StreamsRunning -> applyRoute()
+            CallState.StreamsRunning -> {
+                applyRoute()
+                if (c === confCall && pendingMerge.isNotEmpty()) { val list = pendingMerge.toList(); pendingMerge.clear(); moveIntoRoom(list) }
+                if (c.autoMerge && confCall != null) { c.autoMerge = false; moveIntoRoom(listOf(c)) }
+            }
             else -> {}
         }
         if (s != CallState.IncomingReceived && liveCalls().none { it.state == CallState.IncomingReceived }) stopQuietRing()
@@ -337,9 +353,11 @@ object SipManager : SipUa.Events {
 
     // ---- Calls ----
     /** Rings [number]; false when it could not be dialled (not connected, or not a valid number). */
-    fun call(number: String): Boolean {
+    fun call(number: String): Boolean = startCall(number) != null
+
+    private fun startCall(number: String): Call? {
         val n = cleanNumber(number)
-        if (!started || n.isBlank() || !ua.connected) return false
+        if (!started || n.isBlank() || !ua.connected) return null
         val target = if ('@' in n) "sip:$n" else "sip:$n@${ua.domain}"
         val c = Call(false, ua.token(22), SipMsg.userOf(target), null)
         calls += c
@@ -358,7 +376,7 @@ object SipManager : SipUa.Events {
             c.invite = inv
             ua.request(inv, onRetry = { c.invite = it }) { res -> inviteAnswered(c, target, res) }
         }
-        return true
+        return c
     }
 
     private fun newMedia(c: Call) = CallMedia(appContext, _gate.value) {
@@ -470,8 +488,13 @@ object SipManager : SipUa.Events {
         end(c)
     }
 
-    /** Conference: hang up on one person. 3-way calls are not in this build yet. */
-    fun dropParticipant(id: String) { liveCalls().firstOrNull { it.callId == id }?.let { hangupCall(it) } }
+    /** Conference: someone still being rung can be hung up; people already in the room are mixed by the PBX and can
+     *  only leave themselves (hanging up ourselves leaves the others talking). */
+    fun dropParticipant(id: String) {
+        val c = liveCalls().firstOrNull { it.callId == id && it !== confCall }
+        if (c != null) { hangupCall(c); return }
+        _notice.value = "They are in the conference room: they can hang up themselves"
+    }
 
     private fun end(c: Call) {
         if (c.state != CallState.Error) c.state = CallState.End
@@ -484,6 +507,9 @@ object SipManager : SipUa.Events {
         if (calls.none { it.state == CallState.OutgoingRinging }) stopRingback()
         userHeld.remove(c)
         consultHoldDone(c)
+        if (c === confCall) { confCall = null; confRoom = null; confPeople.clear(); pendingMerge.clear()
+            liveCalls().forEach { it.autoMerge = false } }
+        if (c.autoMerge) confCall?.media?.setMuted(_muted.value)
         // Another call may still be up (held caller after a consult)
         if (liveCalls().isEmpty()) {
             _call.value = null; _muted.value = false; routeChosen = false
@@ -856,11 +882,50 @@ object SipManager : SipUa.Events {
         if (held != null && held.localHold && held !in userHeld) setHold(held, false)
     }
 
-    /** Add participant: 3-way calls move to a conference room on the PBX in the next test build. Until then the
-     *  number is rung like a consult call (the first caller on hold). */
-    fun addParticipant(number: String) = consult(number)
+    // ---- 3-way calls: a conference room on the PBX ----
+    // FusionPBX's global "nb-conference" dialplan: *30 + 2-7 digits joins room <digits>@<company domain> (every tenant
+    // has it). Merge = we join a new random room, then transfer each person into it (REFER); the PBX mixes the audio,
+    // which phones mixing it themselves (Linphone did) could not do as well. Proven on n2it 2026-10-22 (room 9876543).
+    private var confCall: Call? = null
+    private var confRoom: String? = null
+    private val confPeople = mutableListOf<Participant>()
+    private val pendingMerge = mutableListOf<Call>()
 
-    fun merge() { _notice.value = "3-way calls come in the next test build" }
+    /** Add participant: in a conference, ring [number] with the room left as it is (holding it would play hold music
+     *  to everyone; our microphone is only muted there) and move them in when they answer. Otherwise hold the call and
+     *  ring [number] (a consult), then [merge]. */
+    fun addParticipant(number: String) {
+        val conf = confCall
+        if (conf == null) { consult(number); return }
+        val c = startCall(number) ?: run { _notice.value = "Could not call ${cleanNumber(number)}"; return }
+        c.autoMerge = true
+        conf.media?.setMuted(true)
+        publish()
+    }
+
+    /** Merge calls: everyone who has answered joins one conference with us. */
+    fun merge() {
+        val answered = liveCalls().filter { it.answered && it !== confCall && !it.transferring }
+        if (confCall != null) { moveIntoRoom(answered); return }
+        if (answered.size < 2) { _notice.value = "Wait for them to answer, then merge"; return }
+        val room = "*30" + (1..7).map { "0123456789"[java.security.SecureRandom().nextInt(10)] }.joinToString("")
+        val c = startCall(room) ?: run { _notice.value = "Could not start the conference"; return }
+        confRoom = room; confCall = c
+        pendingMerge.clear(); pendingMerge.addAll(answered)
+        publish()
+    }
+
+    private fun moveIntoRoom(list: List<Call>) {
+        val room = confRoom ?: return
+        list.filter { it.state !in ended && it.answered }.forEach { c ->
+            confPeople.removeAll { it.id == c.callId }
+            confPeople += Participant(c.callId, c.number, Participant.Status.Talking, c.name)
+            refer(c, "<sip:$room@${ua.domain}>")
+        }
+        // Back to the room: unmute there, and off hold if a consult had put it on hold
+        confCall?.let { conf -> conf.media?.setMuted(_muted.value); if (conf.localHold) { userHeld.remove(conf); setHold(conf, false) } }
+        publish()
+    }
 
     /** Attended transfer, step 2: connect the held caller to the consulted party (REFER with Replaces); the PBX joins
      *  them and drops us. */
