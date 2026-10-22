@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import Network
 import SwiftUI   // ScenePhase
+import UIKit   // applicationState
 import WebRTC
 
 /// Where a call is; the names are the ones the screens have always used.
@@ -627,7 +628,17 @@ final class SipManager: ObservableObject, SipUaEvents {
     }
 
     /// Re-register after a VoIP push woke the app. iOS kills the socket while the app is suspended, so connect afresh.
-    func wake() { liveCalls().isEmpty ? ua.reconnectNow() : ua.refreshNow() }
+    /// A VoIP push or the app coming back on screen. After suspension the socket is probably dead: reconnect. But the
+    /// PBX also pushes when the app is open and registered, and reconnecting then cut the socket the INVITE was
+    /// arriving on (0.3.0 test 2026-10-22: in-app Answer did nothing, a 603 nobody pressed): with a call up, or the app
+    /// on screen with a live connection, only re-register on the same socket.
+    func wake() {
+        if !liveCalls().isEmpty || (UIApplication.shared.applicationState == .active && ua.connected) { ua.refreshNow() }
+        else { ua.reconnectNow() }
+    }
+
+    /// Test builds: a line for Settings > Last call problem (what CallKit or iOS did to a call).
+    func problemNote(_ what: String) { problem(what, nil) }
 
     /// iOS suspends the app soon after it leaves the screen (or the phone locks), and the connection to the PBX dies
     /// with it. Re-register straight away whenever the app is back on screen.

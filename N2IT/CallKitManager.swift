@@ -1,6 +1,7 @@
 import Foundation
 import CallKit
 import AVFoundation
+import WebRTC
 
 /// Bridges calls to iOS CallKit so incoming calls ring on the lock screen,
 /// and so the audio session stays alive in the background.
@@ -30,7 +31,16 @@ final class CallKitManager: NSObject, CXProviderDelegate {
 
     /// Called from a VoIP push. Must report to CallKit immediately or iOS kills the app.
     func reportPushIncoming(caller: String, completion: (() -> Void)? = nil) {
-        guard uuid == nil else { completion?(); return }
+        guard uuid == nil else {
+            // The INVITE got here first (app open and registered; the PBX pushes anyway). iOS still requires every VoIP
+            // push to be reported as a call, or it may terminate the app: report a throwaway call and end it at once.
+            let id = UUID()
+            report(id, caller: caller) { [weak self] in
+                self?.provider.reportCall(with: id, endedAt: nil, reason: .answeredElsewhere)
+                completion?()
+            }
+            return
+        }
         let id = UUID()
         uuid = id
         report(id, caller: caller, completion: completion)
@@ -110,17 +120,43 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         }
     }
 
-    func requestAnswer() { if let id = uuid { controller.request(CXTransaction(action: CXAnswerCallAction(call: id)), completion: { _ in }) } }
+    /// The app's own Answer button. Goes through CallKit (so iOS hands us the audio); if CallKit refuses or has no call
+    /// (0.3.0 test 2026-10-22: the button did nothing), answer the SIP call directly and say why in Last call problem.
+    func requestAnswer() {
+        guard let id = uuid else {
+            SipManager.shared.problemNote("Answer: CallKit had no call, answered directly")
+            configureAudio(); SipManager.shared.answerSip(); return
+        }
+        controller.request(CXTransaction(action: CXAnswerCallAction(call: id))) { err in
+            guard let err else { return }
+            DispatchQueue.main.async {
+                SipManager.shared.problemNote("Answer: CallKit refused (\(err.localizedDescription)), answered directly")
+                self.configureAudio(); SipManager.shared.answerSip()
+            }
+        }
+    }
+
+    /// Call audio mode for WebRTC, set again for every call: something else (ringtone, another app) may have changed it
+    /// since start-up, and with the wrong mode the call has no audio.
+    func configureAudio() {
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.lockForConfiguration()
+        defer { rtc.unlockForConfiguration() }
+        try? rtc.setCategory(AVAudioSession.Category.playAndRecord, with: [.allowBluetooth])
+        try? rtc.setMode(AVAudioSession.Mode.voiceChat)
+    }
     func requestEnd() { if let id = uuid { controller.request(CXTransaction(action: CXEndCallAction(call: id)), completion: { _ in }) } }
 
     // MARK: CXProviderDelegate
 
     func providerDidReset(_ provider: CXProvider) {
+        if SipManager.shared.hasIncomingSip { SipManager.shared.problemNote("iOS reset the call system: the ringing call was declined") }
         SipManager.shared.hangupSip()
         uuid = nil
     }
 
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        configureAudio()
         SipManager.shared.invite(action.handle.value)
         provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: nil)
         let u = CXCallUpdate()
@@ -133,12 +169,15 @@ final class CallKitManager: NSObject, CXProviderDelegate {
     }
 
     func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+        configureAudio()
         if SipManager.shared.hasIncomingSip { SipManager.shared.answerSip() }
         else { answerWhenInvite = true }   // woken by push; INVITE still on its way
         action.fulfill()
     }
 
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        // A ringing call ended from the iOS call screen is declined (603): note it, so a decline nobody pressed shows up
+        if SipManager.shared.hasIncomingSip { SipManager.shared.problemNote("Declined from the iOS call screen (603)") }
         SipManager.shared.hangupSip()
         pendingTimeout?.cancel()
         answerWhenInvite = false
