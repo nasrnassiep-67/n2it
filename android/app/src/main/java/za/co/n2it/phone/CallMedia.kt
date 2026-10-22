@@ -28,6 +28,8 @@ object Rtc {
     private var adm: JavaAudioDeviceModule? = null
     private var initialised = false
     private var builtWithHwAec = false
+    /** Calls using the factory: a changed setting only rebuilds it when none is up. */
+    var inUse = 0
 
     /** "Use the phone's own echo canceller" (Settings). Off = WebRTC's software canceller (as Google Meet); on = the
      *  maker's built-in one. 0.3.0 test 2026-10-22: on the HONOR the built-in one let a mobile caller hear herself. */
@@ -35,7 +37,7 @@ object Rtc {
 
     fun factory(context: Context): PeerConnectionFactory {
         val hw = hwAec(context)
-        factory?.let { if (hw == builtWithHwAec) return it }
+        factory?.let { if (hw == builtWithHwAec || inUse > 0) return it }
         release()
         if (!initialised) {
             PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
@@ -63,7 +65,7 @@ object Rtc {
  */
 class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: () -> Unit) {
     private val main = Handler(Looper.getMainLooper())
-    private val factory = Rtc.factory(context)
+    private val factory = Rtc.factory(context).also { Rtc.inUse++ }
     private val source: AudioSource
     private val track: AudioTrack
     private val pc: PeerConnection
@@ -215,6 +217,7 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
     fun close() {
         if (closed) return
         closed = true
+        Rtc.inUse--
         main.removeCallbacks(quiet); main.removeCallbacks(cap); gathered = null
         try { pc.dispose() } catch (_: RuntimeException) {}
         try { track.dispose() } catch (_: RuntimeException) {}
