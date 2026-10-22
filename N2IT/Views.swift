@@ -343,6 +343,8 @@ struct SettingsView: View {
     @EnvironmentObject var sip: SipManager
     var onSignOut: () -> Void
     @State private var acc = Account.load()
+    @State private var checking = false
+    @State private var problem: String?
 
     var body: some View {
         NavigationStack {
@@ -351,7 +353,7 @@ struct SettingsView: View {
                 Section(header: Text("SIP account"), footer: Text(acc.domain)) {
                     TextField("Company code or server", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    SecureField("Password", text: $acc.password)
+                    PasswordField(text: $acc.password)
                     TextField("Voicemail number", text: $acc.voicemailNumber).keyboardType(.numbersAndPunctuation)
                 }
                 Section(header: Text("Audio"), footer: Text("Takes effect from the next call.")) {
@@ -363,7 +365,16 @@ struct SettingsView: View {
                         Button("Copy details") { UIPasteboard.general.string = problem }
                     }
                 }
-                Button("Save & Register") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken() }
+                SignInStatus(checking: checking, problem: problem, domain: acc.domain)
+                Button("Save & Register") {
+                    checking = true; problem = nil
+                    let previous = Account.load()
+                    Task {
+                        problem = await sip.signInProblem(acc, previous: previous)
+                        checking = false
+                        if problem == nil { acc.save(); PushManager.shared.uploadToken() }
+                    }
+                }.disabled(!acc.isConfigured || checking)
                 AccountsSection(onActiveChanged: { acc = $0 }, onNoneLeft: onSignOut)
                 Section { VersionText() }.listRowBackground(Color.clear)
             }.navigationTitle("Settings")
@@ -406,7 +417,7 @@ struct AccountsSection: View {
             Button { adding = true } label: { Label("Add account", systemImage: "person.badge.plus") }.disabled(inCall)
         }
         .onAppear(perform: refresh)
-        .sheet(isPresented: $adding) { AddAccountView { a in adding = false; use(a) } }
+        .sheet(isPresented: $adding) { AddAccountView { a in adding = false; use(a) }.environmentObject(sip) }
         .alert("Log out of extension \(leaving?.user ?? "")?", isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
                presenting: leaving) { a in
             Button("Log out", role: .destructive) {
@@ -432,7 +443,10 @@ struct AccountsSection: View {
 
 struct AddAccountView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var sip: SipManager
     @State private var a = Account.blank
+    @State private var checking = false
+    @State private var problem: String?
     var onAdd: (Account) -> Void
 
     var body: some View {
@@ -442,8 +456,9 @@ struct AddAccountView: View {
                                      + "\nIt becomes the active account; the current one stays in the list.")) {
                     TextField("Company code", text: $a.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $a.user).keyboardType(.numberPad)
-                    SecureField("Password", text: $a.password)
+                    PasswordField(text: $a.password)
                 }
+                SignInStatus(checking: checking, problem: problem, domain: a.domain)
             }
             .navigationTitle("Add account").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -452,17 +467,59 @@ struct AddAccountView: View {
                     Button("Add") {
                         a.tenant = a.tenant.trimmingCharacters(in: .whitespacesAndNewlines)
                         a.user = a.user.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onAdd(a)
-                    }.disabled(!a.isConfigured)
+                        checking = true; problem = nil
+                        let previous = Account.load()
+                        Task {
+                            problem = await sip.signInProblem(a, previous: previous)
+                            checking = false
+                            if problem == nil { onAdd(a) }
+                        }
+                    }.disabled(!a.isConfigured || checking)
                 }
             }
         }
     }
 }
 
+/// A real password box: no autocorrect, suggestions or capitals, an eye to show what was typed, and spaces / zero-width
+/// characters dropped from what is pasted (Android 0.2.14: a pasted password reached the PBX changed).
+struct PasswordField: View {
+    @Binding var text: String
+    @State private var shown = false
+    private static let invisible: Set<Unicode.Scalar> = ["\u{200B}", "\u{200C}", "\u{200D}", "\u{2060}", "\u{FEFF}"]
+    static func clean(_ s: String) -> String {
+        String(String.UnicodeScalarView(s.unicodeScalars.filter { !invisible.contains($0) && !CharacterSet.whitespacesAndNewlines.contains($0) }))
+    }
+
+    var body: some View {
+        let b = Binding(get: { text }, set: { text = Self.clean($0) })
+        HStack {
+            Group {
+                if shown { TextField("Password", text: b) } else { SecureField("Password", text: b) }
+            }
+            .textInputAutocapitalization(.never).autocorrectionDisabled().textContentType(.password)
+            Button { shown.toggle() } label: { Image(systemName: shown ? "eye.slash" : "eye").foregroundStyle(.secondary) }
+                .buttonStyle(.borderless).accessibilityLabel(shown ? "Hide password" : "Show password")
+        }
+    }
+}
+
+/// "Checking with <domain>…" while the sign-in check runs, else the refusal in red.
+struct SignInStatus: View {
+    let checking: Bool
+    let problem: String?
+    let domain: String
+    var body: some View {
+        if checking { HStack { ProgressView(); Text("Checking with \(domain)…").foregroundStyle(.secondary) } }
+        else if let problem { Text(problem).foregroundStyle(.red) }
+    }
+}
+
 struct LoginView: View {
     @EnvironmentObject var sip: SipManager
     @State private var acc = Account.load()
+    @State private var checking = false
+    @State private var problem: String?
     var done: () -> Void
 
     var body: some View {
@@ -471,9 +528,17 @@ struct LoginView: View {
                 Section(header: Text("Sign in"), footer: Text(acc.domain.isEmpty ? "Your company code, or the full server address" : "Connects to \(acc.domain)")) {
                     TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    SecureField("Password", text: $acc.password)
+                    PasswordField(text: $acc.password)
                 }
-                Button("Sign in") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken(); done() }.disabled(!acc.isConfigured)
+                SignInStatus(checking: checking, problem: problem, domain: acc.domain)
+                Button("Sign in") {
+                    checking = true; problem = nil
+                    Task {
+                        problem = await sip.signInProblem(acc, previous: nil)
+                        checking = false
+                        if problem == nil { acc.save(); PushManager.shared.uploadToken(); done() }
+                    }
+                }.disabled(!acc.isConfigured || checking)
                 Section { VersionText() }.listRowBackground(Color.clear)
             }.navigationTitle("N2IT Phone")
         }

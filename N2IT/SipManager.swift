@@ -260,6 +260,7 @@ final class SipManager: ObservableObject, SipUaEvents {
     /// instead of the app opening with a red "Failed: Forbidden". nil = no answer within `timeout` (wrong company code,
     /// no internet). After a refusal the caller stops it (`stopRegistering`) or puts the previous account back: retrying
     /// a wrong password every minute gets the phone's whole network banned by the PBX (fail2ban).
+    @MainActor
     func verify(_ acc: Account, timeout: TimeInterval = 12) async -> RegOutcome? {
         await withCheckedContinuation { (k: CheckedContinuation<RegOutcome?, Never>) in
             var done = false
@@ -271,6 +272,27 @@ final class SipManager: ObservableObject, SipUaEvents {
     }
 
     func stopRegistering() { ua.stop() }
+
+    /// Sign in / Add account / Save: nil when the PBX accepted `acc`, else what to tell the user. After a refusal the
+    /// account that worked before (`previous`) registers again, or registering stops; nothing is saved by this.
+    @MainActor
+    func signInProblem(_ acc: Account, previous: Account?) async -> String? {
+        let outcome = await verify(acc)
+        let message: String
+        switch outcome {
+        case .ok?: return nil
+        case .failed(let code, _)? where [401, 403, 407].contains(code):
+            message = "Wrong extension or password. Check them and try again."
+        case .failed(404, _)?:
+            message = "Extension not found at \(acc.domain)."
+        case .failed(let code, let reason)? where ![408, 503].contains(code):
+            message = "The PBX refused the sign-in (\(code) \(reason))."
+        default:
+            message = "No answer from \(acc.domain). Check the company code and your internet connection."
+        }
+        if let previous, previous.isConfigured { configure(previous) } else { stopRegistering() }
+        return message
+    }
 
     func onRegistration(_ state: SipUa.RegState, _ code: Int, _ reason: String) {
         registered = state == .ok
