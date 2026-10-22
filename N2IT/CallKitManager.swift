@@ -16,6 +16,11 @@ final class CallKitManager: NSObject, CXProviderDelegate {
     /// Answer tapped on the lock screen before the SIP INVITE arrived.
     private var answerWhenInvite = false
     private var pendingTimeout: DispatchWorkItem?
+    /// Caller number of the push call CallKit is showing before its INVITE has arrived.
+    private var pushCaller: String?
+    /// Declined on the lock screen before the INVITE arrived: (caller from the push, until). The late INVITE is
+    /// answered 603 without ringing, so the PBX carries on with the other phones or voicemail.
+    private var declinedBeforeInvite: (caller: String, until: Date)?
 
     private override init() {
         let cfg = CXProviderConfiguration()
@@ -30,7 +35,7 @@ final class CallKitManager: NSObject, CXProviderDelegate {
     // MARK: Reporting
 
     /// Called from a VoIP push. Must report to CallKit immediately or iOS kills the app.
-    func reportPushIncoming(caller: String, completion: (() -> Void)? = nil) {
+    func reportPushIncoming(caller: String, number: String? = nil, completion: (() -> Void)? = nil) {
         guard uuid == nil else {
             // The INVITE got here first (app open and registered; the PBX pushes anyway). iOS still requires every VoIP
             // push to be reported as a call, or it may terminate the app: report a throwaway call and end it at once.
@@ -43,6 +48,7 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         }
         let id = UUID()
         uuid = id
+        pushCaller = number ?? caller
         report(id, caller: caller, completion: completion)
         // If the INVITE never arrives (caller hung up, network), drop the fake call.
         let work = DispatchWorkItem { [weak self] in self?.endIfPending() }
@@ -63,6 +69,7 @@ final class CallKitManager: NSObject, CXProviderDelegate {
     /// Called when the SIP client sees the INVITE. Reuses the push's CallKit call if there is one.
     func sipIncoming(caller: String, name: String?) {
         pendingTimeout?.cancel()
+        pushCaller = nil
         if uuid == nil {
             let id = UUID()
             uuid = id
@@ -92,6 +99,7 @@ final class CallKitManager: NSObject, CXProviderDelegate {
     }
 
     private func endIfPending() {
+        pushCaller = nil
         guard let id = uuid, SipManager.shared.activeCall == nil else { return }
         provider.reportCall(with: id, endedAt: nil, reason: .remoteEnded)
         uuid = nil
@@ -102,6 +110,7 @@ final class CallKitManager: NSObject, CXProviderDelegate {
     }
 
     func sipEnded() {
+        pushCaller = nil
         pendingTimeout?.cancel()
         answerWhenInvite = false
         guard let id = uuid else { return }
@@ -175,7 +184,24 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         action.fulfill()
     }
 
+    /// The INVITE from `number` belongs to a push call the user already declined: true once (then forgotten).
+    /// Matched by the caller's digits; a push without a number matches any INVITE in the 30 s.
+    func takeDeclinedBeforeInvite(_ number: String) -> Bool {
+        guard let d = declinedBeforeInvite else { return false }
+        guard d.until > Date() else { declinedBeforeInvite = nil; return false }
+        func key(_ n: String) -> String { let x = n.filter(\.isNumber); return x.count >= 9 ? String(x.suffix(9)) : x }
+        guard key(d.caller).isEmpty || key(d.caller) == key(number) else { return false }
+        declinedBeforeInvite = nil
+        return true
+    }
+
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        // Push call ended before its INVITE: nothing to send to the PBX yet; decline the INVITE when it comes
+        if !SipManager.shared.hasLiveSip, let caller = pushCaller {
+            declinedBeforeInvite = (caller, Date().addingTimeInterval(30))
+            dlog("declined before the INVITE (caller \(caller)): its INVITE gets 603")
+        }
+        pushCaller = nil
         // A ringing call ended from the iOS call screen is declined (603): note it, so a decline nobody pressed shows up
         if SipManager.shared.hasIncomingSip { SipManager.shared.problemNote("Declined from the iOS call screen (603)") }
         SipManager.shared.hangupSip()

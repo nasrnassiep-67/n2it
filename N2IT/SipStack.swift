@@ -9,6 +9,12 @@ import CryptoKit
  * Everything runs on the main thread, so the call logic in SipManager needs no locks.
  */
 
+/// Test builds: timestamped line on the Xcode / devicectl console (start lines only, never passwords).
+func dlog(_ s: String) {
+    let f = DateFormatter(); f.dateFormat = "HH:mm:ss.SSS"
+    print("[N2IT \(f.string(from: Date()))] \(s)")
+}
+
 @discardableResult
 func later(_ seconds: TimeInterval, _ block: @escaping () -> Void) -> DispatchWorkItem {
     let w = DispatchWorkItem(block: block)
@@ -210,12 +216,14 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
 
     /// Re-register now (app back on screen); reconnects first if the socket is gone.
     func refreshNow() {
+        dlog("refreshNow (connected \(connected))")
         guard wanted else { return }
         if connected { register() } else { reconnectItem?.cancel(); connect() }
     }
 
     /// The network changed or the app was suspended: the old socket is dead even if it does not know it yet.
     func reconnectNow() {
+        dlog("reconnectNow (wanted \(wanted))")
         guard wanted else { return }
         ws?.cancel(with: .goingAway, reason: nil); ws = nil; connected = false
         pingTimer?.invalidate()
@@ -225,6 +233,7 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
     private func connect() {
         guard wanted, !domain.isEmpty, let url = URL(string: "wss://\(domain)/wss") else { return }
         ws?.cancel(with: .goingAway, reason: nil)
+        dlog("connecting wss://\(domain)/wss")
         setReg(.progress, 0, "Connecting…")
         var req = URLRequest(url: url, timeoutInterval: 10)
         req.setValue("sip", forHTTPHeaderField: "Sec-WebSocket-Protocol")
@@ -256,6 +265,7 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession, webSocketTask t: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         guard t === ws else { return }
         connected = true; backoff = 2
+        dlog("websocket open")
         pingTimer?.invalidate()
         // Keeps mobile networks and NAT from dropping an idle connection (the PBX answers pings)
         pingTimer = Timer.scheduledTimer(withTimeInterval: 25, repeats: true) { [weak self] _ in
@@ -274,6 +284,7 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
     }
 
     private func lost(_ why: String) {
+        dlog("connection lost: \(why)")
         ws?.cancel(with: .goingAway, reason: nil)
         connected = false; ws = nil
         pingTimer?.invalidate()
@@ -342,7 +353,8 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
 
     @discardableResult
     func send(_ msg: SipMsg) -> Bool {
-        guard connected, let w = ws else { return false }
+        guard connected, let w = ws else { dlog("send dropped (not connected): \(msg.startLine)"); return false }
+        dlog("-> \(msg.startLine)")
         w.send(.string(msg.encode())) { _ in }
         return true
     }
@@ -378,6 +390,7 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
 
     private func receive(_ text: String) {
         guard let msg = SipMsg.parse(text) else { return }
+        dlog("<- \(msg.startLine)")
         if msg.isRequest { events?.onRequest(msg); return }
         guard let b = msg.branch, let tx = pending[b] else { return }
         if msg.status == 401 || msg.status == 407 {

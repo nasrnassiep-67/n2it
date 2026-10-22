@@ -361,6 +361,11 @@ final class SipManager: ObservableObject, SipUaEvents {
             addRecent(number, incoming: true, missed: true, name: name)
             return
         }
+        if CallKitManager.shared.takeDeclinedBeforeInvite(number) {
+            ua.reply(req, 603, "Decline", toTag: ua.token(10))
+            addRecent(number, incoming: true, missed: true, name: name)
+            return
+        }
         guard req.hasSdp else { ua.reply(req, 488, "Not Acceptable Here", toTag: ua.token(10)); return }
         let c = SipCall(incoming: true, callId: req.callId, number: number, name: name)
         c.invite = req
@@ -556,6 +561,8 @@ final class SipManager: ObservableObject, SipUaEvents {
     }
 
     var hasIncomingSip: Bool { ringingCall() != nil }
+    /// Any SIP call (ringing or up); false while CallKit shows a push call whose INVITE has not arrived.
+    var hasLiveSip: Bool { !liveCalls().isEmpty }
 
     func answerSip() {
         guard let c = ringingCall(), let req = c.invite else { return }
@@ -633,6 +640,7 @@ final class SipManager: ObservableObject, SipUaEvents {
     /// arriving on (0.3.0 test 2026-10-22: in-app Answer did nothing, a 603 nobody pressed): with a call up, or the app
     /// on screen with a live connection, only re-register on the same socket.
     func wake() {
+        dlog("wake(): live calls \(liveCalls().count), app state \(UIApplication.shared.applicationState.rawValue), connected \(ua.connected)")
         if !liveCalls().isEmpty || (UIApplication.shared.applicationState == .active && ua.connected) { ua.refreshNow() }
         else { ua.reconnectNow() }
     }
