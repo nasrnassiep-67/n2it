@@ -399,3 +399,22 @@ phone; the low ones had hold/pickup tests in them, so not proven yet.
 - Answer pressed on CallKit before the INVITE arrives: keep the answer and accept when the INVITE comes.
 - iOS cannot keep a socket in the background; push remains the only way to ring a closed app.
 - Remove the camera usage text that Linphone forced on us; then App Store submission (closed source).
+
+## 3-way calls without Linphone: PBX conference room, Android 0.3.1 (voip-server session, 2026-10-22, branch `android-conference`)
+Still: **no iOS work until the owner says go.** This is how 3-way calls work once Linphone is gone; copy it when told.
+
+- Linphone mixed a conference on the phone. WebRTC can't do that easily, so the **PBX mixes it**: FusionPBX's standard
+  global dialplan **`nb-conference`**: dialling `*30` + 2-7 digits joins room `<digits>@<company domain>` (conference
+  profile `default`). It exists for every tenant, so **no PBX change is needed**. Proven on n2it 2026-10-22: a test join
+  made room `9876543@n2it.voip.n2it.co.za`.
+- **Merge calls** (one caller held, one answered): the app calls a new random room `*30` + 7 digits, and once that call
+  is up it **blind-transfers (REFER) each person into the room** (`Refer-To: <sip:*30NNNNNNN@<domain>>`). The PBX ends our
+  legs to them; the app keeps one call, to the room. The conference screen shows the people we moved in (we keep that
+  list ourselves; the PBX does not tell the phone who is in the room).
+- **Add participant during a conference**: ring the new person **without holding the room**. Holding it would play hold
+  music to everyone in it, so only our microphone is muted on the room call. When they answer, REFER them into the room
+  and unmute.
+- **Differences from Linphone**: people in the room can't be removed one by one from the phone; they leave by hanging up
+  (someone still ringing can be dropped). When we hang up, the others stay connected to each other.
+- Android code: `SipManager.kt` (`merge`, `addParticipant`, `moveIntoRoom`, `confCall`/`confRoom`/`confPeople`).
+- Status: built as Android 0.3.1, **being tested** (not on `main`/download page yet). Results will follow here.
