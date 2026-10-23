@@ -15,7 +15,35 @@ private struct PbxContacts: Decodable {
         let name: String
         let numbers: [Number]
     }
+    struct Ext: Decodable { let number: String }
     let contacts: [Contact]
+    let extensions: [Ext]?
+    /// The company's outbound route patterns (PBX since 2026-10-22); nil from an older PBX.
+    let dial_patterns: [String]?
+}
+
+/// What the company's PBX can dial (owner 2026-10-22: show only contact numbers it can dial): its outbound route
+/// patterns plus its extensions. A number with letters (0800-FLOWERS, "ext 12") is never shown: cleaning would turn it
+/// into a different number. Without rules (PBX not answered, older PBX) everything else is shown.
+struct DialRules {
+    let patterns: [NSRegularExpression]
+    let extensions: Set<String>
+
+    static func hasLetters(_ raw: String) -> Bool { raw.contains { $0.isLetter } && !raw.contains("@") }
+    static func clean(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        if t.contains("@") { return t.filter { !$0.isWhitespace } }
+        let allowed = Set("+0123456789*#")
+        return String(t.filter { allowed.contains($0) })
+    }
+    func canDial(_ raw: String) -> Bool {
+        if DialRules.hasLetters(raw) { return false }
+        let n = DialRules.clean(raw)
+        if n.isEmpty { return false }
+        if n.contains("@") || extensions.contains(n) { return true }
+        let range = NSRange(n.startIndex..., in: n)
+        return patterns.contains { $0.firstMatch(in: n, range: range) != nil }
+    }
 }
 
 @MainActor
@@ -23,12 +51,23 @@ final class ContactsStore: ObservableObject {
     @Published var contacts: [PhoneContact] = []
     @Published var company: [PhoneContact] = []
     @Published var denied = false
+    private var rules: DialRules?
 
     func load() async {
         async let pbx = loadCompany()
-        await loadPhone()
-        company = await pbx
-        SipManager.shared.learnNames(company + contacts)   // names on incoming calls and in Recents
+        let phone = await loadPhone()
+        let comp = await pbx
+        SipManager.shared.learnNames(comp + phone)   // names on incoming calls and in Recents (all numbers)
+        company = dialable(comp)
+        contacts = dialable(phone)
+    }
+
+    /// Only the numbers the company's PBX can dial; a contact left with none is not listed.
+    private func dialable(_ list: [PhoneContact]) -> [PhoneContact] {
+        list.compactMap { c in
+            let nums = c.numbers.filter { rules?.canDial($0) ?? !DialRules.hasLetters($0) }
+            return nums.isEmpty ? nil : PhoneContact(id: c.id, name: c.name, numbers: nums)
+        }
     }
 
     /// Empty when the account isn't set up, the endpoint isn't deployed yet (404) or the request fails.
@@ -41,15 +80,19 @@ final class ContactsStore: ObservableObject {
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let list = try? JSONDecoder().decode(PbxContacts.self, from: data) else { return [] }
+        if let pats = list.dial_patterns {
+            rules = DialRules(patterns: pats.compactMap { try? NSRegularExpression(pattern: $0) },
+                              extensions: Set((list.extensions ?? []).map(\.number)))
+        }
         return list.contacts.enumerated().compactMap { i, c in
             let nums = c.numbers.map(\.number).filter { !$0.isEmpty }
             return nums.isEmpty ? nil : PhoneContact(id: "pbx-\(i)", name: c.name, numbers: nums)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private func loadPhone() async {
+    private func loadPhone() async -> [PhoneContact] {
         let store = CNContactStore()
-        guard (try? await store.requestAccess(for: .contacts)) == true else { denied = true; return }
+        guard (try? await store.requestAccess(for: .contacts)) == true else { denied = true; return [] }
         denied = false
         let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactOrganizationNameKey,
                     CNContactPhoneNumbersKey] as [CNKeyDescriptor]
@@ -62,7 +105,7 @@ final class ContactsStore: ObservableObject {
             let name = [c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " ")
             out.append(PhoneContact(id: c.identifier, name: name.isEmpty ? c.organizationName : name, numbers: nums))
         }
-        contacts = out
+        return out
     }
 }
 

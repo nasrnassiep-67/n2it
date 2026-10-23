@@ -94,6 +94,8 @@ final class SipManager: ObservableObject, SipUaEvents {
 
     @Published var registration = "Not registered"
     @Published var registered = false
+    /// The PBX refused the saved extension/password (not during a sign-in check): the app goes back to the sign-in screen.
+    @Published var loginRefused = false
     @Published var activeCall: CallInfo?
     @Published var muted = false
     @Published var audioRoutes: [AudioOption] = []
@@ -272,8 +274,29 @@ final class SipManager: ObservableObject, SipUaEvents {
 
     func stopRegistering() { ua.stop() }
 
+    /// Sign-in check for the screens: nil = the PBX accepted `acc`; otherwise the text to show. After a refusal the
+    /// registration is stopped (never retried: 5 wrong passwords and the PBX bans the phone's whole network).
+    func checkSignIn(_ acc: Account) async -> String? {
+        let o = await verify(acc)
+        switch o {
+        case .some(.ok): return nil
+        case .some(.failed(let code, let reason)):
+            stopRegistering()
+            switch code {
+            case 401, 403, 407: return "Wrong extension or password. Check them and try again."
+            case 404: return "Extension not found at \(acc.domain)."
+            default: return "The PBX refused the sign-in (\(reason.isEmpty ? String(code) : reason))."
+            }
+        case .none:
+            stopRegistering()
+            return "No answer from \(acc.domain). Check the company code and your internet connection."
+        }
+    }
+
     func onRegistration(_ state: SipUa.RegState, _ code: Int, _ reason: String) {
+        let checking = !outcomeWaiters.isEmpty
         registered = state == .ok
+        if state == .failed && !checking && [401, 403, 407].contains(code) { stopRegistering(); loginRefused = true }
         switch state {
         case .ok: registration = "Registered"; subscribeVoicemail()
         case .progress: registration = reason.isEmpty ? "Registering…" : reason

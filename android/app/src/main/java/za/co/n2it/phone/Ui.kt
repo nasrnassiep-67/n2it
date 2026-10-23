@@ -54,6 +54,8 @@ fun App(onSignedIn: () -> Unit, onSignedOut: () -> Unit) {
     val ctx = LocalContext.current
     var loggedIn by remember { mutableStateOf(Account.load(ctx).isConfigured) }
     val call by SipManager.call.collectAsState()
+    val refused by SipManager.refused.collectAsState()
+    LaunchedEffect(refused) { if (refused) loggedIn = false }   // the PBX no longer accepts the saved password: back to sign-in
 
     var minimised by callMinimised
     // A new incoming call, or the end of the call, always brings the call screen back.
@@ -202,9 +204,10 @@ fun signInProblem(o: SipManager.RegOutcome?, domain: String): String? = when (o)
 @Composable
 fun LoginScreen(done: () -> Unit) {
     val ctx = LocalContext.current
-    var acc by remember { mutableStateOf(Account.load(ctx)) }
+    val wasRefused = remember { SipManager.refused.value }
+    var acc by remember { mutableStateOf(Account.load(ctx).let { if (wasRefused) it.copy(password = "") else it }) }
     var busy by remember { mutableStateOf(false) }
-    var problem by remember { mutableStateOf<String?>(null) }
+    var problem by remember { mutableStateOf<String?>(if (wasRefused) "Wrong extension or password. Sign in again." else null) }
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(24.dp).systemBarsPadding()) {
         Spacer(Modifier.weight(1f))
@@ -222,7 +225,7 @@ fun LoginScreen(done: () -> Unit) {
                 scope.launch {
                     val p = signInProblem(SipManager.verify(acc), acc.domain)
                     busy = false
-                    if (p == null) { Account.save(ctx, acc); done() } else { problem = p; SipManager.stopRegistering() }
+                    if (p == null) { Account.save(ctx, acc); SipManager.clearRefused(); done() } else { problem = p; SipManager.stopRegistering() }
                 }
             },
             enabled = acc.isConfigured && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Signing in…" else "Sign in") }

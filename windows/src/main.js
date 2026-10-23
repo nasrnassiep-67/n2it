@@ -238,7 +238,7 @@ app.whenReady().then(() => {
     ...savedBounds(), minWidth: 360, minHeight: 560, show: false, title: 'N2IT Phone',
     backgroundColor: require('electron').nativeTheme.shouldUseDarkColors ? '#14171c' : '#f3f5f9',
     icon: path.join(__dirname, 'assets/icon.png'),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, devTools: !app.isPackaged },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, devTools: !app.isPackaged },
   })
   win.setMenuBarVisibility(false)
   win.once('ready-to-show', () => { if (!startHidden) { if (prefs.maximized) win.maximize(); win.show() } })

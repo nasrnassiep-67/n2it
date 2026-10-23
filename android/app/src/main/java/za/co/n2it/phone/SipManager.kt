@@ -94,6 +94,11 @@ object SipManager : SipUa.Events {
     /** "Filter out background voices" (Settings): WebRTC's noise suppression on the microphone. */
     val backgroundFilter: StateFlow<Boolean> = _gate
     val registered: StateFlow<Boolean> = _registered
+    /** The PBX refused the saved extension/password (not during a sign-in check): the app goes back to the sign-in screen. */
+    private val _refused = MutableStateFlow(false)
+    val refused: StateFlow<Boolean> = _refused
+    fun clearRefused() { _refused.value = false }
+    private var verifying = false
     val status: StateFlow<String> = _status
     val call: StateFlow<CallInfo?> = _call
     val muted: StateFlow<Boolean> = _muted
@@ -179,7 +184,10 @@ object SipManager : SipUa.Events {
         _registered.value = state == SipUa.RegState.Ok
         when (state) {
             SipUa.RegState.Ok -> { _outcome.value = RegOutcome.Ok; subscribeVoicemail() }
-            SipUa.RegState.Failed -> _outcome.value = RegOutcome.Failed(code, reason)
+            SipUa.RegState.Failed -> {
+                _outcome.value = RegOutcome.Failed(code, reason)
+                if (!verifying && code in setOf(401, 403, 407)) { ua.stop(); _refused.value = true }   // never retried: 5 wrong passwords and the PBX bans the network
+            }
             else -> {}
         }
         _status.value = when (state) {
@@ -204,8 +212,11 @@ object SipManager : SipUa.Events {
     suspend fun verify(acc: za.co.n2it.phone.Account, timeoutMs: Long = 12_000): RegOutcome? {
         if (!started) return null
         _outcome.value = null
-        configure(acc)
-        return withTimeoutOrNull(timeoutMs) { _outcome.first { it != null } }
+        verifying = true
+        try {
+            configure(acc)
+            return withTimeoutOrNull(timeoutMs) { _outcome.first { it != null } }
+        } finally { verifying = false }
     }
 
     fun stopRegistering() { if (started) ua.stop() }
