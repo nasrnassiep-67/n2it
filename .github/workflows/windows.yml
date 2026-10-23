@@ -114,7 +114,9 @@ jobs:
 
   # Stable download links (no GitHub login needed, unlike run artifacts). Main only.
   publish:
-    if: github.ref == 'refs/heads/main'
+    # Windows and Linux publish even when the Mac build fails (Apple notarisation is the Mac session's): the last good
+    # .dmg files are then carried over from the current release
+    if: always() && github.ref == 'refs/heads/main' && needs.build.result == 'success' && needs.linux.result == 'success'
     needs: [build, linux, mac]
     runs-on: ubuntu-latest
     steps:
@@ -130,6 +132,9 @@ jobs:
           cp *.AppImage n2it-phone.AppImage
           cp *.deb n2it-phone.deb
           cp *.pacman n2it-phone.pacman
+          for f in n2it-phone-mac-arm64.dmg n2it-phone-mac-x64.dmg; do
+            [ -f "$f" ] || gh release download desktop-latest -p "$f" || { echo "no $f in this run or the current release"; exit 1; }
+          done
           gh release delete desktop-latest --cleanup-tag -y || true
           gh release create desktop-latest n2it-phone-setup.exe n2it-phone.AppImage n2it-phone.deb n2it-phone.pacman \
             n2it-phone-mac-arm64.dmg n2it-phone-mac-x64.dmg --prerelease \
