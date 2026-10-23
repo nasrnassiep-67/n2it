@@ -16,6 +16,7 @@ struct RootView: View {
                 }
             }
         }.onChange(of: scenePhase) { sip.appPhase($0) }
+        .onChange(of: sip.loginRefused) { if $0 { loggedIn = false } }
     }
 
     private var tabs: some View {
@@ -343,6 +344,8 @@ struct SettingsView: View {
     @EnvironmentObject var sip: SipManager
     var onSignOut: () -> Void
     @State private var acc = Account.load()
+    @State private var busy = false
+    @State private var problem: String?
 
     var body: some View {
         NavigationStack {
@@ -363,7 +366,16 @@ struct SettingsView: View {
                         Button("Copy details") { UIPasteboard.general.string = problem }
                     }
                 }
-                Button("Save & Register") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken() }
+                if let problem { Text(problem).foregroundStyle(.red) }
+                Button(busy ? "Checking…" : "Save & Register") {
+                    busy = true; problem = nil
+                    let previous = Account.load()
+                    Task {
+                        if let p = await sip.checkSignIn(acc) { problem = p + " Nothing was changed."; sip.configure(previous) }   // keep the working account
+                        else { acc.save(); PushManager.shared.uploadToken() }
+                        busy = false
+                    }
+                }.disabled(busy)
                 AccountsSection(onActiveChanged: { acc = $0 }, onNoneLeft: onSignOut)
                 Section { VersionText() }.listRowBackground(Color.clear)
             }.navigationTitle("Settings")
@@ -432,7 +444,10 @@ struct AccountsSection: View {
 
 struct AddAccountView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var sip: SipManager
     @State private var a = Account.blank
+    @State private var busy = false
+    @State private var problem: String?
     var onAdd: (Account) -> Void
 
     var body: some View {
@@ -443,17 +458,24 @@ struct AddAccountView: View {
                     TextField("Company code", text: $a.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $a.user).keyboardType(.numberPad)
                     SecureField("Password", text: $a.password)
+                    if let problem { Text(problem).foregroundStyle(.red) }
                 }
             }
             .navigationTitle("Add account").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
+                    Button(busy ? "Checking…" : "Add") {
                         a.tenant = a.tenant.trimmingCharacters(in: .whitespacesAndNewlines)
                         a.user = a.user.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onAdd(a)
-                    }.disabled(!a.isConfigured)
+                        busy = true; problem = nil
+                        let previous = Account.load()
+                        Task {   // only an account the PBX accepts is added
+                            if let p = await sip.checkSignIn(a) { problem = p; sip.configure(previous) }
+                            else { onAdd(a) }
+                            busy = false
+                        }
+                    }.disabled(!a.isConfigured || busy)
                 }
             }
         }
@@ -463,6 +485,8 @@ struct AddAccountView: View {
 struct LoginView: View {
     @EnvironmentObject var sip: SipManager
     @State private var acc = Account.load()
+    @State private var busy = false
+    @State private var problem: String?
     var done: () -> Void
 
     var body: some View {
@@ -473,9 +497,21 @@ struct LoginView: View {
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("Password", text: $acc.password)
                 }
-                Button("Sign in") { acc.save(); sip.configure(acc); PushManager.shared.uploadToken(); done() }.disabled(!acc.isConfigured)
+                if let problem { Text(problem).foregroundStyle(.red) }
+                // Nothing is saved and the phone does not open until the PBX has accepted the extension and password.
+                Button(busy ? "Checking…" : "Sign in") {
+                    busy = true; problem = nil
+                    Task {
+                        if let p = await sip.checkSignIn(acc) { problem = p }
+                        else { acc.save(); PushManager.shared.uploadToken(); sip.loginRefused = false; done() }
+                        busy = false
+                    }
+                }.disabled(!acc.isConfigured || busy)
                 Section { VersionText() }.listRowBackground(Color.clear)
             }.navigationTitle("N2IT Phone")
+            .onAppear {
+                if sip.loginRefused { acc.password = ""; problem = "Wrong extension or password. Sign in again." }
+            }
         }
     }
 }

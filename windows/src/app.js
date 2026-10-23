@@ -69,6 +69,48 @@ function retire(old) {
   } catch { stop() }
 }
 
+const WRONG_LOGIN = [401, 403, 407]
+/** The PBX refused the saved extension/password (changed, or wrong): stop registering and go back to the sign-in
+ *  screen with the password cleared, instead of an open phone that cannot work. */
+function wrongLogin() {
+  if (!acc) return
+  const t = acc.tenant, u = acc.user
+  retire(ua); ua = null
+  show('phone', false); show('settings', false); show('contacts', false); show('login', true); signedIn(false)
+  $('tenant').value = t; $('user').value = u; $('pass').value = ''; $('domain').textContent = domain(t)
+  $('login-err').textContent = 'Wrong extension or password. Check them and sign in again.'
+  status('Not registered'); $('pass').focus()
+}
+
+/** Sign-in check: registers [a] once and waits for the PBX's answer. Resolves to null (accepted) or the text to show.
+ *  Nothing is saved and the phone does not open until the PBX has said yes. */
+function verifyLogin(a) {
+  return new Promise((resolve) => {
+    const d = domain(a.tenant)
+    let u, done = false
+    const finish = (msg) => {
+      if (done) return
+      done = true; clearTimeout(timer)
+      try { u.removeAllListeners(); u.stop() } catch {}
+      resolve(msg)
+    }
+    const timer = setTimeout(() => finish(`No answer from ${d}. Check the company code and your internet connection.`), 12000)
+    try {
+      u = new JsSIP.UA({
+        sockets: [new JsSIP.WebSocketInterface(`wss://${d}:${cfg().wssPort}/wss`)],
+        uri: `sip:${a.user}@${d}`, authorization_user: a.user, password: a.pass, register: true, session_timers: false,
+      })
+    } catch (e) { clearTimeout(timer); resolve(`Error: ${e.message}`); return }
+    u.on('registered', () => finish(null))
+    u.on('registrationFailed', (e) => {
+      const c = e.response?.status_code
+      finish(WRONG_LOGIN.includes(c) ? 'Wrong extension or password. Check them and try again.'
+        : c === 404 ? `Extension not found at ${d}.` : `The PBX refused the sign-in (${e.cause}).`)
+    })
+    u.start()
+  })
+}
+
 function connect() {
   const d = domain(acc.tenant)
   retire(ua); ua = null
@@ -83,7 +125,10 @@ function connect() {
   ua.on('disconnected', () => status(`Cannot reach ${d} (retrying)`))
   ua.on('registered', () => status('Registered'))
   ua.on('unregistered', () => status('Not registered'))
-  ua.on('registrationFailed', (e) => status(`Failed: ${e.cause}`))
+  ua.on('registrationFailed', (e) => {
+    status(`Failed: ${e.cause}`)
+    if (WRONG_LOGIN.includes(e.response?.status_code)) wrongLogin()   // never retried: the PBX bans a network after 5 wrong passwords
+  })
   ua.on('newRTCSession', ({ session: s, originator }) => {
     // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none). Other phones still ring.
     if (originator === 'remote' && dndUntil()) {
@@ -360,9 +405,15 @@ $('s-add').onclick = () => {
 }
 $('login-cancel').onclick = () => { adding = false; show('login-cancel', false); show('login', false); show('settings', true) }
 
+let signingIn = false
 $('signin').onclick = async () => {
   const a = { tenant: $('tenant').value, user: $('user').value, pass: $('pass').value }
   if (!a.tenant.trim() || !a.user.trim() || !a.pass) return
+  if (signingIn) return
+  signingIn = true; $('signin').disabled = true; $('login-err').textContent = ''; $('signin').textContent = 'Checking…'
+  const problem = await verifyLogin(login(a))
+  signingIn = false; $('signin').disabled = false; $('signin').textContent = 'Sign in'
+  if (problem) { $('login-err').textContent = problem; return }   // stays on the sign-in screen, nothing saved
   if (adding) { adding = false; show('login-cancel', false); await useAccount(a); return }
   acc = { ...login(a), saved: [] }
   await store.save(acc); show('login', false); show('phone', true); connect(); renderDnd(); signedIn(true)
