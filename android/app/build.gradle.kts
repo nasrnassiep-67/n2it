@@ -30,7 +30,12 @@ android {
         }
     }
     buildTypes {
-        getByName("debug") { if (keystore != null) signingConfig = signingConfigs.getByName("n2it") }
+        // The published APK comes from assembleDebug (same file name and path for CI and the download page), so the debug
+        // type must not be debuggable: adb run-as / a debugger could otherwise read the app's data (security review 2026-10-23).
+        getByName("debug") {
+            isDebuggable = false
+            if (keystore != null) signingConfig = signingConfigs.getByName("n2it")
+        }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
