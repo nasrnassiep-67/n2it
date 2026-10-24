@@ -177,6 +177,9 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
     // MARK: Registration
     private let regCallId: String
     private var regCseq = 0
+    /// Bumped by start/stop: a REGISTER answer (or its timeout) from before is ignored, so it cannot be taken for the
+    /// new account's answer (the sign-in check waits for exactly that).
+    private var regGen = 0
     private(set) var regState = RegState.none
     private let expires = 600   // re-register every 10 min; a mobile network forgets an idle connection after a few
     private var refreshItem: DispatchWorkItem?
@@ -198,6 +201,7 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
     /// Disconnect and stay disconnected; `unregister` first so the PBX stops sending calls here.
     func stop(unregister: Bool = true) {
         wanted = false
+        regGen += 1
         refreshItem?.cancel(); reconnectItem?.cancel(); pingTimer?.invalidate()
         let old = ws
         let close = { [weak self] in
@@ -319,8 +323,9 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
         refreshItem?.cancel()
         guard connected else { return }
         if regState != .ok { setReg(.progress, 0, "Registering…") }
+        let gen = regGen
         request(registerRequest(expires)) { [weak self] res in
-            guard let self, self.wanted else { return }
+            guard let self, self.wanted, gen == self.regGen else { return }
             if (200...299).contains(res.status) {
                 // The PBX may shorten the time: re-register at 90% of what it granted
                 var granted = Int((res.h("Expires") ?? "").trimmingCharacters(in: .whitespaces)) ?? self.expires
