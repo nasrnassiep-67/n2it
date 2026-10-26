@@ -3,7 +3,8 @@
 Package `za.co.n2it.softphone`. Builds: the `latest` release has `n2it-phone.apk` (download page, AppGallery) and
 `n2it-phone.aab` (Google Play), both signed with the N2IT key (CI secret `N2IT_KEYSTORE_B64`). Every store must keep
 that same key, or a store install and a download-page install cannot update each other (users would have to uninstall).
-The key's SHA-256 is printed by the "Show signing certificate" step of every Android CI run.
+The key's SHA-256 is printed by the "Show signing certificate" step of every Android CI run:
+`e47682a8a4863daa4fa0ab166e1e7893550e7ce94ab7c0d2f99985377f0bb2f6` (certificate `C=ZA, O=N2IT, CN=N2IT Phone`).
 
 ## Google Play (also removes the Play Protect warning)
 1. **Play Console, organisation account** with the DUNS number. The company name and address must match the D&B record
