@@ -80,9 +80,9 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
 
     private val observer = object : PeerConnection.Observer {
         override fun onIceCandidate(candidate: IceCandidate) {
-            // Like the desktop: go once candidates have been quiet for 1 s (a dead interface or slow STUN server
-            // would otherwise hold the call up for ~40 s)
-            main.post { candidates++; if (gathered != null) { main.removeCallbacks(quiet); main.postDelayed(quiet, 1000) } }
+            // Go once candidates have been quiet for 0.5 s: a dead interface or slow STUN server would otherwise hold the
+            // call up for ~40 s (1 s, as the desktop, added a second to every call)
+            main.post { candidates++; if (gathered != null) { main.removeCallbacks(quiet); main.postDelayed(quiet, 500) } }
         }
         override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
             // "Complete" with no address at all is not done (0.3.0 test: an answer with none, the PBX hung up): wait for the 4 s cap
@@ -206,6 +206,9 @@ class CallMedia(context: Context, noiseFilter: Boolean, private val onFailed: ()
     }
 
     fun setMuted(muted: Boolean) { if (!closed) track.setEnabled(!muted) }
+
+    /** Off while an incoming call rings (its answer is made in advance): no microphone or sound until Answer. */
+    fun setAudioActive(on: Boolean) { if (!closed) { pc.setAudioRecording(on); pc.setAudioPlayout(on) } }
 
     /** Keypad tone inside the audio (RFC 2833 telephone-event), like desk phones; FreeSWITCH ignores SIP INFO. */
     fun sendDigit(d: Char) {

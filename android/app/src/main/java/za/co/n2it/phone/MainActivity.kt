@@ -44,8 +44,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
-        // Test builds: the last crash is shown before anything starts again (starting could crash the same way)
-        val report = CrashLog.take(this)
+        // Tester tools on: the last crash is shown before anything starts again (starting could crash the same way).
+        // Clients never see it; the report waits until the tester tools are turned on.
+        val report = if (SipManager.isTester(this)) CrashLog.take(this) else null
         if (report == null) SipManager.init(this)
         setContent {
             val ctx = LocalContext.current

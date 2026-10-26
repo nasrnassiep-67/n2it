@@ -329,6 +329,28 @@ fun RecentsTab() {
 
 data class PhoneContact(val name: String, val number: String)
 
+/**
+ * What the company's PBX can dial (owner 2026-10-22: show only contact numbers it can dial): the patterns of its
+ * outbound routes, sent with the company address book, plus its extensions. A number with letters in it (0800-FLOWERS,
+ * "ext 12") is never shown: cleaning would turn it into a different number. Until the PBX has answered (or with an
+ * older PBX that sends no patterns) everything is shown, so the list never goes blank.
+ */
+class DialRules(private val patterns: List<Regex>, private val extensions: Set<String>) {
+    fun canDial(raw: String): Boolean {
+        if (raw.any { it.isLetter() } && '@' !in raw) return false
+        val n = SipManager.cleanNumber(raw)
+        if (n.isBlank()) return false
+        if ('@' in n || n in extensions) return true
+        return patterns.any { it.containsMatchIn(n) }
+    }
+}
+/** Set once the company address book has loaded; null = not known (show everything). */
+private val dialRules = mutableStateOf<DialRules?>(null)
+private fun dialable(list: List<PhoneContact>): List<PhoneContact> {
+    val rules = dialRules.value ?: return list.filter { c -> c.number.none { it.isLetter() } || '@' in c.number }
+    return list.filter { rules.canDial(it.number) }
+}
+
 private fun loadContacts(c: Context): List<PhoneContact> = try {
     val out = mutableListOf<PhoneContact>()
     c.contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
@@ -353,7 +375,13 @@ private fun loadCompanyContacts(c: Context): List<PhoneContact> = try {
         conn.setRequestProperty("Authorization", "Basic $login")
         try {
             if (conn.responseCode != 200) emptyList() else {
-                val list = org.json.JSONObject(conn.inputStream.bufferedReader().readText()).getJSONArray("contacts")
+                val json = org.json.JSONObject(conn.inputStream.bufferedReader().readText())
+                val list = json.getJSONArray("contacts")
+                json.optJSONArray("dial_patterns")?.let { arr ->
+                    val patterns = (0 until arr.length()).mapNotNull { i -> try { Regex(arr.getString(i)) } catch (e: Exception) { null } }
+                    val exts = json.optJSONArray("extensions")?.let { e -> (0 until e.length()).map { e.getJSONObject(it).optString("number") } }?.toSet() ?: emptySet()
+                    dialRules.value = DialRules(patterns, exts)
+                }
                 val out = mutableListOf<PhoneContact>()
                 for (i in 0 until list.length()) {
                     val o = list.getJSONObject(i)
@@ -379,7 +407,7 @@ fun ContactsTab() {
         companyCache = company
     }
     var q by remember { mutableStateOf("") }
-    fun matches(l: List<PhoneContact>) = l.filter { q.isBlank() || it.name.contains(q, true) || it.number.contains(q) }
+    fun matches(l: List<PhoneContact>) = dialable(l).filter { q.isBlank() || it.name.contains(q, true) || it.number.contains(q) }
     val companyList = matches(company)
     val list = matches(all)
     Column {
@@ -464,7 +492,7 @@ fun SettingsTab(onSignOut: () -> Unit) {
         AccountsSection(onActiveChanged = { acc = it }, onNoneLeft = onSignOut)
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
         EchoSection()
-        ProblemSection()
+        if (SipManager.testerMode.collectAsState().value) ProblemSection()
         Spacer(Modifier.height(16.dp))
         VersionText()
     }
@@ -512,9 +540,22 @@ private fun ProblemSection() {
 }
 
 @Composable
-private fun VersionText() = Text("Version: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall,
-    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth(),
-    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+private fun VersionText() {
+    // 7 taps turn the tester tools on or off (Last call problem, error pop-ups, crash report)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var taps by remember { mutableStateOf(0) }
+    Text("Version: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {
+            if (++taps >= 7) {
+                taps = 0
+                val on = !SipManager.testerMode.value
+                SipManager.setTesterMode(on)
+                android.widget.Toast.makeText(ctx, if (on) "Tester tools on" else "Tester tools off", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        },
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+}
 
 /**
  * Saved accounts (e.g. a reseller testing several clients). One is active at a time: only it is registered and
@@ -845,7 +886,7 @@ private fun rememberContactBook(): ContactBook {
             companyCache = company
         }
     }
-    return ContactBook(company, phone)
+    return ContactBook(dialable(company), dialable(phone))
 }
 /** Names a person on a button: short enough for one line. */
 private fun shortLabel(s: String) = if (s.length > 18) s.take(17).trimEnd() + "…" else s

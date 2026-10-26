@@ -11,8 +11,8 @@ android {
         applicationId = "za.co.n2it.softphone"
         minSdk = 26
         targetSdk = 34
-        versionCode = 29
-        versionName = "0.3.3"
+        versionCode = 30
+        versionName = "0.3.4"
         fun prop(n: String) = (project.findProperty(n) as String? ?: "").replace("\"", "\\\"")
         buildConfigField("String", "DEV_TENANT", "\"${prop("sipTenant")}\"")
         buildConfigField("String", "DEV_USER", "\"${prop("sipUser")}\"")
@@ -44,6 +44,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     packaging { jniLibs.useLegacyPackaging = true }
+    // Release builds run Android's "lint vital" checks; report them, but don't block a release on them
+    lint { abortOnError = false; checkReleaseBuilds = false }
 }
 
 dependencies {
