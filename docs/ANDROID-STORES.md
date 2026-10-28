@@ -17,8 +17,18 @@ The key's SHA-256 is printed by the "Show signing certificate" step of every And
 4. **Internal testing track**: upload `n2it-phone.aab`, add testers, install from the Play link. Then production.
 5. **Store listing**: text from the Windows listing (`/root/voip/n2it-app/store-listing.md`, adjust "PC" to "phone"),
    privacy policy https://voip.n2it.co.za/download/privacy.html, support support@n2it.co.za, category Business.
-6. **Reviewer access** (App content > App access): a test extension on a test PBX (n2test) with company code, extension
-   and password, so the reviewer can sign in and call. Create a dedicated extension for this; do not reuse a real one.
+6. **Reviewer access** (App content > App access): the store test extension **1099 "Test Apple"** on company code
+   `n2it` (the one Apple and Microsoft got; keep it enabled, password from the owner, never committed). Steps for the
+   reviewer: enter company code, extension, password, Sign in; status shows Registered; dial 1000 (office phone) or
+   *97 (voicemail). No account creation, purchases or ads.
+7. **16 KB page size** (required by Play since 1 November 2025 for apps targeting Android 15+): checked on the 0.3.5 CI
+   artifact (run 40308764098) with an ELF LOAD-segment scan: `libjingle_peerconnection_so.so` is 16 KB aligned for
+   arm64-v8a and x86_64 (the ABIs Play checks); the 32-bit libs are 4 KB, which Play does not check. Re-check after any
+   WebRTC upgrade.
+8. **Graphics**: `/root/voip/n2it-app/store-android/` holds `play-icon-512.png` (512x512 PNG), `play-feature-1024x500.png`
+   (feature graphic) and `appgallery-icon-216.png`, all made from `branding/N-2-Icon.png`. Screenshots are taken by the
+   owner on a phone (Play: at least 2 portrait phone screenshots, 320 to 3840 px, PNG or JPEG; AppGallery: 3 to 5):
+   sign-in, keypad, in-call, incoming call, company contacts.
 
 ### Declarations (App content), answers from what the code does
 - **Foreground service** (`PhoneService`, types `phoneCall` + `microphone`): keeps the SIP registration up so calls
@@ -54,3 +64,50 @@ services and use the Play route. Global Huawei phones still run Android apps; Ha
 5. Calls ring through the foreground service, which Huawei kills unless the user sets **Settings > Battery > App launch
    > N2IT Phone > Manage manually** (auto-launch, secondary launch, run in background all on). Put this in the user
    guide. Push on Huawei later needs HMS Push Kit (FCM does not work there).
+
+## Developer accounts (what the owner does, in this order)
+Both consoles verify the company, not a person, so the same three things are needed for both: the exact legal name and
+address as registered with CIPC, the company registration number, and the D-U-N-S number.
+
+### 0. D-U-N-S number (Google will not open an organisation account without it; Huawei accepts it instead of documents)
+- Check first whether N2IT Solutions already has one: https://service.dnb.com/ (search by company name, South Africa).
+- If not, request it free at https://www.dnb.com/duns/get-a-duns.html: legal name as on the CIPC certificate, registration
+  number, physical address, phone, a contact person. Google says it can take up to 30 days; do not pay a third party for
+  an "expedited" number. Google gives no extensions for accounts without one.
+
+### Google Play Console (organisation account)
+1. Google Account for the console: sign in with (or create a Google Account on) support@n2it.co.za, not a personal
+   Gmail. That account becomes the Account Holder and only it can finish verification; moving a console later is painful.
+2. https://play.google.com/console/signup: choose **Organisation**. Create a payments profile of type **Organisation**
+   with the legal name and address exactly as on the D&B record (a mismatch error means: make a new payments profile).
+   Pay the one-time US$25 with a Visa or Mastercard credit card (prepaid cards are refused; the fee is not refunded if
+   verification fails).
+3. Enter the D-U-N-S number and confirm the details Google shows from D&B.
+4. Organisation contact: email support@n2it.co.za and a phone number (6-digit code by SMS or voice call). Both are shown
+   publicly on the Play listing. Website: https://voip.n2it.co.za/download/.
+5. Upload an ID document of an authorised representative (the owner's SA ID or passport).
+6. Wait for the verification email (usually days, not weeks). Organisation accounts skip the personal-account rule of
+   20 testers for 14 days, so the app can go to production straight after review.
+7. Then: Create app (package `za.co.n2it.softphone`, Business, free), Play App Signing with our key, upload
+   `n2it-phone.aab` to Internal testing, fill the listing and the declarations above, submit. Apps on Play are registered
+   for Android developer verification automatically, which is what removes the Play Protect "unknown developer" warning
+   for the download-page APK as well.
+
+### Huawei AppGallery Connect (enterprise account)
+1. https://developer.huawei.com/consumer/en/ > Register: a HUAWEI ID on support@n2it.co.za with the company phone number
+   (verification codes go to both).
+2. Console > Identity verification > **Enterprise**, country South Africa. Two paths; the D-U-N-S one is the easiest once
+   the number exists. The business-licence path = the CIPC registration certificate (CoR 14.3): the enterprise name must
+   be typed exactly as on it (case, punctuation, spaces, "(PTY) LTD"), plus the registration number and the English name.
+   Contact person: name, phone, email; some countries also ask for the contact person's ID and a bank proof (bank letter
+   or statement header), so have the owner's ID and a bank letter ready. No fee. Review is reported as 1 to 3 working
+   days; rejections are almost always a name that does not match the document or a blurred scan.
+3. After verification: AppGallery Connect > My apps > New > Android, package `za.co.n2it.softphone`, Business. Upload
+   `n2it-phone.apk` from the `latest` release (keep AppGallery's own signing OFF, see above), same listing, privacy URL
+   and reviewer extension 1099 as for Play. Payment and tax details are only needed for paid apps or in-app purchases.
+
+### Listing text (both stores)
+Short description (80 chars for Play): `Business softphone for your company's N2IT phone system: calls on your phone.`
+Full description: the Windows one in `/root/voip/n2it-app/store-listing.md` with "PC" replaced by "phone", "Teams" by
+"WhatsApp", and the "start with Windows / tray" line replaced by "Rings in the background with a foreground service".
+Category Business; privacy https://voip.n2it.co.za/download/privacy.html; support support@n2it.co.za.
