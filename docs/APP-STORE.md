@@ -12,10 +12,14 @@ Since 0.3.0 the app has no Linphone (own SIP over WSS + Google WebRTC, BSD), so 
 1. Optional, before going live: with the DUNS number, ask Apple Developer Support to convert the membership from
    individual to organisation so the store shows the company as seller instead of "Nasr Nassiep". Confirm with Apple
    that the team (8URJCQ48GM) and app record are kept.
-2. Request unlisted distribution: developer.apple.com/support/unlisted-app-distribution (App Apple ID 6821962053).
-3. Fill in the App Store listing in App Store Connect (text below), upload the screenshots, answer App Privacy and
-   the age rating, then add build 0.3.1 (202610241554) and Submit for Review.
-4. After approval: the PBX session points the download page iPhone button at the App Store link.
+2. Fill in the App Store listing in App Store Connect (text below), upload the screenshots, answer App Privacy and
+   the age rating, add build 0.3.1 (202610241554). Under Version Release choose **Manually release this version**
+   (so an approval before the unlisted request is granted can't go public), then Submit for Review. The review notes
+   must say the app is intended for unlisted distribution (text below).
+3. Only then request unlisted distribution: https://developer.apple.com/contact/request/unlisted-app/ (App Apple ID
+   6821962053). Apple declines requests for apps not yet submitted to App Review, or in beta/prerelease.
+4. Once granted, Pricing and Availability shows Distribution Method "Unlisted App"; release the approved version.
+5. The PBX session points the download page iPhone button at the App Store link.
 
 ## Availability
 
@@ -56,7 +60,8 @@ your N2IT administrator.
   password). Put the company code in the notes, since the sign-in screen has three fields.
 - **Notes:** "N2IT Phone is a business softphone for customers of N2IT's hosted phone system. To test: sign in with
   the details above, then dial 1002 (or *97 for voicemail). Incoming calls arrive by VoIP push and show the standard
-  iOS call screen (CallKit). The app is distributed unlisted to N2IT's business customers."
+  iOS call screen (CallKit). This app is intended for unlisted distribution to N2IT's business customers; we are requesting unlisted
+  app distribution for it."
 - Contact: owner's name, phone and email.
 
 ## App Privacy (nutrition label)
