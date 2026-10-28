@@ -54,6 +54,7 @@ final class ContactsStore: ObservableObject {
     private var rules: DialRules?
 
     func load() async {
+        if Screenshots.on { company = Screenshots.company; contacts = Screenshots.phone; return }
         async let pbx = loadCompany()
         let phone = await loadPhone()
         let comp = await pbx
