@@ -4,6 +4,7 @@ struct RootView: View {
     @EnvironmentObject var sip: SipManager
     @Environment(\.scenePhase) private var scenePhase
     @State private var loggedIn = Account.load().isConfigured
+    @State private var tab = Screenshots.tab
 
     var body: some View {
         Group {
@@ -20,13 +21,13 @@ struct RootView: View {
     }
 
     private var tabs: some View {
-        TabView {
-            ContactsView().tabItem { Label("Contacts", systemImage: "person.crop.circle") }
-            RecentsView().tabItem { Label("Recents", systemImage: "clock") }
-            KeypadView().tabItem { Label("Keypad", systemImage: "circle.grid.3x3.fill") }
+        TabView(selection: $tab) {
+            ContactsView().tabItem { Label("Contacts", systemImage: "person.crop.circle") }.tag(0)
+            RecentsView().tabItem { Label("Recents", systemImage: "clock") }.tag(1)
+            KeypadView().tabItem { Label("Keypad", systemImage: "circle.grid.3x3.fill") }.tag(2)
             VoicemailView().tabItem { Label("Voicemail", systemImage: "recordingtape") }
-                .badge(sip.hasVoicemail ? max(sip.newVoicemails, 1) : 0)
-            SettingsView(onSignOut: { loggedIn = false }).tabItem { Label("Settings", systemImage: "gearshape") }
+                .badge(sip.hasVoicemail ? max(sip.newVoicemails, 1) : 0).tag(3)
+            SettingsView(onSignOut: { loggedIn = false }).tabItem { Label("Settings", systemImage: "gearshape") }.tag(4)
         }
     }
 }

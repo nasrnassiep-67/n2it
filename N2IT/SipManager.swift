@@ -179,6 +179,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         watchNetwork()
         let savedDnd = UserDefaults.standard.double(forKey: "dndUntil")
         setDnd(savedDnd > 0 ? Date(timeIntervalSince1970: savedDnd) : nil)   // survives restarts; clears itself if expired
+        if Screenshots.on { Screenshots.fill(self); return }
         configure(Account.load())
         PushManager.shared.start()
     }
@@ -723,7 +724,7 @@ final class SipManager: ObservableObject, SipUaEvents {
     /// iOS suspends the app soon after it leaves the screen (or the phone locks), and the connection to the PBX dies
     /// with it. Re-register straight away whenever the app is back on screen.
     func appPhase(_ phase: ScenePhase) {
-        if phase == .active {
+        if phase == .active && !Screenshots.on {
             checkDnd()
             wake()
         }

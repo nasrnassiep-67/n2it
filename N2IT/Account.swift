@@ -34,6 +34,7 @@ struct Account: Codable {
 
     /// Saved settings win; first launch seeds from Secrets.xcconfig via Info.plist.
     static func load() -> Account {
+        if Screenshots.on { return Screenshots.account }
         let d = UserDefaults.standard
         let info = d.bool(forKey: signedOutKey) ? [:] : (Bundle.main.infoDictionary ?? [:])
         return Account(
