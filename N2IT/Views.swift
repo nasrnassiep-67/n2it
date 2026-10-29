@@ -242,12 +242,15 @@ struct CallView: View {
                     audioButton
                     toggle("circle.grid.3x3.fill", on: showPad) { showPad.toggle() }
                 }
-                HStack(spacing: 40) {
-                    if !sip.inConference {
-                        toggle("pause.fill", on: sip.onHold) { sip.toggleHold() }
-                        toggle("phone.arrow.right", on: false) { showTransfer = true }
+                // Hidden while the keypad is open, so the hang-up button stays on screen
+                if !showPad {
+                    HStack(spacing: 40) {
+                        if !sip.inConference {
+                            toggle("pause.fill", on: sip.onHold) { sip.toggleHold() }
+                            toggle("phone.arrow.right", on: false) { showTransfer = true }
+                        }
+                        toggle("person.badge.plus", on: false) { showAdd = true }
                     }
-                    toggle("person.badge.plus", on: false) { showAdd = true }
                 }
                 if sip.consulting {
                     HStack(spacing: 12) {
@@ -259,14 +262,18 @@ struct CallView: View {
                     }
                 }
                 if showPad {
-                    Text(dtmf).font(.title3).frame(height: 24)
-                    ForEach([["1","2","3"],["4","5","6"],["7","8","9"],["*","0","#"]], id: \.self) { row in
-                        HStack(spacing: 20) {
-                            ForEach(row, id: \.self) { k in
-                                Button { dtmf += k; sip.sendDigit(Character(k)) } label: {
-                                    Text(k).font(.title2).frame(width: 56, height: 56)
-                                        .background(Color(.secondarySystemBackground)).clipShape(Circle())
-                                }.buttonStyle(.plain)
+                    // One block with tight rows: as separate items each row took the screen's 28 pt gap and the pad
+                    // pushed the hang-up button off the bottom
+                    VStack(spacing: 10) {
+                        Text(dtmf).font(.title3).frame(height: 24)
+                        ForEach([["1","2","3"],["4","5","6"],["7","8","9"],["*","0","#"]], id: \.self) { row in
+                            HStack(spacing: 20) {
+                                ForEach(row, id: \.self) { k in
+                                    Button { dtmf += k; sip.sendDigit(Character(k)) } label: {
+                                        Text(k).font(.title2).frame(width: 56, height: 56)
+                                            .background(Color(.secondarySystemBackground)).clipShape(Circle())
+                                    }.buttonStyle(.plain)
+                                }
                             }
                         }
                     }

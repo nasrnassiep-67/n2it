@@ -22,7 +22,7 @@ targets:
       CODE_SIGN_STYLE: Automatic
       ENABLE_BITCODE: NO
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-      MARKETING_VERSION: "0.3.1"   # sign-in check: only an extension/password the PBX accepts is saved
+      MARKETING_VERSION: "0.3.2"   # DTMF: RFC 2833 or SIP INFO fallback, CallKit keypad; hang-up stays visible with keypad
       CURRENT_PROJECT_VERSION: "2"
     entitlements:
       path: N2IT/N2IT.entitlements

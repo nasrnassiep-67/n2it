@@ -216,6 +216,12 @@ final class CallKitManager: NSObject, CXProviderDelegate {
         action.fulfill()
     }
 
+    /// Keys pressed on the iOS call screen's own keypad (lock screen, or when the user opened that screen).
+    func provider(_ provider: CXProvider, perform action: CXPlayDTMFCallAction) {
+        action.digits.forEach { SipManager.shared.sendDigit($0) }
+        action.fulfill()
+    }
+
     /// iOS holds our call when the user takes another call ("Hold & Accept"), and unholds it from the call UI.
     func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
         SipManager.shared.systemHold(action.isOnHold)
