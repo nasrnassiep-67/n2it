@@ -735,7 +735,18 @@ final class SipManager: ObservableObject, SipUaEvents {
         liveCalls().forEach { $0.media?.setMuted(m) }
     }
     func toggleMute() { setMuted(!muted) }
-    func sendDigit(_ d: Character) { currentCall()?.media?.sendDigit(d) }
+    /// RFC 2833 when WebRTC can send it, else SIP INFO (application/dtmf-relay), which FreeSWITCH also takes.
+    func sendDigit(_ d: Character) {
+        guard let c = currentCall() else { return }
+        if c.media?.sendDigit(d) == true { dlog("DTMF \(d) sent as RFC 2833"); return }
+        guard let dlg = c.dialog else { return }
+        dlog("DTMF \(d) sent as SIP INFO")
+        let req = ua.inDialog(dlg, "INFO").add("Content-Type", "application/dtmf-relay")
+        req.body = "Signal=\(d)\r\nDuration=160\r\n"
+        ua.request(req, onRetry: { dlg.localCseq = $0.cseq }) { res in
+            if res.status >= 200 { dlog("DTMF \(d) INFO answered \(res.status)") }
+        }
+    }
 
     // MARK: Hold and transfer
 

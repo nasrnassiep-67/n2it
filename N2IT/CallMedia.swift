@@ -185,10 +185,15 @@ final class CallMedia: NSObject, RTCPeerConnectionDelegate {
 
     func setMuted(_ muted: Bool) { if !closed { track.isEnabled = !muted } }
 
-    /// Keypad tone inside the audio (RFC 2833 telephone-event), like desk phones; FreeSWITCH ignores SIP INFO.
-    func sendDigit(_ d: Character) {
-        guard !closed, let dtmf = sender.dtmfSender, dtmf.canInsertDtmf else { return }
-        dtmf.insertDtmf(String(d), duration: 0.16, interToneGap: 0.08)
+    /// Keypad tone inside the audio (RFC 2833 telephone-event), like desk phones. False when WebRTC can't: it only sends
+    /// telephone-event at the clock rate of the codec in use (Opus 48000 with only 8000 agreed = no DTMF), so the caller
+    /// falls back to SIP INFO.
+    func sendDigit(_ d: Character) -> Bool {
+        guard !closed, let dtmf = sender.dtmfSender, dtmf.canInsertDtmf else {
+            dlog("DTMF: no RFC 2833 (closed \(closed), sender \(sender.dtmfSender != nil), can \(sender.dtmfSender?.canInsertDtmf ?? false))")
+            return false
+        }
+        return dtmf.insertDtmf(String(d), duration: 0.16, interToneGap: 0.08)
     }
 
     /// ice/pc states are RTCIceConnectionState / RTCPeerConnectionState raw values (2 = connected / 1 = checking …).
