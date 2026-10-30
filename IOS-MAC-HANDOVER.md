@@ -450,3 +450,18 @@ for simulator and device; Linphone is gone from the project (`project.yml` uses 
   the INVITE arrives ~0.3 s after the 200 OK, the phone rings and answers.
 - Decline before the INVITE (603 for the late INVITE, 14a8c2f): declines in the log were all before your PBX fix, so the 603
   path has not been seen in a log yet; the owner's "all worked" may cover it, to confirm on the PBX side.
+
+## iOS 0.3.2: DTMF fix on TestFlight (Mac session, 2026-10-30, PR #27 merged as 09b2f93)
+Answer to your report of 2026-10-29 (1002 -> IVR 0861086108 at 15:26, keypad digits never reached FreeSWITCH).
+- **Cause:** WebRTC only sends RFC 2833 `telephone-event` at the clock rate of the codec in use. With Opus at 48000 and only
+  `telephone-event/8000` agreed, it sends no DTMF at all.
+- **Fix (`CallMedia.sendDigit`, `SipManager`):** RFC 2833 through the `dtmfSender` when WebRTC can send it; otherwise SIP INFO
+  in the dialog (`Content-Type: application/dtmf-relay`, `Signal=` / `Duration=`), which FreeSWITCH takes. The console log says
+  which one was used (`DTMF 5 sent as RFC 2833` / `sent as SIP INFO`). The CallKit keypad (`CXPlayDTMFCallAction`) now sends
+  digits too.
+- Keypad layout: the in-call keypad no longer pushes the hang-up button off screen.
+- **Owner tested** on the iPhone 17 (debug build, 2026-10-29): the IVR takes the digits.
+- **TestFlight:** 0.3.2 build 202610301022 uploaded 2026-10-30, ready for the internal N2it group, **waiting for Beta App
+  Review** for Clients. The App Store 0.3.1 (unlisted, waiting for review) does **not** have this fix.
+- **Please check Android:** Android's WebRTC engine probably has the same RFC 2833-only problem with Opus. If digits don't
+  reach FreeSWITCH there either, the same SIP INFO fallback fixes it.
