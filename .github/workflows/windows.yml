@@ -36,6 +36,19 @@ jobs:
         with:
           name: n2it-phone-store-package
           path: windows/dist/*.appx
+      # Also as a public release (2026-10-31), so the .appx can be fetched without a GitHub login (the PBX server puts it
+      # on voip.n2it.co.za/download/play/ for the Partner Center upload). Here in the Windows job, so a failing macOS
+      # build (which skips the desktop-latest publish) cannot hold it back.
+      - name: Publish the Store package as the "store-latest" release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cp dist/*.appx n2it-phone-store.appx
+          gh release delete store-latest --cleanup-tag -y || true
+          gh release create store-latest n2it-phone-store.appx --prerelease --title "N2IT Phone Microsoft Store package (latest)" \
+            --notes "Build of commit ${GITHUB_SHA::7}. Unsigned on purpose (the Store signs it): upload it in Partner Center > N2IT Phone > Packages. It cannot be installed by double-click."
 
   linux:
     runs-on: ubuntu-latest
