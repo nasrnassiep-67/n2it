@@ -490,11 +490,25 @@ $('answer').onclick = () => answerCall(session)
 $('w-answer').onclick = () => answerCall(waitingCall())
 $('w-decline').onclick = () => declineCall(waitingCall())
 $('w-silence').onclick = () => silenceCall(waitingCall())
-$('hang').onclick = () => {   // in a conference, hang up on everyone; otherwise the call in front
+$('hang').onclick = () => {   // in a conference: leave it (see leaveConference); otherwise the call in front
   if (session && session._incoming && !session.isEstablished()) { declineCall(session); return }
   if (mix && !mix.calls.includes(session)) session.terminate()
-  else if (mix) [...calls].forEach((c) => c.terminate())
+  else if (mix) leaveConference()
   else session?.terminate()
+}
+/** Leaving a conference we mix here (2026-10-31, same as Android / iPhone): with two or more others still in it, they
+ *  are moved into a room on the PBX (*32 + 7 digits, n2it-app-conference: it closes by itself once fewer than two are
+ *  left) and carry on without us; with one other left, the call simply ends. */
+function leaveConference() {
+  const others = mix.calls.filter((c) => c.isEstablished())
+  calls.filter((c) => !others.includes(c)).forEach((c) => c.terminate())   // anyone still being rung
+  if (others.length < 2) { others.forEach((c) => c.terminate()); return }
+  const room = '*32' + Array.from(crypto.getRandomValues(new Uint8Array(7)), (b) => b % 10).join('')
+  teardownMix()
+  others.forEach((c) => {
+    try { c.refer(`sip:${room}@${domain(acc.tenant)}`) } catch { c.terminate() }
+    setTimeout(() => { if (!c.isEnded()) c.terminate() }, 8000)   // the PBX normally ends our leg once it has moved them
+  })
 }
 $('mute').onclick = () => {
   muted = !muted
