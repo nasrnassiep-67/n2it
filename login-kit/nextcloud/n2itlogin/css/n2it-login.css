@@ -269,3 +269,52 @@
 	#n2it_services .n2it-svc-body > span { display: none; }
 	#n2it_services .n2it-svc-body strong { font-size: 12.5px; }
 }
+
+/* ===== 2026-10 skyline: the same sign-in look as the N2IT hosting panel and webmail (cpanel.nextel.co.za):
+   Johannesburg night skyline, Inter, mono label above the card, 12px card with a blue top edge, navy-ink button.
+   Assets live in ../img/ (n2it-login-skyline.svg, inter.woff2). Bump the app version in appinfo/info.xml after edits. ===== */
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url(../img/inter.woff2) format("woff2"); }
+#body-login {
+	background:
+		linear-gradient(0deg, rgba(3, 12, 31, .85) 0%, rgba(3, 12, 31, 0) 30%),
+		linear-gradient(rgba(3, 12, 31, .25), rgba(3, 12, 31, .25)),
+		url(../img/n2it-login-skyline.svg) right bottom / cover no-repeat fixed,
+		#030c1f !important;
+	font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+	-webkit-font-smoothing: antialiased;
+}
+/* Mono label above the card, left-aligned with it */
+#body-login .wrapper::before {
+	content: "N2IT / Cloud sign-in"; display: block; width: min(420px, calc(100vw - 32px)); margin: 0 auto 10px; padding-left: 2px;
+	box-sizing: border-box; text-align: left;
+	font: 500 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; color: #9cc6ff;
+}
+/* Card: rounded, blue top edge, deeper shadow; smaller logo like the panel */
+#body-login .guest-box.login-box {
+	--color-main-text: #0f1f36;
+	--color-primary-element: #061a3a;
+	--color-primary-element-hover: #145ab6;
+	--color-primary-element-light-text: #145ab6;
+	--color-border-maxcontrast: #c8d3e2;
+	--border-radius-element: 8px;
+	color: #0f1f36 !important;
+	padding: 28px !important;
+	border-top: 3px solid #145ab6;
+	border-radius: 12px !important;
+	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, .35), 0 8px 10px -6px rgba(0, 0, 0, .25) !important;
+}
+#body-login .n2it-logo { margin: 0 0 20px; }
+#body-login .n2it-logo img { width: auto; height: 56px; }
+#body-login .login-box .input-field__input { border-color: #c8d3e2 !important; border-radius: 8px !important; min-height: 44px; }
+#body-login .login-form button[type="submit"] { background: #061a3a !important; border-radius: 8px !important; min-height: 44px; padding: 12px; }
+#body-login .login-form button[type="submit"]:hover:not(:disabled),
+#body-login .login-form button[type="submit"]:focus-visible { background: #145ab6 !important; }
+#body-login .login-box a,
+#body-login .login-box .button-vue--tertiary,
+#body-login .login-box .button-vue--tertiary * { color: #145ab6 !important; }
+#body-login #n2it_app_links .apps a { border-radius: 8px; background: rgba(255, 255, 255, .96); }
+#body-login #n2it_services { border-radius: 12px; }
+#body-login footer.guest-box { color: rgba(255, 255, 255, 0.72) !important; }
+@media (max-width: 480px) {
+	#body-login .n2it-logo img { height: 48px; }
+}

@@ -1,0 +1,93 @@
+/* N2IT sign-in look, 2026-10 ("skyline"): the Johannesburg night skyline from www.n2it.co.za, Inter, a mono label
+   above a white 420px card with a blue top edge, plain fields and a navy-ink "Sign in" button.
+   This is the look of the N2IT hosting panel (cpl-jhb.n2it.co.za/my) and webmail (cpanel.nextel.co.za/webmail).
+
+   Drop-in stylesheet for other N2IT logins. Load it after the site's own CSS, copy n2it-login-skyline.svg and
+   inter.woff2 (from ../assets/) next to it, then either add the n2it-skyline-* classes to the page or extend the
+   selectors below with the site's own (see the FusionPBX block at the end). Colours and sizes are the custom
+   properties on :root so a site can override them. Bump the ?v= query on this file after every edit (Cloudflare caches it). */
+
+:root {
+	--n2it-ink: #061a3a;          /* button */
+	--n2it-accent: #145ab6;       /* card top edge, links, button hover */
+	--n2it-soft: #9cc6ff;         /* mono label */
+	--n2it-text: #0f1f36;         /* text inside the card */
+	--n2it-field-border: #c8d3e2;
+	--n2it-bg: #030c1f;
+	--n2it-skyline: url("n2it-login-skyline.svg");
+	--n2it-card-width: 420px;
+	--n2it-card-shadow: 0 20px 25px -5px rgba(0, 0, 0, .35), 0 8px 10px -6px rgba(0, 0, 0, .25);
+}
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("inter.woff2") format("woff2"); }
+
+/* Page background: dark haze at the bottom, skyline anchored bottom-right, fixed while scrolling */
+.n2it-skyline {
+	background:
+		linear-gradient(0deg, rgba(3, 12, 31, .85) 0%, rgba(3, 12, 31, 0) 30%),
+		linear-gradient(rgba(3, 12, 31, .25), rgba(3, 12, 31, .25)),
+		var(--n2it-skyline) right bottom / cover no-repeat fixed,
+		var(--n2it-bg);
+	min-height: 100vh;
+	font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* "N2IT / <site> sign-in" label, left-aligned with the card */
+.n2it-skyline-label {
+	display: block; width: min(var(--n2it-card-width), calc(100vw - 32px)); margin: 0 auto 10px; padding-left: 2px; box-sizing: border-box; text-align: left;
+	font: 500 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--n2it-soft);
+}
+
+/* The card */
+.n2it-skyline-card {
+	box-sizing: border-box; width: min(var(--n2it-card-width), calc(100vw - 32px)); margin: 0 auto; padding: 28px;
+	background: #fff; color: var(--n2it-text);
+	border: 0; border-top: 3px solid var(--n2it-accent); border-radius: 12px;
+	box-shadow: var(--n2it-card-shadow);
+	text-align: start;
+}
+.n2it-skyline-card .n2it-skyline-logo { display: block; height: 56px; width: auto; margin: 0 auto 20px; }
+.n2it-skyline-card label { display: block; margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--n2it-ink); }
+.n2it-skyline-card input[type="text"], .n2it-skyline-card input[type="email"], .n2it-skyline-card input[type="password"], .n2it-skyline-card select {
+	display: block; width: 100%; box-sizing: border-box; min-height: 44px; margin-top: 6px; padding: 10px 12px;
+	font: inherit; font-size: 15px; color: var(--n2it-text); background: #fff;
+	border: 1px solid var(--n2it-field-border); border-radius: 8px; box-shadow: none;
+}
+.n2it-skyline-card input:focus { outline: none; border-color: var(--n2it-accent); box-shadow: 0 0 0 3px rgba(20, 90, 182, .18); }
+.n2it-skyline-card button[type="submit"], .n2it-skyline-card input[type="submit"], .n2it-skyline-card .n2it-skyline-button {
+	display: block; width: 100%; box-sizing: border-box; margin-top: 6px; padding: 12px;
+	font: inherit; font-size: 15px; font-weight: 600; color: #fff; background: var(--n2it-ink);
+	border: 0; border-radius: 8px; cursor: pointer;
+}
+.n2it-skyline-card button[type="submit"]:hover, .n2it-skyline-card input[type="submit"]:hover, .n2it-skyline-card .n2it-skyline-button:hover,
+.n2it-skyline-card button[type="submit"]:focus-visible { background: var(--n2it-accent); }
+.n2it-skyline-card a { color: var(--n2it-accent); }
+.n2it-skyline-card .cf-turnstile, .n2it-skyline-card .n2it-turnstile { margin: 4px 0 14px; min-height: 65px; }
+
+/* Pills (VoIP / Email / Web Hosting) and the services panel pick up the rounder corners */
+#n2it_app_links .apps a { font-family: Inter, system-ui, sans-serif; border-radius: 8px; background: rgba(255, 255, 255, .96); }
+#n2it_services { border-radius: 12px; }
+
+/* ---- voip.n2it.co.za (FusionPBX): #default_login is the card. Add class n2it-skyline to <body> and
+   n2it-skyline-label to an element placed before #default_login (or keep the ::before below). ---- */
+body.n2it-skyline #default_login {
+	position: static; transform: none; box-sizing: border-box; width: min(var(--n2it-card-width), calc(100vw - 32px)); margin: 72px auto 40px; padding: 28px;
+	background: #fff; color: var(--n2it-text);
+	border: 0; border-top: 3px solid var(--n2it-accent); border-radius: 12px; box-shadow: var(--n2it-card-shadow);
+}
+body.n2it-skyline #default_login::before {
+	content: "N2IT / VoIP sign-in"; display: block; margin: -58px 0 0 2px; padding-bottom: 20px; text-align: left;
+	font: 500 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--n2it-soft);
+}
+body.n2it-skyline #default_login img { display: block; height: 56px; width: auto; margin: 0 auto 20px; }
+body.n2it-skyline #default_login input[type="text"], body.n2it-skyline #default_login input[type="password"] {
+	display: block; width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px; margin: 0 0 12px;
+	font: inherit; font-size: 15px; color: var(--n2it-text); background: #fff; border: 1px solid var(--n2it-field-border); border-radius: 8px; box-shadow: none;
+}
+body.n2it-skyline #default_login input:focus { outline: none; border-color: var(--n2it-accent); box-shadow: 0 0 0 3px rgba(20, 90, 182, .18); }
+body.n2it-skyline #default_login button, body.n2it-skyline #default_login input[type="submit"] {
+	display: block; width: 100%; box-sizing: border-box; padding: 12px; margin-top: 6px;
+	font: inherit; font-size: 15px; font-weight: 600; color: #fff; background: var(--n2it-ink); border: 0; border-radius: 8px; cursor: pointer;
+}
+body.n2it-skyline #default_login button:hover, body.n2it-skyline #default_login input[type="submit"]:hover { background: var(--n2it-accent); }
+body.n2it-skyline #default_login a { color: var(--n2it-accent); }

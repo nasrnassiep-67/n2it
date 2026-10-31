@@ -3,11 +3,12 @@
 
 body.task-login,
 html.dark-mode body.task-login {
-	background: #0f3d80 !important;
+	background: #030c1f !important;
 	background:
-		url('n2it-login-art.svg') center / cover no-repeat fixed,
-		url('n2it-login-pattern.svg') repeat fixed,
-		linear-gradient(to bottom, #0f3d80 0%, #0a2a5a 100%) fixed !important;
+		linear-gradient(0deg, rgba(3, 12, 31, .85) 0%, rgba(3, 12, 31, 0) 30%),
+		linear-gradient(rgba(3, 12, 31, .25), rgba(3, 12, 31, .25)),
+		url('n2it-login-skyline.svg') right bottom / cover no-repeat fixed,
+		#030c1f !important;
 	font-family: Arial, Helvetica, sans-serif;
 	min-height: 100vh;
 }
@@ -130,12 +131,11 @@ body.task-login #login-footer a:hover { color: #145ab6 !important; }
 	#n2it_app_links { position: static; margin: 20px auto; }
 }
 
-/* Small screens: dot pattern only (the artwork would sit behind the card) */
+/* Small screens: the skyline too (anchored bottom right) */
 @media (max-width: 900px) {
 	body.task-login {
 		background:
-			url('n2it-login-pattern.svg') repeat fixed,
-			linear-gradient(to bottom, #0f3d80 0%, #0a2a5a 100%) fixed !important;
+	linear-gradient(0deg, rgba(3, 12, 31, .85) 0%, rgba(3, 12, 31, 0) 30%), linear-gradient(rgba(3, 12, 31, .25), rgba(3, 12, 31, .25)), url('n2it-login-skyline.svg') right bottom / cover no-repeat fixed, #030c1f !important;
 	}
 }
 
@@ -183,9 +183,7 @@ html.n2it-ads #n2it_app_links { position: static; margin: 22px auto 0; }
 body.task-login,
 html.dark-mode body.task-login {
 	background:
-		url('n2it-login-art.svg') center / cover no-repeat fixed,
-		url('n2it-login-pattern.svg') repeat fixed,
-		linear-gradient(to bottom, #0a2a5a 0%, #061a3a 100%) fixed !important;
+		linear-gradient(0deg, rgba(3, 12, 31, .85) 0%, rgba(3, 12, 31, 0) 30%), linear-gradient(rgba(3, 12, 31, .25), rgba(3, 12, 31, .25)), url('n2it-login-skyline.svg') right bottom / cover no-repeat fixed, #030c1f !important;
 	font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
 	-webkit-font-smoothing: antialiased;
 }
@@ -205,5 +203,37 @@ body.task-login #rcmloginsubmit { background: #061a3a !important; border-color: 
 body.task-login #rcmloginsubmit:hover, body.task-login #rcmloginsubmit:focus { background: #145ab6 !important; border-color: #145ab6 !important; }
 #n2it_app_links .apps a { font-family: Inter, system-ui, sans-serif; border-radius: 8px; }
 @media (max-width: 900px) {
-	body.task-login { background: url('n2it-login-pattern.svg') repeat fixed, linear-gradient(to bottom, #0a2a5a 0%, #061a3a 100%) fixed !important; }
+	body.task-login { background: linear-gradient(0deg, rgba(3, 12, 31, .85) 0%, rgba(3, 12, 31, 0) 30%), linear-gradient(rgba(3, 12, 31, .25), rgba(3, 12, 31, .25)), url('n2it-login-skyline.svg') right bottom / cover no-repeat fixed, #030c1f !important; }
 }
+
+/* ===== 2026-10-26: same card as the panel sign-in (2083/2087): 420px card, small logo, labels above plain fields,
+   "Sign in" button, no icons or footer. The services panel stays beside it. ===== */
+body.task-login #layout-content::before { width: 420px; }
+body.task-login #logo {
+	width: 172px !important;
+	padding: 28px calc((min(420px, 100vw - 32px) - 172px) / 2) 20px;
+}
+/* With the services panel the logo box is the full 420px (border-box): the side padding centres a 172px logo. */
+html.n2it-ads body.task-login #logo { width: 420px !important; padding: 28px calc((min(420px, 100vw - 32px) - 172px) / 2) 20px; }
+body.task-login #login-form { width: 420px; padding: 0 28px 28px; }
+body.task-login #login-form table, body.task-login #login-form tbody { display: block; width: 100%; }
+body.task-login #login-form tr.form-group { display: block; margin: 0 0 12px; }
+body.task-login #login-form td.title {
+	display: block !important; width: auto; max-width: none; padding: 0; text-align: left;
+}
+body.task-login #login-form td.title label {
+	display: block; margin: 0 0 4px; font: 600 13px/1.4 Inter, system-ui, sans-serif; color: #0f1f36;
+}
+body.task-login #login-form td.input { display: block; width: 100%; padding: 0; }
+body.task-login #login-form .input-group-prepend { display: none !important; }
+body.task-login #login-form .form-control {
+	width: 100% !important; border-radius: 8px !important; min-height: 44px; padding: 9px 10px; font: inherit; font-size: 15px;
+}
+body.task-login #login-form .form-control::placeholder { color: transparent; }
+body.task-login #login-form .form-control:focus { border-color: #145ab6 !important; box-shadow: none; outline: 2px solid #145ab6; outline-offset: 1px; }
+body.task-login .n2it-turnstile { margin: 4px 0 14px; }
+body.task-login #login-form .formbuttons { margin: 0; }
+body.task-login #rcmloginsubmit {
+	text-transform: none !important; font: 600 15px/1.2 Inter, system-ui, sans-serif !important; padding: 12px !important;
+}
+body.task-login #login-footer { display: none !important; }
