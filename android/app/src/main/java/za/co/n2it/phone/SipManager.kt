@@ -148,7 +148,10 @@ object SipManager : SipUa.Events {
                 // so this is when Android lets the service take the microphone.
                 PhoneService.setInCall(appContext, true)
                 router.startCall()
-                if (s == CallState.Connected) takeFocus()
+                // Audio focus from the moment the user places the call (2026-10-31: music kept playing while an
+                // outgoing call rang out on the HONOR; it only paused at the answer). Incoming calls still take it at
+                // the answer, so a ringing call never takes the audio from another app's call in progress.
+                takeFocus()
                 // First call: Bluetooth if connected (car, headset), else a wired headset, else the earpiece.
                 if (!routeChosen) { routeChosen = true; updateRoutes(); _route.value = defaultRoute() }
                 applyRoute()
