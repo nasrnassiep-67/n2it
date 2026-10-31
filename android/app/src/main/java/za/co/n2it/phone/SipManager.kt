@@ -838,7 +838,9 @@ object SipManager : SipUa.Events {
         if (!started || (focusRequest != null && !force)) return
         val am = appContext.getSystemService(AudioManager::class.java) ?: return
         focusRequest?.let { am.abandonAudioFocusRequest(it) }
-        val r = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        // TRANSIENT, as Android's own phone app: music / video apps (YouTube, Spotify, Apple Music, Samsung Music, TikTok)
+        // pause for the call and carry on by themselves when it ends; with a permanent GAIN many stayed paused (2026-10-31)
+        val r = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
             .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setOnAudioFocusChangeListener(focusListener, main)
