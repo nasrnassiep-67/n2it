@@ -126,8 +126,10 @@ jobs:
           path: windows/dist/*.dmg
 
   # Stable download links (no GitHub login needed, unlike run artifacts). Main only.
+  # Windows and Linux publish even when the macOS build fails (2026-10-31: notarisation failed from 10-21, which skipped
+  # this job and left the download page's Windows installer at 10-14); the previous .dmg files are then carried over.
   publish:
-    if: github.ref == 'refs/heads/main'
+    if: always() && github.ref == 'refs/heads/main' && needs.build.result == 'success' && needs.linux.result == 'success'
     needs: [build, linux, mac]
     runs-on: ubuntu-latest
     steps:
@@ -143,8 +145,14 @@ jobs:
           cp *.AppImage n2it-phone.AppImage
           cp *.deb n2it-phone.deb
           cp *.pacman n2it-phone.pacman
+          mac_note=""
+          if ! ls n2it-phone-mac-arm64.dmg n2it-phone-mac-x64.dmg >/dev/null 2>&1; then
+            # macOS build failed: keep the macOS installers of the release being replaced
+            gh release download desktop-latest -p 'n2it-phone-mac-*.dmg' -D . --clobber || true
+            mac_note=" macOS: the .dmg files are from an earlier build (this commit's macOS build failed)."
+          fi
           gh release delete desktop-latest --cleanup-tag -y || true
           gh release create desktop-latest n2it-phone-setup.exe n2it-phone.AppImage n2it-phone.deb n2it-phone.pacman \
-            n2it-phone-mac-arm64.dmg n2it-phone-mac-x64.dmg --prerelease \
+            $(ls n2it-phone-mac-*.dmg 2>/dev/null) --prerelease \
             --title "N2IT Phone desktop (latest test build)" \
-            --notes "Build of commit ${GITHUB_SHA::7}. Windows: run n2it-phone-setup.exe (SmartScreen: More info > Run anyway). Linux: .deb (Ubuntu/Debian), .pacman (Arch/Omarchy) or AppImage (chmod +x; needs fuse2/libfuse2). macOS: n2it-phone-mac-arm64.dmg (Apple Silicon, M1 and later) or n2it-phone-mac-x64.dmg (Intel); drag to Applications, open once, then System Settings > Privacy & Security > Open Anyway."
+            --notes "Build of commit ${GITHUB_SHA::7}. Windows: run n2it-phone-setup.exe (SmartScreen: More info > Run anyway). Linux: .deb (Ubuntu/Debian), .pacman (Arch/Omarchy) or AppImage (chmod +x; needs fuse2/libfuse2). macOS: n2it-phone-mac-arm64.dmg (Apple Silicon, M1 and later) or n2it-phone-mac-x64.dmg (Intel); drag to Applications, open once, then System Settings > Privacy & Security > Open Anyway.${mac_note}"
