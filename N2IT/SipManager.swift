@@ -122,7 +122,9 @@ final class SipManager: ObservableObject, SipUaEvents {
     private var calls: [SipCall] = []
 
     private func saveRecents() {
-        if let d = try? JSONEncoder().encode(Array(recents.prefix(100))) { UserDefaults.standard.set(d, forKey: "recents") }
+        // the last 30 days, at most 3000 calls (~300 KB), as Android and Windows (Nathier 2026-10-31: "at least 5 days")
+        let since = Date().addingTimeInterval(-30 * 86_400)
+        if let d = try? JSONEncoder().encode(Array(recents.filter { $0.date >= since }.prefix(3000))) { UserDefaults.standard.set(d, forKey: "recents") }
     }
 
     // MARK: Accounts

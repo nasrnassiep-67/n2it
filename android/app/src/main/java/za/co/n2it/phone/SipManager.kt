@@ -248,6 +248,7 @@ object SipManager : SipUa.Events {
      *  The account's port and transport (5061/TLS) were for Linphone and are not used. */
     fun configure(acc: za.co.n2it.phone.Account) {
         if (!started || !acc.isConfigured) return
+        loadRecents(acc)
         ua.start(acc.user, acc.password, acc.domain)
     }
 
@@ -273,6 +274,8 @@ object SipManager : SipUa.Events {
 
     fun signOut(context: Context) {
         if (started) ua.stop()
+        if (recentsKey.isNotEmpty()) recentsPrefs().edit().remove(recentsKey).apply()   // the signed-out account's history goes too
+        recentsKey = ""
         za.co.n2it.phone.Account.clear(context)
         _registered.value = false; _status.value = "Not registered"; _recents.value = emptyList(); _voicemail.value = false
     }
@@ -554,7 +557,37 @@ object SipManager : SipUa.Events {
     }
 
     private fun addRecent(number: String, incoming: Boolean, missed: Boolean) {
-        _recents.value = listOf(RecentCall(number, System.currentTimeMillis(), incoming, missed)) + _recents.value
+        _recents.value = keepRecent(listOf(RecentCall(number, System.currentTimeMillis(), incoming, missed)) + _recents.value)
+        saveRecents()
+    }
+
+    /*
+     * Recents are kept on the phone per account (Nathier 2026-10-31: "at least 5 days"; before 0.3.9 they were only in
+     * memory and gone whenever Android closed the app): the last RECENT_DAYS days, at most RECENT_MAX calls (about
+     * 100 bytes each: 3000 calls = ~300 KB). Same rule as the iPhone and Windows apps. App-private storage.
+     */
+    private const val RECENT_DAYS = 30
+    private const val RECENT_MAX = 3000
+    private var recentsKey = ""
+    private fun recentsPrefs() = appContext.getSharedPreferences("n2it_recents", Context.MODE_PRIVATE)
+    private fun keepRecent(list: List<RecentCall>): List<RecentCall> {
+        val since = System.currentTimeMillis() - RECENT_DAYS * 86_400_000L
+        return list.filter { it.time >= since }.take(RECENT_MAX)
+    }
+    private fun loadRecents(acc: za.co.n2it.phone.Account) {
+        recentsKey = "${acc.user.trim()}@${acc.domain}"
+        val raw = recentsPrefs().getString(recentsKey, null)
+        _recents.value = try {
+            val arr = org.json.JSONArray(raw ?: "[]")
+            keepRecent((0 until arr.length()).map { i -> arr.getJSONObject(i).let { o ->
+                RecentCall(o.optString("n"), o.optLong("t"), o.optBoolean("in"), o.optBoolean("m")) } })
+        } catch (e: org.json.JSONException) { emptyList() }
+    }
+    private fun saveRecents() {
+        if (recentsKey.isEmpty()) return
+        val arr = org.json.JSONArray()
+        _recents.value.forEach { r -> arr.put(org.json.JSONObject().put("n", r.number).put("t", r.time).put("in", r.incoming).put("m", r.missed)) }
+        recentsPrefs().edit().putString(recentsKey, arr.toString()).apply()
     }
 
     /** "082 123-4567", "(012) 345 6789" → digits; a typed SIP address (with @) is only trimmed. */

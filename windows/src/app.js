@@ -722,13 +722,18 @@ async function loadNames() {
 }
 const nameOf = (number, cid) => names.get(number) || (cid && cid !== number ? cid : number)
 
-// ---- Recent calls (owner 2026-10-08): kept on this computer per account, newest first, at most 300 ----
-const RECENT_MAX = 300
+// ---- Recent calls (owner 2026-10-08): kept on this computer per account, newest first; the last 30 days, at most 3000
+// calls (~300 KB), as Android and iPhone (Nathier 2026-10-31: "at least 5 days"; it was the last 300) ----
+const RECENT_MAX = 3000, RECENT_DAYS = 30
 const recentKey = () => acc && `n2it.recent.${key(acc)}`
 const ls = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} } }
 const recent = () => (acc ? ls.get(recentKey(), []) : [])
-function addRecent(r) { if (!acc) return; ls.set(recentKey(), [r, ...recent()].slice(0, RECENT_MAX)); renderRecent() }
+function addRecent(r) {
+  if (!acc) return
+  const since = Date.now() - RECENT_DAYS * 86400000
+  ls.set(recentKey(), [r, ...recent()].filter((x) => (x.at || 0) >= since).slice(0, RECENT_MAX)); renderRecent()
+}
 function logCall(s) {
   if (!s._log || s._logged) return
   s._logged = true
