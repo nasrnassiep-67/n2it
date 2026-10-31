@@ -6,13 +6,13 @@ plugins {
 
 android {
     namespace = "za.co.n2it.phone"
-    compileSdk = 34
+    compileSdk = 36
     defaultConfig {
         applicationId = "za.co.n2it.softphone"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 30
-        versionName = "0.3.4"
+        targetSdk = 36
+        versionCode = 31
+        versionName = "0.3.5"
         fun prop(n: String) = (project.findProperty(n) as String? ?: "").replace("\"", "\\\"")
         buildConfigField("String", "DEV_TENANT", "\"${prop("sipTenant")}\"")
         buildConfigField("String", "DEV_USER", "\"${prop("sipUser")}\"")
@@ -30,8 +30,13 @@ android {
         }
     }
     buildTypes {
-        // The published APK comes from assembleDebug (same file name and path for CI and the download page), so the debug
-        // type must not be debuggable: adb run-as / a debugger could otherwise read the app's data (security review 2026-10-23).
+        // Published builds (download page APK + Play bundle) come from the release type: not debuggable, signed with the
+        // N2IT key. No R8 shrinking yet: WebRTC's JNI classes need keep rules that have not been tested.
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName(if (keystore != null) "n2it" else "debug")
+        }
+        // Local test builds. Not debuggable, as before (security review 2026-10-23): adb run-as could read the app's data.
         getByName("debug") {
             isDebuggable = false
             if (keystore != null) signingConfig = signingConfigs.getByName("n2it")
