@@ -852,7 +852,9 @@ final class SipManager: ObservableObject, SipUaEvents {
     }
 
     // MARK: 3-way calls: a conference room on the PBX (port of Android 0.3.1)
-    // FusionPBX's global "nb-conference" dialplan: *30 + 2-7 digits joins room <digits>@<company domain> (every tenant
+    // N2IT's global "n2it-app-conference" dialplan (2026-10-31): *32 + 7 digits joins room <digits>@<company domain>; it
+    // closes by itself once fewer than two people are left (FreeSWITCH "mintwo"): the host can leave two or more talking,
+    // but nobody is left alone in it. Before: FusionPBX's *30 room, which stayed open after the host left. (Every tenant
     // has it). Merge = we join a new random room, then transfer each person into it (REFER); the PBX mixes the audio.
     private var confCall: SipCall?
     private var confRoom: String?
@@ -875,7 +877,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         let answered = liveCalls().filter { $0.answered && $0 !== confCall && !$0.transferring }
         if confCall != nil { moveIntoRoom(answered); return }
         guard answered.count >= 2 else { notice = "Wait for them to answer, then merge"; return }
-        let room = "*30" + String((0..<7).map { _ in "0123456789".randomElement()! })
+        let room = "*32" + String((0..<7).map { _ in "0123456789".randomElement()! })
         guard let c = startCall(room) else { notice = "Could not start the conference"; return }
         confRoom = room; confCall = c
         pendingMerge = answered

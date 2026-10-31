@@ -930,7 +930,9 @@ object SipManager : SipUa.Events {
     }
 
     // ---- 3-way calls: a conference room on the PBX ----
-    // FusionPBX's global "nb-conference" dialplan: *30 + 2-7 digits joins room <digits>@<company domain> (every tenant
+    // N2IT's global "n2it-app-conference" dialplan (2026-10-31): *32 + 7 digits joins room <digits>@<company domain>; it
+    // closes by itself once fewer than two people are left (FreeSWITCH "mintwo"): the host can leave two or more talking,
+    // but nobody is left alone in it. Before: FusionPBX's *30 room, which stayed open after the host left. (Every tenant
     // has it). Merge = we join a new random room, then transfer each person into it (REFER); the PBX mixes the audio,
     // which phones mixing it themselves (Linphone did) could not do as well. Proven on n2it 2026-10-22 (room 9876543).
     private var confCall: Call? = null
@@ -955,7 +957,7 @@ object SipManager : SipUa.Events {
         val answered = liveCalls().filter { it.answered && it !== confCall && !it.transferring }
         if (confCall != null) { moveIntoRoom(answered); return }
         if (answered.size < 2) { _notice.value = "Wait for them to answer, then merge"; return }
-        val room = "*30" + (1..7).map { "0123456789"[java.security.SecureRandom().nextInt(10)] }.joinToString("")
+        val room = "*32" + (1..7).map { "0123456789"[java.security.SecureRandom().nextInt(10)] }.joinToString("")
         val c = startCall(room) ?: run { _notice.value = "Could not start the conference"; return }
         confRoom = room; confCall = c
         pendingMerge.clear(); pendingMerge.addAll(answered)
