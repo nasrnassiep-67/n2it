@@ -703,10 +703,10 @@ final class SipManager: ObservableObject, SipUaEvents {
         recents.insert(RecentCall(number: number, date: Date(), incoming: incoming, missed: missed, name: name), at: 0)
     }
 
-    private func problem(_ what: String, _ sdp: String?) {
+    private func problem(_ what: String, _ sdp: String?, alert: Bool = true) {
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
         lastProblem = "N2IT Phone \(SipManager.appVersion), \(f.string(from: Date()))\n\(what)" + (sdp.map { "\n--- SDP from PBX ---\n\($0)" } ?? "")
-        notice = what
+        if alert { notice = what }
     }
 
     /// Re-register after a VoIP push woke the app. iOS kills the socket while the app is suspended, so connect afresh.
@@ -721,7 +721,8 @@ final class SipManager: ObservableObject, SipUaEvents {
     }
 
     /// Test builds: a line for Settings > Last call problem (what CallKit or iOS did to a call).
-    func problemNote(_ what: String) { problem(what, nil) }
+    /// alert false: only kept for "Last call problem" (7 taps on the version), no pop-up.
+    func problemNote(_ what: String, alert: Bool = true) { problem(what, nil, alert: alert) }
 
     /// iOS suspends the app soon after it leaves the screen (or the phone locks), and the connection to the PBX dies
     /// with it. Re-register straight away whenever the app is back on screen.
