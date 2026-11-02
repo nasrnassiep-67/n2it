@@ -20,6 +20,15 @@ struct CallInfo: Identifiable {
     var name: String? = nil
 }
 
+/// One other person in a conference: the call screen gives each one a card (as on Android). `id` is the SIP Call-ID.
+struct Participant: Identifiable, Equatable {
+    enum Status { case talking, ringing, onHold }
+    let id: String
+    let number: String
+    let name: String?
+    let status: Status
+}
+
 /// Where the call is heard and spoken: the iPhone itself, its loudspeaker, Bluetooth (car kit, headset) or a wired headset.
 enum AudioRoute: Int, Comparable {
     case iPhone, speaker, bluetooth, headset
@@ -458,15 +467,15 @@ final class SipManager: ObservableObject, SipUaEvents {
     @Published var onHold = false
     @Published var consulting = false
     @Published var inConference = false
-    @Published var participants: [String] = []
+    @Published var participants: [Participant] = []
 
     /// Mirror the calls into UI state: one call, or a held call plus a consult call.
     private func publish() {
         if let conf = confCall, !endedStates.contains(conf.state) {
             let others = liveCalls().filter { $0 !== conf && !$0.transferring }
-            let ringing = others.map { ($0.name ?? $0.number) + ($0.answered ? " (on hold)" : " (ringing)") }
-            let people = confPeople.map { $0.label } + ringing
-            activeCall = CallInfo(number: people.joined(separator: ", "), state: conf.state, incoming: false, name: nil)
+            let ringing = others.map { Participant(id: $0.callId, number: $0.number, name: $0.name, status: $0.answered ? .onHold : .ringing) }
+            let people = confPeople + ringing
+            activeCall = CallInfo(number: people.map { $0.name ?? $0.number }.joined(separator: ", "), state: conf.state, incoming: false, name: nil)
             inConference = true; participants = people
             onHold = conf.localHold
             consulting = others.contains { $0.answered && !$0.autoMerge }
@@ -861,7 +870,7 @@ final class SipManager: ObservableObject, SipUaEvents {
     // has it). Merge = we join a new random room, then transfer each person into it (REFER); the PBX mixes the audio.
     private var confCall: SipCall?
     private var confRoom: String?
-    private var confPeople: [(id: String, label: String)] = []
+    private var confPeople: [Participant] = []
     private var pendingMerge: [SipCall] = []
 
     /// Add participant: in a conference, ring `number` with the room left as it is (holding it would play hold music
@@ -891,7 +900,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         guard let room = confRoom else { return }
         for c in list where !endedStates.contains(c.state) && c.answered {
             confPeople.removeAll { $0.id == c.callId }
-            confPeople.append((c.callId, c.name ?? c.number))
+            confPeople.append(Participant(id: c.callId, number: c.number, name: c.name, status: .talking))
             refer(c, "<sip:\(room)@\(ua.domain)>")
         }
         // Back to the room: unmute there, and off hold if a consult had put it on hold
@@ -900,6 +909,13 @@ final class SipManager: ObservableObject, SipUaEvents {
             if conf.localHold { userHeld.removeAll { $0 === conf }; setHold(conf, false) }
         }
         publish()
+    }
+
+    /// Conference: someone still being rung (or on hold) can be hung up; people already in the room are mixed by the
+    /// PBX and can only leave themselves (hanging up ourselves leaves the others talking). As Android.
+    func dropParticipant(_ id: String) {
+        if let c = liveCalls().first(where: { $0.callId == id && $0 !== confCall }) { hangupCall(c); return }
+        notice = "They are in the conference room: they can hang up themselves"
     }
 
     /// Attended transfer, step 2: connect the held caller to the consulted party (REFER with Replaces); the PBX joins
