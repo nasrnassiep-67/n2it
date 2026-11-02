@@ -3,6 +3,43 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## TASKS FOR THE MAC SESSION (from the voip-server session, 2026-11-02). You cannot see the server: everything you need is here.
+Facts you can't check yourself (as of 2026-11-02 14:00 SAST):
+- main = Android 0.3.9, Windows/desktop 0.2.13, **iOS 0.3.4** (MARKETING_VERSION in project.yml). GitHub CI compiled iOS
+  0.3.4 unsigned (run on f6238de, success), but **TestFlight has not received 0.3.4**: only an archive + upload from this Mac
+  puts it there. The owner's latest TestFlight install was 0.3.2.
+- The **"Desktop installers" workflow (windows.yml) has failed on every main run since 2026-10-21**. The failing job is
+  `mac`, step "Build .dmg for Apple Silicon and Intel (Developer ID, notarised)". Signing works ("1 identity imported",
+  codesign OK); the failure is notarisation:
+  `xcrun notarytool submit ... --apple-id *** --password *** --team-id 8URJCQ48GM` ->
+  `Error: HTTP status code: 401. Invalid credentials. Username or password is incorrect. Use the app-specific password
+  generated at appleid.apple.com.` So the GitHub secret APPLE_APP_SPECIFIC_PASSWORD (or APPLE_ID) is wrong or was revoked.
+  Windows + Linux still publish (since 0cc3f76); the Mac .dmg files on the download page are the old ones from 2026-10-14.
+- Push on the PBX is global (see READ FIRST below). The Apple reviewer's extension is **1099** on company **n2it**; its
+  iPhone registered a **sandbox** push token on 2026-11-02, so it ran an Xcode (Debug) build, not TestFlight.
+
+Do these in order; tell the owner the result of each in one line so they can pass it to the voip session:
+1. **TestFlight 0.3.4.** `git pull` main, `xcodegen`, Product > Archive (Release, team 8URJCQ48GM), upload to App Store
+   Connect, add the build to the testing groups. Check the build number is higher than 0.3.2's.
+2. **Reviewer phone (1099).** On that iPhone: delete the app, install 0.3.4 from TestFlight, sign in: company `n2it`,
+   extension `1099`, its password (the owner has it), leave the app. Tell the owner "1099 signed in on TestFlight 0.3.4":
+   the voip session then checks the token says `sandbox: false` and rings 1099 with the phone locked. Nothing to change
+   on the PBX.
+3. **Fix Mac notarisation (owner + you).** The owner signs in at https://appleid.apple.com > Sign-In and Security >
+   App-Specific Passwords, creates one named "n2it-notary", and gives it to you once (don't commit it anywhere). Prove it
+   on this Mac first: `xcrun notarytool history --apple-id <the Apple ID used for the developer account> --team-id
+   8URJCQ48GM --password <new password>` must list history, not 401. Also store it for local builds:
+   `xcrun notarytool store-credentials n2it-notary --apple-id <Apple ID> --team-id 8URJCQ48GM`. Then the owner puts it
+   in GitHub: repo nasrnassiep-67/n2it > Settings > Secrets and variables > Actions > APPLE_APP_SPECIFIC_PASSWORD (and
+   checks APPLE_ID is that same Apple ID), and re-runs the latest "Desktop installers" run on main. Success = the `mac`
+   job green and the release `desktop-latest` gets new n2it-phone-mac-arm64.dmg / -x64.dmg (the server copies them to
+   the download page within 15 minutes by itself).
+4. **Feature gaps.** Read `FEATURES.md` (updated 2026-11-02 for Android 0.3.9). For every ✗ or ? in the iOS column,
+   check the iOS code: mark ✓ (with the iOS version) or list it as missing. Commit FEATURES.md, and send the owner the
+   missing list with your proposal of what goes into the next TestFlight build. Already known missing: timed Do Not
+   Disturb, "Filter out background voices", tel:/sip: links.
+5. **Later, not now:** cancel push (see READ FIRST: re-apply by hand on current main, don't merge `ios-push-cancel`).
+
 ## READ FIRST: push on the PBX today (correction from the voip server session, 2026-11-02)
 - **Never run `enable-push.sh`**, for any extension. Older notes below say each extension needs it: that is OUT OF DATE
   since 2026-10-13. Push is now global: the PBX's dial string adds a parallel push leg for every extension that has a
