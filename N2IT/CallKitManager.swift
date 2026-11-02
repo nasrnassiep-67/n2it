@@ -202,8 +202,9 @@ final class CallKitManager: NSObject, CXProviderDelegate {
             dlog("declined before the INVITE (caller \(caller)): its INVITE gets 603")
         }
         pushCaller = nil
-        // A ringing call ended from the iOS call screen is declined (603): note it, so a decline nobody pressed shows up
-        if SipManager.shared.hasIncomingSip { SipManager.shared.problemNote("Declined from the iOS call screen (603)") }
+        // A ringing call ended from the iOS call screen is declined (603). Kept in "Last call problem" so a decline nobody
+        // pressed can still be traced, but no pop-up: the user pressed Decline on purpose (owner 2026-11-02).
+        if SipManager.shared.hasIncomingSip { SipManager.shared.problemNote("Declined from the iOS call screen (603)", alert: false) }
         SipManager.shared.hangupSip()
         pendingTimeout?.cancel()
         answerWhenInvite = false

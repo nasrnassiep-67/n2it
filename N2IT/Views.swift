@@ -210,6 +210,86 @@ struct RecentsView: View {
     }
 }
 
+/// Conference: the space above the buttons split evenly between the people (up to 4); with more people, or while
+/// the keypad is open, a scrolling list of short cards. Port of Android's ConferenceCards.
+struct ConferenceCards: View {
+    let people: [Participant]
+    let compact: Bool
+
+    var body: some View {
+        if !compact && people.count <= 4 {
+            VStack(spacing: 10) {
+                ForEach(people) { ParticipantCard(p: $0, tall: true).frame(maxHeight: .infinity) }
+            }.padding(.horizontal)
+        } else {
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(people) { ParticipantCard(p: $0, tall: false).frame(height: 76) }
+                }.padding(.horizontal)
+            }
+        }
+    }
+}
+
+/// Name, number, status and a hang-up for this person only. Tall cards stack it centred; short ones in a row.
+struct ParticipantCard: View {
+    @EnvironmentObject var sip: SipManager
+    let p: Participant
+    let tall: Bool
+
+    private var name: String? { sip.name(for: p.number) ?? p.name }
+    private var title: String { name ?? p.number }
+    private var status: (String, Color) {
+        switch p.status {
+        case .talking: return ("Talking", .green)
+        case .ringing: return ("Ringing…", Color(red: 0xE0 / 255, green: 0xA0 / 255, blue: 0x30 / 255))
+        case .onHold: return ("On hold", .secondary)
+        }
+    }
+
+    var body: some View {
+        let drop = Button { sip.dropParticipant(p.id) } label: {
+            Image(systemName: "phone.down.fill").font(.system(size: 18)).foregroundStyle(.white)
+                .frame(width: 44, height: 44).background(Color.red).clipShape(Circle())
+        }.buttonStyle(.plain).accessibilityLabel("Hang up on \(title)")
+        let initial = Text(String(title.first(where: { $0.isLetter || $0.isNumber }) ?? "?").uppercased())
+        Group {
+            if tall {
+                ViewThatFits(in: .vertical) {
+                    VStack(spacing: 6) {
+                        initial.font(.title).frame(width: 64, height: 64).background(Color.accentColor.opacity(0.2)).clipShape(Circle())
+                        Text(title).font(.title2).lineLimit(1)
+                        if name != nil { Text(p.number).foregroundStyle(.secondary) }
+                        Text(status.0).font(.subheadline.weight(.semibold)).foregroundStyle(status.1)
+                        drop.padding(.top, 4)
+                    }
+                    row(initial: initial, drop: drop)
+                }
+            } else {
+                row(initial: initial, drop: drop)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.secondarySystemBackground)).clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func row(initial: Text, drop: some View) -> some View {
+        HStack(spacing: 12) {
+            initial.font(.headline).frame(width: 44, height: 44).background(Color.accentColor.opacity(0.2)).clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline).lineLimit(1)
+                HStack(spacing: 0) {
+                    if name != nil { Text(p.number + " · ").foregroundStyle(.secondary) }
+                    Text(status.0).foregroundStyle(status.1)
+                }.font(.caption).lineLimit(1)
+            }
+            Spacer()
+            drop
+        }
+    }
+}
+
 struct CallView: View {
     @EnvironmentObject var sip: SipManager
     @State private var showPad = false
@@ -220,15 +300,24 @@ struct CallView: View {
 
     var body: some View {
         VStack(spacing: 28) {
-            Spacer()
-            Text(sip.activeCall?.name ?? sip.activeCall?.number ?? "").font(.largeTitle).multilineTextAlignment(.center)
-            if let name = sip.activeCall?.name, !sip.inConference, name != sip.activeCall?.number {
-                Text(sip.activeCall?.number ?? "").font(.title3).foregroundStyle(.secondary)
+            if sip.inConference {
+                // One card per person, sharing the space above the buttons (as Android; a single line of names was hard to read)
+                VStack(spacing: 12) {
+                    Text(label).foregroundStyle(.secondary).padding(.top, 16)
+                    if let n = sip.notice { Text(n).font(.footnote).foregroundStyle(.orange).multilineTextAlignment(.center).padding(.horizontal) }
+                    ConferenceCards(people: sip.participants, compact: showPad)
+                }
+            } else {
+                Spacer()
+                Text(sip.activeCall?.name ?? sip.activeCall?.number ?? "").font(.largeTitle).multilineTextAlignment(.center)
+                if let name = sip.activeCall?.name, name != sip.activeCall?.number {
+                    Text(sip.activeCall?.number ?? "").font(.title3).foregroundStyle(.secondary)
+                }
+                Text(label).foregroundStyle(.secondary)
+                if sip.tester, let d = sip.audioDiag { Text(d).font(.caption2.monospaced()).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal) }
+                if let n = sip.notice { Text(n).font(.footnote).foregroundStyle(.orange).multilineTextAlignment(.center).padding(.horizontal) }
+                Spacer()
             }
-            Text(label).foregroundStyle(.secondary)
-            if sip.tester, let d = sip.audioDiag { Text(d).font(.caption2.monospaced()).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal) }
-            if let n = sip.notice { Text(n).font(.footnote).foregroundStyle(.orange).multilineTextAlignment(.center).padding(.horizontal) }
-            Spacer()
             // While dialling: mute and the audio button already, so the user can pick the car or speaker before they answer.
             if !connected && !ringingIn {
                 HStack(spacing: 40) {
