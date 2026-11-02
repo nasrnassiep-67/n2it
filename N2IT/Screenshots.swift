@@ -10,6 +10,9 @@ enum Screenshots {
     static let on = false
     #endif
 
+    /// `-screenshotPicker <text>`: the call screen opens Add participant with <text> typed in ("" = empty).
+    static var pickerText: String? { on ? UserDefaults.standard.string(forKey: "screenshotPicker") : nil }
+
     /// Tab to open on (0 Contacts … 4 Settings); always Contacts outside screenshot mode.
     static var tab: Int {
         guard on else { return 0 }
