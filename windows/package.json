@@ -1,6 +1,6 @@
 {
   "name": "n2it-phone-desktop",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "Novamo desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
