@@ -1,7 +1,7 @@
 name: Android APK
 on:
   push:
-    branches: [main]
+    branches: [main, android-conference-left]
     paths: ['android/**', '.github/workflows/android.yml']
   workflow_dispatch:
 permissions:
