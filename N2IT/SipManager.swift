@@ -971,6 +971,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         confPeople.removeAll { $0.id == c.callId }
         brief("Could not add \(title(p))")
         hangupCall(c)
+        confCall?.media?.setMuted(muted)   // back in the room with the microphone as the user left it, as Android
         publish()
     }
 
