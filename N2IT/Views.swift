@@ -390,7 +390,7 @@ struct CallView: View {
     private var connected: Bool { sip.onHold || sip.activeCall?.state == .StreamsRunning || sip.activeCall?.state == .Connected }
     private var ringingIn: Bool { sip.activeCall?.state == .IncomingReceived }
     private var label: String {
-        if sip.inConference { return "Conference · \(sip.participants.count + 1) people" }
+        if sip.inConference { return "Conference · \(sip.roomCount ?? sip.participants.count + 1) people" }
         switch sip.activeCall?.state {
         case .IncomingReceived: return "Incoming call"
         case .OutgoingProgress, .OutgoingInit: return "Calling…"

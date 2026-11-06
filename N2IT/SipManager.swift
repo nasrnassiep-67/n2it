@@ -468,6 +468,8 @@ final class SipManager: ObservableObject, SipUaEvents {
     @Published var consulting = false
     @Published var inConference = false
     @Published var participants: [Participant] = []
+    /// People in the room, us included, from the PBX's latest answer; nil until it has answered.
+    @Published var roomCount: Int?
 
     /// Mirror the calls into UI state: one call, or a held call plus a consult call.
     private func publish() {
@@ -697,7 +699,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         consultHoldDone(c)
         if c === confCall {
             confCall = nil; confRoom = nil; confPeople = []; pendingMerge = []
-            roomTracker?.stop(); roomTracker = nil
+            roomTracker?.stop(); roomTracker = nil; roomCount = nil
             liveCalls().forEach { $0.autoMerge = false }
         }
         if c.autoMerge { confCall?.media?.setMuted(muted) }
@@ -919,6 +921,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         guard roomTracker == nil, confCall != nil else { return }
         roomTracker = RoomTracker(room: String(room.dropFirst(3)), account: Account.load(),
                                   cards: { [weak self] in self?.confPeople.map { (id: $0.id, number: $0.number) } ?? [] },
+                                  onCount: { [weak self] in self?.roomCount = $0 },
                                   onLeft: { [weak self] in self?.peopleLeft($0) })
         roomTracker?.start()
     }

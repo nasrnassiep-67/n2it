@@ -8,7 +8,7 @@ struct RoomMember: Decodable {
     enum CodingKeys: String, CodingKey { case id, match, isSelf = "self" }
 }
 
-struct RoomAnswer: Decodable { let members: [RoomMember] }
+struct RoomAnswer: Decodable { let count: Int?; let members: [RoomMember] }
 
 /// The same value as the PBX's `match`: the part before any @, digits only, then the last 9 digits when there are 9 or
 /// more, otherwise all of them. So 082..., 2782... and +2782... agree.
@@ -62,6 +62,7 @@ final class RoomTracker {
     private let url: URL
     private let login: String
     private let cards: () -> [(id: String, number: String)]
+    private let onCount: (Int) -> Void
     private let onLeft: ([String]) -> Void
     private var state = RoomCards()
     private var task: URLSessionDataTask?
@@ -69,11 +70,13 @@ final class RoomTracker {
     private var stopped = false
 
     /// `room` is the 7 digits dialled after *32. Calls back on the main queue.
-    init?(room: String, account acc: Account, cards: @escaping () -> [(id: String, number: String)], onLeft: @escaping ([String]) -> Void) {
+    init?(room: String, account acc: Account, cards: @escaping () -> [(id: String, number: String)],
+          onCount: @escaping (Int) -> Void, onLeft: @escaping ([String]) -> Void) {
         guard acc.isConfigured, let url = URL(string: "https://\(acc.domain)/app/n2it/room.php?room=\(room)") else { return nil }
         self.url = url
         login = Data("\(acc.user):\(acc.password)".utf8).base64EncodedString()
         self.cards = cards
+        self.onCount = onCount
         self.onLeft = onLeft
     }
 
@@ -105,6 +108,7 @@ final class RoomTracker {
         guard !stopped else { return }
         task = nil
         if status == 200, let data, let answer = try? JSONDecoder().decode(RoomAnswer.self, from: data) {
+            if let count = answer.count { onCount(count) }
             let left = state.update(cards: cards(), members: answer.members)
             if !left.isEmpty { onLeft(left) }
         }
