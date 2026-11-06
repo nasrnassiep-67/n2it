@@ -248,10 +248,15 @@ struct ParticipantCard: View {
     }
 
     var body: some View {
-        let drop = Button { sip.dropParticipant(p.id) } label: {
-            Image(systemName: "phone.down.fill").font(.system(size: 18)).foregroundStyle(.white)
-                .frame(width: 44, height: 44).background(Color.red).clipShape(Circle())
-        }.buttonStyle(.plain).accessibilityLabel("Hang up on \(title)")
+        // Only the operator removes people; anyone can still cancel a call of their own that is ringing or on hold
+        let drop = Group {
+            if sip.roomOperator || p.status != .talking {
+                Button { sip.dropParticipant(p.id) } label: {
+                    Image(systemName: "phone.down.fill").font(.system(size: 18)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).background(Color.red).clipShape(Circle())
+                }.buttonStyle(.plain).accessibilityLabel("Hang up on \(title)")
+            }
+        }
         let initial = Text(String(title.first(where: { $0.isLetter || $0.isNumber }) ?? "?").uppercased())
         Group {
             if tall {
