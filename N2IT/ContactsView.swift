@@ -48,6 +48,8 @@ struct DialRules {
 
 @MainActor
 final class ContactsStore: ObservableObject {
+    /// One store for the Contacts tab and the Add participant / Transfer picker, so the company book is fetched once.
+    static let shared = ContactsStore()
     @Published var contacts: [PhoneContact] = []
     @Published var company: [PhoneContact] = []
     @Published var denied = false
@@ -112,7 +114,7 @@ final class ContactsStore: ObservableObject {
 
 struct ContactsView: View {
     @EnvironmentObject var sip: SipManager
-    @StateObject private var store = ContactsStore()
+    @ObservedObject private var store = ContactsStore.shared
     @State private var query = ""
     @State private var picking: PhoneContact?
 

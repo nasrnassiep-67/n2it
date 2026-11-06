@@ -15,6 +15,8 @@ struct N2ITApp: App {
                 .fullScreenCover(isPresented: .constant(sip.activeCall != nil)) {
                     CallView().environmentObject(sip)
                 }
+                // On screen = unlocked, so the Keychain is readable (a push can start the app before the first unlock)
+                .onAppear { Keychain.migrateToThisDeviceOnly() }
         }
     }
 }

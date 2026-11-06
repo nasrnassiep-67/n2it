@@ -296,7 +296,6 @@ struct CallView: View {
     @State private var dtmf = ""
     @State private var showTransfer = false
     @State private var showAdd = false
-    @State private var target = ""
 
     var body: some View {
         VStack(spacing: 28) {
@@ -376,19 +375,15 @@ struct CallView: View {
             }
             Spacer().frame(height: 40)
         }.frame(maxWidth: .infinity).background(Color(.systemBackground))
-        .alert("Transfer to", isPresented: $showTransfer) {
-            TextField("Extension or number", text: $target).keyboardType(.phonePad)
-            Button("Blind") { sip.blindTransfer(target); target = "" }
-            Button("Consult first") { sip.consult(target); target = "" }
-            Button("Cancel", role: .cancel) { target = "" }
+        .onAppear { if Screenshots.pickerText != nil { showAdd = true } }
+        // Pick from company and phone contacts, or type a number; a line names who it reaches (as Android 0.2.13)
+        .sheet(isPresented: $showTransfer) {
+            NumberPicker(mode: .transfer, onAdd: { _ in },
+                         onTransfer: { n, consult in consult ? sip.consult(n) : sip.blindTransfer(n) })
         }
-        .alert("Add participant", isPresented: $showAdd) {
-            TextField("Extension or number", text: $target).keyboardType(.phonePad)
-            Button("Call") { sip.addParticipant(target); target = "" }
-            Button("Cancel", role: .cancel) { target = "" }
-        } message: {
-            Text(sip.inConference ? "They join the conference when they answer."
-                 : "The current call goes on hold. Tap Merge calls once they answer.")
+        .sheet(isPresented: $showAdd) {
+            NumberPicker(mode: .add(inConference: sip.inConference), onAdd: { sip.addParticipant($0) },
+                         onTransfer: { _, _ in })
         }
     }
 

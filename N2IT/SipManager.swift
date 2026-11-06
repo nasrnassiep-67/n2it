@@ -217,7 +217,7 @@ final class SipManager: ObservableObject, SipUaEvents {
     private var knownNames: [String: String] = [:]
 
     /// Digits only; long numbers by their last 9 digits so "+27 82 123 4567" and "082 123 4567" match.
-    private static func numberKey(_ n: String) -> String {
+    static func numberKey(_ n: String) -> String {
         let d = n.filter(\.isNumber)
         return d.count >= 9 ? String(d.suffix(9)) : d
     }
