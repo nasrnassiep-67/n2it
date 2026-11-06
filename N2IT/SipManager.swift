@@ -697,6 +697,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         consultHoldDone(c)
         if c === confCall {
             confCall = nil; confRoom = nil; confPeople = []; pendingMerge = []
+            roomTracker?.stop(); roomTracker = nil
             liveCalls().forEach { $0.autoMerge = false }
         }
         if c.autoMerge { confCall?.media?.setMuted(muted) }
@@ -872,6 +873,8 @@ final class SipManager: ObservableObject, SipUaEvents {
     private var confRoom: String?
     private var confPeople: [Participant] = []
     private var pendingMerge: [SipCall] = []
+    /// Asks the PBX who is in the room, so a card goes when that person hangs up (0.3.7).
+    private var roomTracker: RoomTracker?
 
     /// Add participant: in a conference, ring `number` with the room left as it is (holding it would play hold music
     /// to everyone; only our microphone is muted there) and move them in when they answer. Otherwise hold the call and
@@ -903,11 +906,30 @@ final class SipManager: ObservableObject, SipUaEvents {
             confPeople.append(Participant(id: c.callId, number: c.number, name: c.name, status: .talking))
             refer(c, "<sip:\(room)@\(ua.domain)>")
         }
+        trackRoom(room)
         // Back to the room: unmute there, and off hold if a consult had put it on hold
         if let conf = confCall {
             conf.media?.setMuted(muted)
             if conf.localHold { userHeld.removeAll { $0 === conf }; setHold(conf, false) }
         }
+        publish()
+    }
+
+    private func trackRoom(_ room: String) {
+        guard roomTracker == nil, confCall != nil else { return }
+        roomTracker = RoomTracker(room: String(room.dropFirst(3)), account: Account.load(),
+                                  cards: { [weak self] in self?.confPeople.map { (id: $0.id, number: $0.number) } ?? [] },
+                                  onLeft: { [weak self] in self?.peopleLeft($0) })
+        roomTracker?.start()
+    }
+
+    /// The PBX says they are no longer in the room: drop their cards and say so for a few seconds.
+    private func peopleLeft(_ ids: [String]) {
+        let gone = confPeople.filter { ids.contains($0.id) }
+        confPeople.removeAll { ids.contains($0.id) }
+        let text = gone.map { "\($0.name ?? $0.number) left" }.joined(separator: ", ")
+        notice = text
+        later(5) { [weak self] in if self?.notice == text { self?.notice = nil } }
         publish()
     }
 

@@ -22,7 +22,7 @@ targets:
       CODE_SIGN_STYLE: Automatic
       ENABLE_BITCODE: NO
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-      MARKETING_VERSION: "0.3.6"   # contact picker in Add participant / Transfer; passwords not in backups
+      MARKETING_VERSION: "0.3.7"   # conference card goes when that person hangs up (PBX room.php)
       CURRENT_PROJECT_VERSION: "4"
     entitlements:
       path: N2IT/N2IT.entitlements
