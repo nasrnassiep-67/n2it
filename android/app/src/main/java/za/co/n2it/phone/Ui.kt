@@ -36,7 +36,6 @@ import java.text.DateFormat
 import java.util.Date
 
 private val LoginNavy = Color(0xFF0A2342)
-private val LoginTeal = Color(0xFF16C7B7)
 private val Green = Color(0xFF2E9E4F)
 private val Red = Color(0xFFD64545)
 private val Orange = Color(0xFFE65100)
@@ -217,7 +216,6 @@ fun LoginScreen(done: () -> Unit) {
         androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.novamo_logo), null, Modifier.size(84.dp))
         Spacer(Modifier.height(14.dp))
         Text("Novamo", fontSize = 34.sp, color = Color.White)
-        Text("powered by N2IT", color = LoginTeal, style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(24.dp))
         MaterialTheme(colorScheme = androidx.compose.material3.lightColorScheme(primary = LoginNavy)) {
             Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Color.White) {
