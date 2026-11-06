@@ -187,6 +187,19 @@ object SipManager : SipUa.Events {
         configure(Account.load(appContext))
     }
 
+    // A Firebase wake-up: a call is on its way. Register now so the PBX can ring this phone. A socket that went quiet
+    // while the phone slept may look connected, so if no registration comes back in 2 s, connect again. Nothing is
+    // shown until the INVITE arrives, so a call that ends first needs no clean-up here.
+    private var regOkCount = 0
+    fun wake() {
+        main.post {
+            if (!started || liveCalls().isNotEmpty()) return@post
+            val before = regOkCount
+            ua.refreshNow()
+            main.postDelayed({ if (regOkCount == before && liveCalls().isEmpty()) ua.reconnectNow() }, 2_000L)
+        }
+    }
+
     /** Wi-Fi <-> mobile data: the old connection is dead; reconnect at once so calls keep ringing. */
     private var network: Network? = null
     private fun watchNetwork() {
@@ -206,7 +219,7 @@ object SipManager : SipUa.Events {
     override fun onRegistration(state: SipUa.RegState, code: Int, reason: String) {
         _registered.value = state == SipUa.RegState.Ok
         when (state) {
-            SipUa.RegState.Ok -> { _outcome.value = RegOutcome.Ok; subscribeVoicemail() }
+            SipUa.RegState.Ok -> { _outcome.value = RegOutcome.Ok; regOkCount++; subscribeVoicemail(); PushToken.sync(appContext) }
             SipUa.RegState.Failed -> {
                 _outcome.value = RegOutcome.Failed(code, reason)
                 if (!verifying && code in setOf(401, 403, 407)) { ua.stop(); _refused.value = true }   // never retried: 5 wrong passwords and the PBX bans the network
@@ -273,6 +286,7 @@ object SipManager : SipUa.Events {
     }
 
     fun signOut(context: Context) {
+        PushToken.forget(context)
         if (started) ua.stop()
         if (recentsKey.isNotEmpty()) recentsPrefs().edit().remove(recentsKey).apply()   // the signed-out account's history goes too
         recentsKey = ""
@@ -330,6 +344,8 @@ object SipManager : SipUa.Events {
         val number = SipMsg.userOf(SipMsg.uriOf(from)).ifEmpty { "Unknown" }
         val name = SipMsg.nameOf(from)?.takeIf { it != number }
         checkDnd()
+        // The same caller already ringing here: the push leg's second INVITE for this call (the PBX rang us before the wake-up).
+        if (liveCalls().any { it.incoming && !it.answered && it.number == number }) { ua.reply(req, 486, "Busy Here", ua.token(10)); return }
         if (dndActive()) {
             // DND: refuse as busy; the PBX sends the caller to voicemail (or says there is none).
             // Other phones on the same extension (e.g. a desk phone) keep ringing.

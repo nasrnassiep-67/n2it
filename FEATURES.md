@@ -55,6 +55,7 @@ iOS column is for the Mac session to check against the iOS code and close** (✓
 | Store | Google Play (internal testing 0.3.8+, target SDK 36, App Bundle) + APK on the download page | Microsoft Store (in certification) + installers | TestFlight; App Store (unlisted) prepared |
 
 ## History (newest first)
+- Android 0.3.11 (branch android-firebase-push, in test): Firebase wake-up for incoming calls when the app is asleep.
 - Android 0.3.10 (2026-11-06): a conference card goes when that person leaves the room, with "<Name> left"; the app asks the PBX every 3 s (/app/n2it/room.php).
 - Android 0.3.9 (2026-10-31): recents keep the last 30 days (max 3,000 calls) per account, saved across restarts (were in memory only). iOS 0.3.4 / Windows 0.2.13 same rule.
 - Android 0.3.8 (2026-10-31): Merge uses `*32` rooms that close below two people (n2it-app-conference, every PBX) instead of FusionPBX's `*30`, which stayed open after the host left. iOS 0.3.3 same.
