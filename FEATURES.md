@@ -4,7 +4,7 @@ What each version of the app does today. Update this file with every release (ve
 iOS is built by the Mac session (see IOS-MAC-HANDOVER.md); a ✗ there means "not matched on iOS yet" as far as the
 voip-server session knows.
 
-Current versions: **Android 0.3.9** (Google Play internal testing + download page), **Windows/desktop 0.2.13**,
+Current versions: **Android 0.3.10** (branch android-conference-left, untested); **Android 0.3.9** (Google Play internal testing + download page), **Windows/desktop 0.2.13**,
 **iOS 0.3.4** (main; TestFlight has 0.3.2), iOS 0.3.5 in PR #29. iOS column checked against the code by the Mac session 2026-11-02. Updated 2026-11-02 by the voip-server session for the Mac session: **every ✗ or ? in the
 iOS column is for the Mac session to check against the iOS code and close** (✓ = a commit shows it on iOS).
 
@@ -55,6 +55,7 @@ iOS column is for the Mac session to check against the iOS code and close** (✓
 | Store | Google Play (internal testing 0.3.8+, target SDK 36, App Bundle) + APK on the download page | Microsoft Store (in certification) + installers | TestFlight; App Store (unlisted) prepared |
 
 ## History (newest first)
+- Android 0.3.10 (2026-11-06, not released): a conference card goes when that person leaves the room, with "<Name> left"; the app asks the PBX every 3 s (/app/n2it/room.php).
 - Android 0.3.9 (2026-10-31): recents keep the last 30 days (max 3,000 calls) per account, saved across restarts (were in memory only). iOS 0.3.4 / Windows 0.2.13 same rule.
 - Android 0.3.8 (2026-10-31): Merge uses `*32` rooms that close below two people (n2it-app-conference, every PBX) instead of FusionPBX's `*30`, which stayed open after the host left. iOS 0.3.3 same.
 - Android 0.3.7 (2026-10-31): temporary audio focus for calls, so YouTube, Spotify and other music apps resume by themselves after the call. 0.3.6: focus taken when an outgoing call is placed, so media pause while it rings.

@@ -545,7 +545,7 @@ object SipManager : SipUa.Events {
         if (calls.none { it.state == CallState.OutgoingRinging }) stopRingback()
         userHeld.remove(c)
         consultHoldDone(c)
-        if (c === confCall) { confCall = null; confRoom = null; confPeople.clear(); pendingMerge.clear()
+        if (c === confCall) { stopRoomPoll(); confCall = null; confRoom = null; confPeople.clear(); pendingMerge.clear()
             liveCalls().forEach { it.autoMerge = false } }
         if (c.autoMerge) confCall?.media?.setMuted(_muted.value)
         // Another call may still be up (held caller after a consult)
@@ -972,6 +972,8 @@ object SipManager : SipUa.Events {
     private var confRoom: String? = null
     private val confPeople = mutableListOf<Participant>()
     private val pendingMerge = mutableListOf<Call>()
+    private const val ROOM_POLL_MS = 3_000L
+    private const val ROOM_BUSY_MS = 10_000L
 
     /** Add participant: in a conference, ring [number] with the room left as it is (holding it would play hold music
      *  to everyone; our microphone is only muted there) and move them in when they answer. Otherwise hold the call and
@@ -1006,7 +1008,72 @@ object SipManager : SipUa.Events {
         }
         // Back to the room: unmute there, and off hold if a consult had put it on hold
         confCall?.let { conf -> conf.media?.setMuted(_muted.value); if (conf.localHold) { userHeld.remove(conf); setHold(conf, false) } }
+        startRoomPoll()
         publish()
+    }
+
+    // Who is still in the room: the phone has one call to the room, so only the PBX knows when someone leaves. Every 3 s
+    // while in a room, one request at a time. Only a good answer changes the cards; no answer leaves them as they are.
+    private val roomTracker = RoomTracker()
+    private var roomPolling = false
+    private val roomTick = Runnable { pollRoom() }
+
+    private fun startRoomPoll() {
+        if (roomPolling) return
+        roomPolling = true
+        roomTracker.reset()
+        main.postDelayed(roomTick, ROOM_POLL_MS)
+    }
+
+    private fun stopRoomPoll() {
+        roomPolling = false
+        main.removeCallbacks(roomTick)
+        roomTracker.reset()
+    }
+
+    private fun pollRoom() {
+        val room = confRoom?.removePrefix("*32") ?: return
+        Thread {
+            val answer = fetchRoom(room)
+            main.post { onRoomAnswer(room, answer.first, answer.second) }
+        }.start()
+    }
+
+    /** HTTP status (0 = no answer) and, on a 200, the members. */
+    private fun fetchRoom(room: String): Pair<Int, List<RoomTracker.Member>?> = try {
+        val acc = Account.load(appContext)
+        val conn = java.net.URL("https://${acc.domain}/app/n2it/room.php?room=$room").openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 5_000; conn.readTimeout = 5_000
+        val login = android.util.Base64.encodeToString("${acc.user.trim()}:${acc.password}".toByteArray(), android.util.Base64.NO_WRAP)
+        conn.setRequestProperty("Authorization", "Basic $login")
+        try {
+            val code = conn.responseCode
+            if (code != 200) code to null else {
+                val list = org.json.JSONObject(conn.inputStream.bufferedReader().readText()).getJSONArray("members")
+                code to (0 until list.length()).map { i ->
+                    val m = list.getJSONObject(i)
+                    RoomTracker.Member(m.getInt("id"), m.optString("match"), m.optBoolean("self"))
+                }
+            }
+        } finally { conn.disconnect() }
+    } catch (e: Exception) { 0 to null }
+
+    private fun onRoomAnswer(room: String, code: Int, members: List<RoomTracker.Member>?) {
+        if (!roomPolling || confRoom?.removePrefix("*32") != room) return
+        if (members != null) {
+            val gone = roomTracker.update(members, confPeople.map { it.id to it.number })
+            if (gone.isNotEmpty()) {
+                val left = confPeople.filter { it.id in gone }
+                confPeople.removeAll { it.id in gone }
+                _notice.value = left.joinToString(", ") { it.name ?: it.number } + " left"
+                publish()
+            }
+        }
+        when (code) {
+            400, 401 -> roomPolling = false                       // will not get better during this call
+            429 -> main.postDelayed(roomTick, ROOM_BUSY_MS)
+            else -> main.postDelayed(roomTick, ROOM_POLL_MS)
+        }
     }
 
     /** Attended transfer, step 2: connect the held caller to the consulted party (REFER with Replaces); the PBX joins
