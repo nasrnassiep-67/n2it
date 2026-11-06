@@ -545,7 +545,7 @@ struct AddAccountView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(footer: Text((a.domain.isEmpty ? "Your company code (e.g. n2it), or the full server address" : "Connects to \(a.domain)")
+                Section(footer: Text((a.domain.isEmpty ? "Your company code (e.g. yourcompany), or the full server address" : "Connects to \(a.domain)")
                                      + "\nIt becomes the active account; the current one stays in the list.")) {
                     TextField("Company code", text: $a.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $a.user).keyboardType(.numberPad)
