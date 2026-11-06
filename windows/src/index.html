@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; connect-src wss:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'">
-<title>N2IT Phone</title>
+<title>Novamo</title>
 <style>
   /* N2IT blue + the Android app's green / red / orange; light and dark follow Windows */
   :root{--blue:#145ab6;--blue-soft:#e3ecf9;--green:#2e9e4f;--red:#d64545;--orange:#e65100;
@@ -144,7 +144,7 @@
 
 <header>
   <button class="flat" id="side-toggle" title="Recent calls"><svg class="i"><use href="#i-recent"/></svg><span class="badge hidden" id="missed-badge"></span></button>
-  <img src="assets/logo.png" alt="N2IT">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png"><img src="assets/logo.png" alt="Novamo"></picture>
   <div id="status-pill"><span id="status">Not registered</span></div>
   <span class="grow"></span>
   <span id="me"></span>
@@ -161,7 +161,8 @@
 
 <main>
 <section id="login" class="card">
-  <img src="assets/logo.png" alt="N2IT">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png"><img src="assets/logo.png" alt="Novamo"></picture>
+  <div class="hint" style="text-align:center;margin:-10px 0 12px">powered by N2IT</div>
   <h2>Sign in</h2>
   <input id="tenant" placeholder="Company code (or server address)" autocapitalize="off">
   <input id="user" placeholder="Extension">
@@ -250,7 +251,7 @@
   <label>Voicemail number <input id="s-vm"></label>
   <label>STUN server <input id="s-stun" placeholder="stun:host:port (blank = none)"></label>
   <div id="s-links" class="hidden hint" style="margin:8px 0">
-    <span id="s-links-msg"></span><br><button id="s-links-set">Phone links: open with N2IT Phone</button>
+    <span id="s-links-msg"></span><br><button id="s-links-set">Phone links: open with Novamo</button>
   </div>
   <div class="row"><button class="go" id="s-save">Save</button><button id="s-back">Back</button><button id="s-clear-recent">Clear recent calls</button></div>
   <hr><h2>Accounts</h2>

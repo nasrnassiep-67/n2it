@@ -2,6 +2,8 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, sa
 const { execFile } = require('child_process')
 const fs = require('fs')
 const path = require('path')
+// Renamed to Novamo 2026-11-06: stay in the old data folder, or everyone is signed out and loses their settings.
+app.setPath('userData', path.join(app.getPath('appData'), 'N2IT Phone'))
 
 // Security (owner 2026-10-12): the saved extension password must not be reachable through debugging tools. Packaged app:
 // no developer tools (webPreferences below) and no start with Chromium / Node debug switches; the build also turns off
@@ -48,9 +50,9 @@ app.on('open-url', (e, url) => { e.preventDefault(); dial(url) })   // macOS
 pendingDial = linkIn(process.argv) ? numberOf(linkIn(process.argv)) : null
 
 /**
- * Windows: list N2IT Phone under Settings > Apps > Default apps for tel/callto/sip (per user, no admin rights), and
+ * Windows: list Novamo under Settings > Apps > Default apps for tel/callto/sip (per user, no admin rights), and
  * take a scheme straight away when no other app handles it. Windows never lets an app take over a scheme another
- * app owns (e.g. Phone Link for tel:); the user picks N2IT Phone once there (Settings > "Phone links" button).
+ * app owns (e.g. Phone Link for tel:); the user picks Novamo once there (Settings > "Phone links" button).
  */
 function registerLinksWindows() {
   // Store (MSIX) build: its registry writes stay inside the package, so the schemes come from the package manifest
@@ -60,9 +62,9 @@ function registerLinksWindows() {
   const reg = (key, name, data) => new Promise((ok) =>
     execFile('reg', ['add', key, ...(name === null ? ['/ve'] : ['/v', name]), '/d', data, '/f'], () => ok()))
   Promise.all([
-    reg(cls, null, 'N2IT Phone call'), reg(cls, 'URL Protocol', ''),
+    reg(cls, null, 'Novamo call'), reg(cls, 'URL Protocol', ''),
     reg(`${cls}\\DefaultIcon`, null, `"${exe}",0`), reg(`${cls}\\shell\\open\\command`, null, `"${exe}" "%1"`),
-    reg(caps, 'ApplicationName', 'N2IT Phone'), reg(caps, 'ApplicationDescription', 'N2IT Phone softphone'),
+    reg(caps, 'ApplicationName', 'Novamo'), reg(caps, 'ApplicationDescription', 'Novamo softphone'),
     ...SCHEMES.map((s) => reg(`${caps}\\URLAssociations`, s, 'N2ITPhone.URL')),
     reg('HKCU\\Software\\RegisteredApplications', 'N2IT Phone', 'Software\\N2IT\\N2ITPhone\\Capabilities'),
   ]).then(() => {
@@ -182,21 +184,21 @@ function toTray() {
   win.hide()
   if (process.platform === 'win32' && tray && !prefs.trayTipShown) {   // once: say where it went
     prefs.trayTipShown = true; savePrefs()
-    tray.displayBalloon({ iconType: 'info', title: 'N2IT Phone is still running',
+    tray.displayBalloon({ iconType: 'info', title: 'Novamo is still running',
       content: 'Calls still ring. Open it again from the hidden icons (^) on the taskbar. Right-click > Quit to close it.' })
   }
 }
 function quitApp() {
   if (appState.inCall && dialog.showMessageBoxSync(win, { type: 'warning', buttons: ['Quit and hang up', 'Cancel'],
-    defaultId: 1, cancelId: 1, title: 'N2IT Phone', message: 'You are on a call. Quit N2IT Phone and end the call?' }) !== 0) return
+    defaultId: 1, cancelId: 1, title: 'Novamo', message: 'You are on a call. Quit Novamo and end the call?' }) !== 0) return
   quitting = true; app.quit()
 }
 function trayMenu() {
-  tray?.setToolTip(`N2IT Phone · ${appState.status}`)
+  tray?.setToolTip(`Novamo · ${appState.status}`)
   tray?.setContextMenu(Menu.buildFromTemplate([
-    { label: `N2IT Phone · ${appState.status}`, enabled: false },
+    { label: `Novamo · ${appState.status}`, enabled: false },
     { type: 'separator' },
-    { label: 'Open N2IT Phone', click: showWindow },
+    { label: 'Open Novamo', click: showWindow },
     { label: 'Quit', click: quitApp },
   ]))
 }
@@ -235,7 +237,7 @@ app.whenReady().then(() => {
   // Microphone only; refuse every other permission request.
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'media'))
   win = new BrowserWindow({
-    ...savedBounds(), minWidth: 360, minHeight: 560, show: false, title: 'N2IT Phone',
+    ...savedBounds(), minWidth: 360, minHeight: 560, show: false, title: 'Novamo',
     backgroundColor: require('electron').nativeTheme.shouldUseDarkColors ? '#14171c' : '#f3f5f9',
     icon: path.join(__dirname, 'assets/icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, devTools: !app.isPackaged },
