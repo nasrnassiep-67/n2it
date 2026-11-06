@@ -158,6 +158,7 @@ object SipManager : SipUa.Events {
             }
             CallState.StreamsRunning -> {
                 applyRoute()
+                startRoomSearch()
                 if (c === confCall && pendingMerge.isNotEmpty()) { val list = pendingMerge.toList(); pendingMerge.clear(); moveIntoRoom(list) }
                 if (c.autoMerge && confCall != null) { c.autoMerge = false; moveIntoRoom(listOf(c)) }
             }
@@ -561,6 +562,7 @@ object SipManager : SipUa.Events {
         if (calls.none { it.state == CallState.OutgoingRinging }) stopRingback()
         userHeld.remove(c)
         consultHoldDone(c)
+        if (liveCalls().isEmpty()) { roomSearching = false; main.removeCallbacks(searchTick) }
         if (c === confCall) { stopRoomPoll(); confCall = null; confRoom = null; confPeople.clear(); pendingMerge.clear()
             liveCalls().forEach { it.autoMerge = false } }
         if (c.autoMerge) confCall?.media?.setMuted(_muted.value)
@@ -990,6 +992,7 @@ object SipManager : SipUa.Events {
     private val pendingMerge = mutableListOf<Call>()
     private const val ROOM_POLL_MS = 3_000L
     private const val ROOM_BUSY_MS = 10_000L
+    private const val ROOM_SEARCH_MS = 10_000L
 
     /** Add participant: in a conference, ring [number] with the room left as it is (holding it would play hold music
      *  to everyone; our microphone is only muted there) and move them in when they answer. Otherwise hold the call and
@@ -1028,15 +1031,22 @@ object SipManager : SipUa.Events {
         publish()
     }
 
-    // Who is still in the room: the phone has one call to the room, so only the PBX knows when someone leaves. Every 3 s
-    // while in a room, one request at a time. Only a good answer changes the cards; no answer leaves them as they are.
+    // Who is in the room: the phone has one call to it, so only the PBX knows who joined or left. Every 3 s while in a room,
+    // one request at a time. Only a good answer changes the cards; no answer leaves them as they are.
+    // On any other answered call, every 10 s, ask whether it is in a room: someone moved in by the host never dialled the room.
     private val roomTracker = RoomTracker()
     private var roomPolling = false
+    private var roomSeen = false
+    private var roomGone = 0
     private val roomTick = Runnable { pollRoom() }
+    private var roomSearching = false
+    private val searchTick = Runnable { searchRoom() }
+
+    private class RoomAnswer(val code: Int, val room: String?, val members: List<RoomTracker.Member>?)
 
     private fun startRoomPoll() {
         if (roomPolling) return
-        roomPolling = true
+        roomPolling = true; roomSeen = false; roomGone = 0
         roomTracker.reset()
         main.postDelayed(roomTick, ROOM_POLL_MS)
     }
@@ -1047,45 +1057,82 @@ object SipManager : SipUa.Events {
         roomTracker.reset()
     }
 
+    private fun startRoomSearch() {
+        if (roomSearching || confCall != null) return
+        roomSearching = true
+        main.postDelayed(searchTick, ROOM_SEARCH_MS)
+    }
+
+    private fun searchRoom() {
+        val live = liveCalls()
+        if (confCall != null || live.isEmpty()) { roomSearching = false; return }
+        val c = live.singleOrNull()?.takeIf { it.answered && !it.transferring }
+        if (c == null) { main.postDelayed(searchTick, ROOM_SEARCH_MS); return }
+        Thread {
+            val answer = fetchRoom(null)
+            main.post {
+                if (!roomSearching) return@post
+                val room = answer.room
+                if (answer.code == 200 && room != null && confCall == null && c.state !in ended) {
+                    roomSearching = false
+                    confCall = c; confRoom = "*32$room"; confPeople.clear()
+                    startRoomPoll()
+                    applyRoom(answer.members.orEmpty())
+                } else if (answer.code == 400 || answer.code == 401) roomSearching = false
+                else main.postDelayed(searchTick, if (answer.code == 429) ROOM_BUSY_MS else ROOM_SEARCH_MS)
+            }
+        }.start()
+    }
+
     private fun pollRoom() {
         val room = confRoom?.removePrefix("*32") ?: return
         Thread {
             val answer = fetchRoom(room)
-            main.post { onRoomAnswer(room, answer.first, answer.second) }
+            main.post { onRoomAnswer(room, answer) }
         }.start()
     }
 
-    /** HTTP status (0 = no answer) and, on a 200, the members. */
-    private fun fetchRoom(room: String): Pair<Int, List<RoomTracker.Member>?> = try {
+    /** [room] null = whichever room this login is in. */
+    private fun fetchRoom(room: String?): RoomAnswer = try {
         val acc = Account.load(appContext)
-        val conn = java.net.URL("https://${acc.domain}/app/n2it/room.php?room=$room").openConnection() as java.net.HttpURLConnection
+        val query = if (room == null) "" else "?room=$room"
+        val conn = java.net.URL("https://${acc.domain}/app/n2it/room.php$query").openConnection() as java.net.HttpURLConnection
         conn.connectTimeout = 5_000; conn.readTimeout = 5_000
         val login = android.util.Base64.encodeToString("${acc.user.trim()}:${acc.password}".toByteArray(), android.util.Base64.NO_WRAP)
         conn.setRequestProperty("Authorization", "Basic $login")
         try {
             val code = conn.responseCode
-            if (code != 200) code to null else {
-                val list = org.json.JSONObject(conn.inputStream.bufferedReader().readText()).getJSONArray("members")
-                code to (0 until list.length()).map { i ->
+            if (code != 200) RoomAnswer(code, null, null) else {
+                val json = org.json.JSONObject(conn.inputStream.bufferedReader().readText())
+                val list = json.getJSONArray("members")
+                RoomAnswer(code, json.optString("room"), (0 until list.length()).map { i ->
                     val m = list.getJSONObject(i)
-                    RoomTracker.Member(m.getInt("id"), m.optString("match"), m.optBoolean("self"))
-                }
+                    RoomTracker.Member(m.getInt("id"), m.optString("match"), m.optBoolean("self"), m.optString("number"), m.optString("name"))
+                })
             }
         } finally { conn.disconnect() }
-    } catch (e: Exception) { 0 to null }
+    } catch (e: Exception) { RoomAnswer(0, null, null) }
 
-    private fun onRoomAnswer(room: String, code: Int, members: List<RoomTracker.Member>?) {
-        if (!roomPolling || confRoom?.removePrefix("*32") != room) return
-        if (members != null) {
-            val gone = roomTracker.update(members, confPeople.map { it.id to it.number })
-            if (gone.isNotEmpty()) {
-                val left = confPeople.filter { it.id in gone }
-                confPeople.removeAll { it.id in gone }
-                _notice.value = left.joinToString(", ") { it.name ?: it.number } + " left"
-                publish()
-            }
+    private fun applyRoom(members: List<RoomTracker.Member>) {
+        val gone = roomTracker.update(members, confPeople.map { it.id to it.number })
+        val left = confPeople.filter { it.id in gone }
+        confPeople.removeAll { it.id in gone }
+        roomTracker.untied(members).forEach { m ->
+            confPeople += Participant("room-${m.id}", m.number, Participant.Status.Talking, m.name.takeIf { it.isNotBlank() && it != m.number })
         }
-        when (code) {
+        if (left.isNotEmpty()) _notice.value = left.joinToString(", ") { it.name ?: it.number } + " left"
+        publish()
+    }
+
+    private fun onRoomAnswer(room: String, answer: RoomAnswer) {
+        if (!roomPolling || confRoom?.removePrefix("*32") != room) return
+        val members = answer.members
+        if (members != null) { roomSeen = true; roomGone = 0; applyRoom(members) }
+        if (answer.code == 404 && roomSeen && ++roomGone >= 3) {   // the room closed and the hang-up never reached us
+            confCall?.let { hangupCall(it) }
+            return
+        }
+        when (answer.code) {
             400, 401 -> roomPolling = false                       // will not get better during this call
             429 -> main.postDelayed(roomTick, ROOM_BUSY_MS)
             else -> main.postDelayed(roomTick, ROOM_POLL_MS)

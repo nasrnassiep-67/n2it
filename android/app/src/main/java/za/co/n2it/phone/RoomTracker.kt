@@ -5,10 +5,10 @@ package za.co.n2it.phone
  * Cautious on purpose, because a card must never go while the person can still hear the call:
  *  - a card is only tied to a member once its number has been seen in the room, so someone still being moved in stays;
  *  - a card only goes after its member has been missing from two lists in a row.
- * Plain Kotlin with no Android calls, and it never adds a card.
+ * Plain Kotlin with no Android calls.
  */
 internal class RoomTracker {
-    data class Member(val id: Int, val match: String, val self: Boolean)
+    data class Member(val id: Int, val match: String, val self: Boolean, val number: String = "", val name: String = "")
 
     private val learned = HashMap<String, Int>()   // card id -> room member id
     private val missing = HashMap<String, Int>()   // card id -> lists in a row without them
@@ -39,6 +39,9 @@ internal class RoomTracker {
         gone.forEach { learned.remove(it); missing.remove(it) }
         return gone
     }
+
+    /** Members in the room with no card yet: someone the host of the room added, or everyone on a phone that was moved in. */
+    fun untied(members: List<Member>) = members.filter { !it.self && it.id !in learned.values }
 
     companion object {
         /** Same rule as the PBX's "match": digits only, the last 9 when there are 9 or more, so 082…, 2782… and +2782… agree. */
