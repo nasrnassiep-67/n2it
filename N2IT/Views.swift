@@ -248,10 +248,15 @@ struct ParticipantCard: View {
     }
 
     var body: some View {
-        let drop = Button { sip.dropParticipant(p.id) } label: {
-            Image(systemName: "phone.down.fill").font(.system(size: 18)).foregroundStyle(.white)
-                .frame(width: 44, height: 44).background(Color.red).clipShape(Circle())
-        }.buttonStyle(.plain).accessibilityLabel("Hang up on \(title)")
+        // Only the operator removes people; anyone can still cancel a call of their own that is ringing or on hold
+        let drop = Group {
+            if sip.roomOperator || p.status != .talking {
+                Button { sip.dropParticipant(p.id) } label: {
+                    Image(systemName: "phone.down.fill").font(.system(size: 18)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).background(Color.red).clipShape(Circle())
+                }.buttonStyle(.plain).accessibilityLabel("Hang up on \(title)")
+            }
+        }
         let initial = Text(String(title.first(where: { $0.isLetter || $0.isNumber }) ?? "?").uppercased())
         Group {
             if tall {
@@ -390,7 +395,7 @@ struct CallView: View {
     private var connected: Bool { sip.onHold || sip.activeCall?.state == .StreamsRunning || sip.activeCall?.state == .Connected }
     private var ringingIn: Bool { sip.activeCall?.state == .IncomingReceived }
     private var label: String {
-        if sip.inConference { return "Conference · \(sip.participants.count + 1) people" }
+        if sip.inConference { return "Conference · \(sip.roomCount ?? sip.participants.count + 1) people" }
         switch sip.activeCall?.state {
         case .IncomingReceived: return "Incoming call"
         case .OutgoingProgress, .OutgoingInit: return "Calling…"
