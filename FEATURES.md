@@ -55,6 +55,8 @@ iOS column is for the Mac session to check against the iOS code and close** (✓
 | Store | Google Play (internal testing 0.3.8+, target SDK 36, App Bundle) + APK on the download page | Microsoft Store (in certification) + installers | TestFlight; App Store (unlisted) prepared |
 
 ## History (newest first)
+- Android 0.3.17 (branch rename-novamo, in test): every app user in a conference room sees who is in it; cards tie to the real extension; only the operator (the phone that pressed Merge) can remove someone; cards that never match go after 15 s; a refused REFER removes its card; 3 x 404 after a 200 ends the call.
+- Android 0.3.12 to 0.3.15 (branch rename-novamo): app renamed Novamo, new icon, navy and teal colours, branded sign-in screen, neutral hints.
 - Android 0.3.11 (branch android-firebase-push, in test): Firebase wake-up for incoming calls when the app is asleep.
 - Android 0.3.10 (2026-11-06): a conference card goes when that person leaves the room, with "<Name> left"; the app asks the PBX every 3 s (/app/n2it/room.php).
 - Android 0.3.9 (2026-10-31): recents keep the last 30 days (max 3,000 calls) per account, saved across restarts (were in memory only). iOS 0.3.4 / Windows 0.2.13 same rule.
