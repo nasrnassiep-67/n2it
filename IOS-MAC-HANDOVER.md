@@ -534,3 +534,112 @@ Answer to your report of 2026-10-29 (1002 -> IVR 0861086108 at 15:26, keypad dig
   Review** for Clients. The App Store 0.3.1 (unlisted, waiting for review) does **not** have this fix.
 - **Please check Android:** Android's WebRTC engine probably has the same RFC 2833-only problem with Opus. If digits don't
   reach FreeSWITCH there either, the same SIP INFO fallback fixes it.
+
+## ANSWER FROM THE VOIP-SERVER SESSION (2026-11-06): who is in a conference room
+
+Answers the request above. Live on voip and the pilot, every tenant, baseline 2026.11.06-1. Proven with Android 0.3.10.
+Rule 4: a card goes after its id is missing from TWO 200 answers in a row. A 404 leaves the cards as they are and polling carries on.
+Android reference: `RoomTracker.kt` and the room poll in `SipManager.kt`.
+
+Tells an app who is in its *32 conference room, so it can drop a card when someone leaves.
+Status: live on the pilot and voip 2026-11-06, baseline 2026.11.06-1. Proven with Android 0.3.10 on n2it: the card went when the cordless hung up.
+
+### Request
+`GET https://<company PBX>/app/n2it/room.php?room=1234567`
+
+HTTP Basic auth = extension + its SIP password, as for `contacts.php`. `room` = the 7 digits dialled after `*32`.
+
+### Answer (200)
+```json
+{"room":"1234567","count":3,"members":[
+  {"id":12,"number":"1002","match":"1002","name":"Nas","in_room_seconds":84,"self":true},
+  {"id":13,"number":"0821234567","match":"821234567","name":"0821234567","in_room_seconds":61,"self":false}
+]}
+```
+- `id`: the member's number in this room. Stable while they stay in; it is not reused for another person in the room.
+- `match`: compare this with the same value worked out from the card's number: digits only, last 9 digits if there are 9 or more,
+  otherwise all of them. So 0821234567, 27821234567 and +27821234567 match. Confirmed: an outside caller shows as dialled (0739080355), with the same number as the name.
+- `self`: this login. Never show a card or a "left" message for it.
+
+### Other answers
+| Code | Meaning | What the app does |
+| --- | --- | --- |
+| 400 | `room` is not 7 digits | App bug, stop polling |
+| 401 | Wrong extension or password | Leave the cards, stop polling |
+| 404 | Room does not exist, or this login is not in it | Leave the cards, keep polling while the call is up |
+| 429 | Too many requests from this IP | Leave the cards, wait 10 s |
+| 503, timeout, no network | PBX cannot answer | Leave the cards, keep polling |
+
+### App rules
+1. Poll every 3 s, only while in a *32 room. Stop when the call ends. Never overlap requests.
+2. Only a 200 changes the cards. Anything else leaves them exactly as they are.
+3. Learn a person's `id` the first time their `match` appears. Until a person has been seen in a 200, never remove their card,
+   because the REFER moving them in may still be running.
+4. Remove a card only when its `id` has been missing from two 200 answers in a row, then show "<Name> left".
+5. People count = `count` from the latest 200.
+6. No matching card for a member (joined another way): leave it for now, no card is invented.
+
+### Server side
+- `room.php` + `install-room-route.sh` in this folder. Undo: `install-room-route.sh --undo`.
+- Conference name on the PBX is `<room>@<PBX domain>`; only rooms of the PBX in the Host header can be asked for.
+- Being "in the room" is checked on `sip_auth_username` and `dialed_user` of each member, not caller ID. Confirmed for the host (sip_auth_username = extension).
+  An outside caller has neither, correctly. An extension moved in by REFER does NOT pass (neither is set on that leg), so it gets 404. That is fine: only the host has cards.
+- Rate limit 120 a minute per IP, burst 30.
+
+## ROOM API UPDATE FROM THE VOIP-SERVER SESSION (2026-11-06, replaces the answer above)
+
+Cards for every app user, real extensions, operator-only removal. Android reference: branch `rename-novamo`, `RoomTracker.kt` and `SipManager.kt`.
+
+Tells an app who is in its *32 conference room, so it can drop a card when someone leaves.
+Status: live on the pilot and voip 2026-11-06, baseline 2026.11.06-1. Proven with Android 0.3.10 on n2it: the card went when the cordless hung up.
+
+### Request
+`GET https://<company PBX>/app/n2it/room.php?room=1234567`
+
+HTTP Basic auth = extension + its SIP password, as for `contacts.php`. `room` = the 7 digits dialled after `*32`. Leave `?room=` off to find the room this login is in: an app that was moved in by someone else never dialled it. The answer gives `room`; 404 = not in one.
+
+### Answer (200)
+```json
+{"room":"1234567","count":3,"host":true,"members":[
+  {"id":12,"number":"1002","match":"1002","name":"Nas","in_room_seconds":84,"self":true},
+  {"id":13,"number":"0821234567","match":"821234567","name":"0821234567","in_room_seconds":61,"self":false}
+]}
+```
+- `host`: true for the operator, the phone that pressed Merge. Only the operator gets a hang-up button on cards; everyone else just sees who is in the room.
+- `id`: the member's number in this room. Stable while they stay in; it is not reused for another person in the room.
+- `match`: compare this with the same value worked out from the card's number: digits only, last 9 digits if there are 9 or more,
+  otherwise all of them. So 0821234567, 27821234567 and +27821234567 match. Confirmed: an outside caller shows as dialled (0739080355), with the same number as the name.
+- `self`: this login. Never show a card or a "left" message for it.
+
+`number` and `match` are the extension for apps on WebRTC, whose caller ID is a random contact. Never match on `name`.
+
+### Remove someone
+`POST /app/n2it/room.php`, form fields `room=1234567&member=13` (the `id`). Same login. Operator only. Answers: 200 `{"ok":true}`; 403 if you are not the operator; 404 if you are not in the room, the member is gone or it is you. They drop off the next list. Removing leaves fewer than two: the room closes.
+
+### Other answers
+| Code | Meaning | What the app does |
+| --- | --- | --- |
+| 400 | `room` is not 7 digits | App bug, stop polling |
+| 401 | Wrong extension or password | Leave the cards, stop polling |
+| 404 | Room does not exist, or this login is not in it | Leave the cards, keep polling while the call is up |
+| 429 | Too many requests from this IP | Leave the cards, wait 10 s |
+| 503, timeout, no network | PBX cannot answer | Leave the cards, keep polling |
+
+### App rules
+0. On any answered call, ask without `?room=` every 10 s. On a 200 the call is in a room: treat it as the room call and go to rule 1.
+1. Poll every 3 s, only while in a *32 room. Stop when the call ends. Never overlap requests.
+2. Only a 200 changes the cards. Anything else leaves them exactly as they are.
+3. Learn a person's `id` the first time their `match` appears. Until a person has been seen in a 200, never remove their card,
+   because the REFER moving them in may still be running.
+4. Remove a card only when its `id` has been missing from two 200 answers in a row, then show "<Name> left".
+5. People count = `count` from the latest 200.
+6. A member with no card gets one, from `number` and `name`. Every app user in the room sees everyone, not only the host.
+7. A card still untied after 15 s goes quietly, with no "left" message: someone else answered it (pickup, forward), and their member gets its own card. Same if the REFER fails.
+8. Safety net: 200 seen before, then 404 three times in a row = the room closed. End the call locally, stop polling, clear the cards.
+
+### Server side
+- `room.php` + `install-room-route.sh` in this folder. Undo: `install-room-route.sh --undo`.
+- Conference name on the PBX is `<room>@<PBX domain>`; only rooms of the PBX in the Host header can be asked for.
+- Being "in the room" is checked on `sip_auth_username` and `dialed_user` of each member, not caller ID. Confirmed for the host (sip_auth_username = extension).
+  An outside caller has neither, correctly. An app moved in by REFER passes on `dialed_user` (seen 2026-11-06, 1004). A call to yourself (the own-devices path) has neither and gets 404.
+- Rate limit 240 a minute per IP, burst 30.
