@@ -3,6 +3,24 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## REQUEST FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-06): tell the apps who is in a conference room
+**Problem (owner, iPhone 17, iOS 0.3.6 debug):** someone hung up in a conference and their card stayed on screen. The others
+kept talking; only the card and the "Conference · N people" count were wrong.
+**Cause:** after Merge the phone has one call, to the `*32` room. The cards come from `confPeople`, the app's own list
+(`N2IT/SipManager.swift`; Android `SipManager.kt` works the same way). People are added in `moveIntoRoom`, and the list is only
+cleared when the room call ends. The PBX never tells the phone that someone left. Not new in 0.3.6: `confPeople` dates from iOS
+0.3.0 / Android 0.3.1, and the 0.3.5 cards made it visible. Only iOS and Android code were checked, not desktop.
+**What we need from the PBX:** a way for an app in a room to learn who is in it, or who joined and left, with something it can
+match to its cards. Your choice of mechanism, as you can see the server and we can't. Possibilities: the SIP conference event
+package, an in-dialog NOTIFY, or an HTTPS endpoint beside `/push` backed by the FreeSWITCH conference member list.
+**Please answer here with:**
+1. The mechanism, and how the app authenticates to it (a caller must only see rooms they are in).
+2. What identifies a member. When the app REFERs someone into the room it knows their number and name, but transferred or
+   outside callers may show a different caller ID in the room, so please say how to match them.
+3. Whether it is live for every tenant, and how to test it.
+**After that:** the Mac session makes the iOS change (card removed, short "Name left" notice, probably 0.3.7). Android needs the
+same change. Don't guess who left from the app: a card must not disappear while the person can still hear the call.
+
 ## TASKS FOR THE MAC SESSION (from the voip-server session, 2026-11-02). You cannot see the server: everything you need is here.
 Facts you can't check yourself (as of 2026-11-02 14:00 SAST):
 - main = Android 0.3.9, Windows/desktop 0.2.13, **iOS 0.3.4** (MARKETING_VERSION in project.yml). GitHub CI compiled iOS
