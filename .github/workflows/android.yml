@@ -1,7 +1,7 @@
 name: Android APK
 on:
   push:
-    branches: [main, android-firebase-push]
+    branches: [main, android-firebase-push, rename-novamo]
     paths: ['android/**', '.github/workflows/android.yml']
   workflow_dispatch:
 permissions:

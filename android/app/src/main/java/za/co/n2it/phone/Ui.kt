@@ -211,7 +211,8 @@ fun LoginScreen(done: () -> Unit) {
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(24.dp).systemBarsPadding()) {
         Spacer(Modifier.weight(1f))
-        Text("N2IT Phone", fontSize = 32.sp)
+        Text("Novamo", fontSize = 32.sp)
+        Text("powered by N2IT", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Company code") },
             singleLine = true, modifier = Modifier.fillMaxWidth(),
