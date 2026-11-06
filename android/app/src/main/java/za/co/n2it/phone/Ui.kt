@@ -460,7 +460,7 @@ fun SettingsTab(onSignOut: () -> Unit) {
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         StatusRow(); Spacer(Modifier.height(4.dp)); DndButton(); Spacer(Modifier.height(8.dp))
-        OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Client (e.g. n2it)") },
+        OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Client (e.g. yourcompany)") },
             singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text(acc.domain) })
         OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
@@ -509,7 +509,7 @@ private fun EchoSection() {
     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Use the phone's own echo canceller")
-            Text("Off: N2IT's echo canceller (recommended). Try on only if people hear themselves. Applies from the next call.",
+            Text("Off: the app's echo canceller (recommended). Try on only if people hear themselves. Applies from the next call.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(hw, { SipManager.setPhoneEchoCanceller(it) })
@@ -617,7 +617,7 @@ private fun AddAccountDialog(onDismiss: () -> Unit, onAdd: (Account) -> Unit) {
         title = { Text("Add account") },
         text = { Column {
             OutlinedTextField(a.tenant, { a = a.copy(tenant = it) }, label = { Text("Company code") }, singleLine = true,
-                supportingText = { Text(if (a.domain.isEmpty()) "e.g. n2it" else "Connects to ${a.domain}") })
+                supportingText = { Text(if (a.domain.isEmpty()) "e.g. yourcompany" else "Connects to ${a.domain}") })
             OutlinedTextField(a.user, { a = a.copy(user = it) }, label = { Text("Extension") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             PasswordField(a.password, { a = a.copy(password = it) })
