@@ -337,7 +337,17 @@ object SipManager : SipUa.Events {
         val code = Regex("SIP/2.0\\s+(\\d{3})").find(req.body)?.groupValues?.get(1)?.toIntOrNull() ?: return
         when {
             code in 200..299 -> hangupCall(c)
-            code >= 300 -> { c.transferring = false; confPeople.removeAll { it.id == c.callId }; _notice.value = "Transfer failed ($code)"; publish() }
+            code >= 300 -> {
+                c.transferring = false
+                val card = confPeople.firstOrNull { it.id == c.callId }
+                if (card == null) { _notice.value = "Transfer failed ($code)"; return }
+                // Refused move into the room (they went to voicemail, say): drop that leg and go back to the room
+                confPeople.remove(card)
+                _notice.value = "Could not add ${card.name ?: card.number}"
+                hangupCall(c)
+                confCall?.media?.setMuted(_muted.value)
+                publish()
+            }
         }
     }
 
