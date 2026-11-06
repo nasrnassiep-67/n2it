@@ -618,6 +618,8 @@ struct LoginView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Text("powered by N2IT").font(.footnote).foregroundStyle(.secondary).listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                 Section(header: Text("Sign in"), footer: Text(acc.domain.isEmpty ? "Your company code, or the full server address" : "Connects to \(acc.domain)")) {
                     TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -633,7 +635,7 @@ struct LoginView: View {
                     }
                 }.disabled(!acc.isConfigured || checking)
                 Section { VersionText() }.listRowBackground(Color.clear)
-            }.navigationTitle("N2IT Phone")
+            }.navigationTitle("Novamo")
             .onAppear {
                 if sip.loginRefused { acc.password = ""; problem = "Wrong extension or password. Sign in again." }
             }
