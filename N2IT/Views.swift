@@ -608,6 +608,9 @@ struct SignInStatus: View {
     }
 }
 
+/// Novamo brand navy: the sign-in screen stays this colour in light and dark mode alike (as Android).
+private let novamoNavy = Color(red: 10 / 255, green: 35 / 255, blue: 66 / 255)
+
 struct LoginView: View {
     @EnvironmentObject var sip: SipManager
     @State private var acc = Account.load()
@@ -616,29 +619,58 @@ struct LoginView: View {
     var done: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Text("powered by N2IT").font(.footnote).foregroundStyle(.secondary).listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                Section(header: Text("Sign in"), footer: Text(acc.domain.isEmpty ? "Your company code, or the full server address" : "Connects to \(acc.domain)")) {
-                    TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    PasswordField(text: $acc.password)
-                }
-                SignInStatus(checking: checking, problem: problem, domain: acc.domain)
-                Button("Sign in") {
-                    checking = true; problem = nil
-                    Task {
-                        problem = await sip.signInProblem(acc, previous: nil)
-                        checking = false
-                        if problem == nil { acc.save(); PushManager.shared.uploadToken(); sip.loginRefused = false; done() }
+        GeometryReader { geo in
+            ScrollView {
+                VStack(spacing: 24) {
+                    Spacer(minLength: 0)
+                    VStack(spacing: 14) {
+                        Image("NovamoLogo").resizable().frame(width: 84, height: 84)
+                            .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+                            .accessibilityHidden(true)
+                        Text("Novamo").font(.system(size: 34, weight: .semibold)).foregroundStyle(.white)
                     }
-                }.disabled(!acc.isConfigured || checking)
-                Section { VersionText() }.listRowBackground(Color.clear)
-            }.navigationTitle("Novamo")
-            .onAppear {
-                if sip.loginRefused { acc.password = ""; problem = "Wrong extension or password. Sign in again." }
+                    card
+                    Spacer(minLength: 0)
+                    VersionText().environment(\.colorScheme, .dark)
+                }
+                .padding(24)
+                .frame(minHeight: geo.size.height)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
+        .background(novamoNavy.ignoresSafeArea())
+        .onAppear {
+            if sip.loginRefused { acc.password = ""; problem = "Wrong extension or password. Sign in again." }
+        }
+    }
+
+    /// The form: always a white card with dark text, whatever the phone's appearance.
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Text(acc.domain.isEmpty ? "Your company code, or the full server address" : "Connects to \(acc.domain)")
+                .font(.footnote).foregroundStyle(.secondary)
+            Divider()
+            TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Divider()
+            PasswordField(text: $acc.password)
+            Divider()
+            SignInStatus(checking: checking, problem: problem, domain: acc.domain)
+            Button {
+                checking = true; problem = nil
+                Task {
+                    problem = await sip.signInProblem(acc, previous: nil)
+                    checking = false
+                    if problem == nil { acc.save(); PushManager.shared.uploadToken(); sip.loginRefused = false; done() }
+                }
+            } label: {
+                Text(checking ? "Signing in…" : "Sign in").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large).tint(novamoNavy)
+            .disabled(!acc.isConfigured || checking)
+        }
+        .padding(20)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .environment(\.colorScheme, .light)
     }
 }
