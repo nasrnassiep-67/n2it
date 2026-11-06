@@ -337,17 +337,7 @@ object SipManager : SipUa.Events {
         val code = Regex("SIP/2.0\\s+(\\d{3})").find(req.body)?.groupValues?.get(1)?.toIntOrNull() ?: return
         when {
             code in 200..299 -> hangupCall(c)
-            code >= 300 -> {
-                c.transferring = false
-                val card = confPeople.firstOrNull { it.id == c.callId }
-                if (card == null) { _notice.value = "Transfer failed ($code)"; return }
-                // Refused move into the room (they went to voicemail, say): drop that leg and go back to the room
-                confPeople.remove(card)
-                _notice.value = "Could not add ${card.name ?: card.number}"
-                hangupCall(c)
-                confCall?.media?.setMuted(_muted.value)
-                publish()
-            }
+            code >= 300 -> transferFailed(c, "Transfer failed ($code)")
         }
     }
 
@@ -957,13 +947,25 @@ object SipManager : SipUa.Events {
         refer(c, "<${if ('@' in n) "sip:$n" else "sip:$n@${ua.domain}"}>")
     }
 
+    /** A refused move into the room (they went to voicemail, say) drops that leg and returns to the room; any other transfer just says so. */
+    private fun transferFailed(c: Call, message: String) {
+        c.transferring = false
+        val card = confPeople.firstOrNull { it.id == c.callId }
+        if (card == null) { _notice.value = message; return }
+        confPeople.remove(card)
+        _notice.value = "Could not add ${card.name ?: card.number}"
+        hangupCall(c)
+        confCall?.media?.setMuted(_muted.value)
+        publish()
+    }
+
     private fun refer(c: Call, referTo: String) {
         val d = c.dialog ?: return
         c.transferring = true
         val req = ua.inDialog(d, "REFER").add("Refer-To", referTo).add("Referred-By", "<${ua.aor}>")
         ua.request(req, onRetry = { d.localCseq = it.cseq }) { res ->
             if (res.status < 200) return@request
-            if (res.status >= 300) { c.transferring = false; _notice.value = "Transfer refused (${res.status})"; return@request }
+            if (res.status >= 300) { transferFailed(c, "Transfer refused (${res.status})"); return@request }
             // Accepted: the PBX reports progress in NOTIFYs; if none comes, drop out anyway after 10 s
             main.postDelayed({ if (c.transferring) hangupCall(c) }, 10_000L)
         }
