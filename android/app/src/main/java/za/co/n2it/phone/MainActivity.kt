@@ -33,11 +33,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 
 // N2IT brand colours (same as the PBX theme: blue #145ab6, navy #0f3d80), instead of the wallpaper's colours.
-private val N2itLight = lightColorScheme(primary = Color(0xFF145AB6), onPrimary = Color.White,
-    primaryContainer = Color(0xFFD6E4F8), onPrimaryContainer = Color(0xFF0F3D80),
+private val N2itLight = lightColorScheme(primary = Color(0xFF0A2342), onPrimary = Color.White,
+    primaryContainer = Color(0xFFCFF5F0), onPrimaryContainer = Color(0xFF0A2342),
     secondary = Color(0xFF0F3D80), secondaryContainer = Color(0xFFE3EBF7), onSecondaryContainer = Color(0xFF0B2F63))
-private val N2itDark = darkColorScheme(primary = Color(0xFF8FB8EE), onPrimary = Color(0xFF0B2F63),
-    primaryContainer = Color(0xFF0F3D80), onPrimaryContainer = Color(0xFFD6E4F8),
+private val N2itDark = darkColorScheme(primary = Color(0xFF16C7B7), onPrimary = Color(0xFF0A2342),
+    primaryContainer = Color(0xFF0E4A55), onPrimaryContainer = Color(0xFFCFF5F0),
     secondary = Color(0xFFA9C4EA), secondaryContainer = Color(0xFF16345F), onSecondaryContainer = Color(0xFFE3EBF7))
 
 class MainActivity : ComponentActivity() {

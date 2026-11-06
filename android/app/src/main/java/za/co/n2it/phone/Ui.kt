@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.sp
 import java.text.DateFormat
 import java.util.Date
 
+private val LoginNavy = Color(0xFF0A2342)
+private val LoginTeal = Color(0xFF16C7B7)
 private val Green = Color(0xFF2E9E4F)
 private val Red = Color(0xFFD64545)
 private val Orange = Color(0xFFE65100)
@@ -209,30 +211,39 @@ fun LoginScreen(done: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(if (wasRefused) "Wrong extension or password. Sign in again." else null) }
     val scope = rememberCoroutineScope()
-    Column(Modifier.fillMaxSize().padding(24.dp).systemBarsPadding()) {
+    // Navy brand screen in light and dark mode alike; the form sits on a white card
+    Column(Modifier.fillMaxSize().background(LoginNavy).padding(24.dp).systemBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.weight(1f))
-        Text("Novamo", fontSize = 32.sp)
-        Text("powered by N2IT", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.novamo_logo), null, Modifier.size(84.dp))
+        Spacer(Modifier.height(14.dp))
+        Text("Novamo", fontSize = 34.sp, color = Color.White)
+        Text("powered by N2IT", color = LoginTeal, style = MaterialTheme.typography.labelLarge)
         Spacer(Modifier.height(24.dp))
-        OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Company code") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-            supportingText = { Text(if (acc.domain.isEmpty()) "Your company code, or the full server address" else "Connects to ${acc.domain}") })
-        OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = {
-                busy = true; problem = null
-                scope.launch {
-                    val p = signInProblem(SipManager.verify(acc), acc.domain)
-                    busy = false
-                    if (p == null) { Account.save(ctx, acc); SipManager.clearRefused(); done() } else { problem = p; SipManager.stopRegistering() }
+        MaterialTheme(colorScheme = androidx.compose.material3.lightColorScheme(primary = LoginNavy)) {
+            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Color.White) {
+                Column(Modifier.padding(20.dp)) {
+                    OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Company code") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text(if (acc.domain.isEmpty()) "Your company code, or the full server address" else "Connects to ${acc.domain}") })
+                    OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = {
+                            busy = true; problem = null
+                            scope.launch {
+                                val p = signInProblem(SipManager.verify(acc), acc.domain)
+                                busy = false
+                                if (p == null) { Account.save(ctx, acc); SipManager.clearRefused(); done() } else { problem = p; SipManager.stopRegistering() }
+                            }
+                        },
+                        enabled = acc.isConfigured && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Signing in…" else "Sign in") }
+                    problem?.let { Spacer(Modifier.height(8.dp)); Text(it, color = Red) }
                 }
-            },
-            enabled = acc.isConfigured && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Signing in…" else "Sign in") }
-        problem?.let { Spacer(Modifier.height(8.dp)); Text(it, color = Red) }
+            }
+        }
         Spacer(Modifier.weight(1f))
-        VersionText()
+        MaterialTheme(colorScheme = androidx.compose.material3.darkColorScheme()) { VersionText() }
     }
 }
 
