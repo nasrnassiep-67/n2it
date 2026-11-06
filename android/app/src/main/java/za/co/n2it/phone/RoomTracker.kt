@@ -12,8 +12,9 @@ internal class RoomTracker {
 
     private val learned = HashMap<String, Int>()   // card id -> room member id
     private val missing = HashMap<String, Int>()   // card id -> lists in a row without them
+    private val waiting = HashMap<String, Int>()   // card id -> lists without ever finding their person
 
-    fun reset() { learned.clear(); missing.clear() }
+    fun reset() { learned.clear(); missing.clear(); waiting.clear() }
 
     /** [cards] = card id to number. Returns the ids of the cards whose person has left. */
     fun update(members: List<Member>, cards: List<Pair<String, String>>): List<String> {
@@ -38,6 +39,17 @@ internal class RoomTracker {
         }
         gone.forEach { learned.remove(it); missing.remove(it) }
         return gone
+    }
+
+    /** The room member behind a card, for removing them. */
+    fun memberOf(card: String) = learned[card]
+
+    /** Cards never matched after 5 lists (15 s): someone else answered that call, or it never joined. They go quietly. */
+    fun stale(cards: List<String>): List<String> {
+        waiting.keys.retainAll(cards.toSet())
+        val old = cards.filter { it !in learned }.filter { c -> (waiting.merge(c, 1, Int::plus) ?: 0) >= 5 }
+        old.forEach { waiting.remove(it) }
+        return old
     }
 
     /** Members in the room with no card yet: someone the host of the room added, or everyone on a phone that was moved in. */

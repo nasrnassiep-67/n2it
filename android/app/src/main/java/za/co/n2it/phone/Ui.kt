@@ -671,7 +671,7 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
             // One card per person, sharing the screen (owner 2026-10-11: one long line of numbers wrapped over itself)
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp))
-            ConferenceCards(call.participants, compact = pad, modifier = Modifier.weight(1f).fillMaxWidth())
+            ConferenceCards(call.participants, call.operator, compact = pad, modifier = Modifier.weight(1f).fillMaxWidth())
             Spacer(Modifier.height(20.dp))
         } else {
             Spacer(Modifier.weight(1f))
@@ -740,18 +740,18 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
 /** Conference: the space between the status line and the buttons, split evenly between the people (up to 4);
  *  with more people, or while the keypad is open, a scrolling list of short cards. */
 @Composable
-private fun ConferenceCards(people: List<Participant>, compact: Boolean, modifier: Modifier) {
+private fun ConferenceCards(people: List<Participant>, operator: Boolean, compact: Boolean, modifier: Modifier) {
     val split = !compact && people.size <= 4
     Column(if (split) modifier else modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         people.forEach { p ->
-            key(p.id) { ParticipantCard(p, if (split) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().height(76.dp)) }
+            key(p.id) { ParticipantCard(p, operator, if (split) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().height(76.dp)) }
         }
     }
 }
 
 /** Name, number, status and a hang-up for this person only. Tall cards stack it centred; short ones in a row. */
 @Composable
-private fun ParticipantCard(p: Participant, modifier: Modifier) {
+private fun ParticipantCard(p: Participant, operator: Boolean, modifier: Modifier) {
     val name = rememberContactName(p.number) ?: p.name
     val title = name ?: displayNumber(p.number)
     val number = if (name != null) displayNumber(p.number) else null
@@ -760,8 +760,10 @@ private fun ParticipantCard(p: Participant, modifier: Modifier) {
         Participant.Status.Ringing -> "Ringing…" to Color(0xFFE0A030)
         Participant.Status.OnHold -> "On hold" to MaterialTheme.colorScheme.onSurfaceVariant
     }
+    // Only the operator removes people; anyone can still cancel a call of their own that is ringing or on hold
+    val canDrop = operator || p.status != Participant.Status.Talking
     val drop: @Composable () -> Unit = {
-        FilledIconButton({ SipManager.dropParticipant(p.id) }, Modifier.size(44.dp),
+        if (canDrop) FilledIconButton({ SipManager.dropParticipant(p.id) }, Modifier.size(44.dp),
             colors = IconButtonDefaults.filledIconButtonColors(containerColor = Red)) { Icon(Icons.Default.CallEnd, "Hang up on $title", tint = Color.White) }
     }
     Surface(modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {

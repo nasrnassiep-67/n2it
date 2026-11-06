@@ -29,7 +29,8 @@ enum class CallState {
 }
 
 data class CallInfo(val number: String, val state: CallState, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false,
-                    val conference: Boolean = false, val participants: List<Participant> = emptyList(), val name: String? = null)
+                    val conference: Boolean = false, val participants: List<Participant> = emptyList(), val name: String? = null,
+                    val operator: Boolean = false)
 /** One other person in a conference (the conference screen gives each one a card). [id] is the SIP Call-ID. */
 /** [name] is the caller ID name the PBX sent (e.g. "Nasr" for 1002), when there is one. */
 data class Participant(val id: String, val number: String, val status: Status, val name: String? = null) {
@@ -130,7 +131,7 @@ object SipManager : SipUa.Events {
                 if (it.answered) Participant.Status.OnHold else Participant.Status.Ringing, it.name) }
             val people = confPeople + ringing
             _call.value = CallInfo(people.joinToString(", ") { it.name ?: it.number }, conf.state, false,
-                conf.localHold, consulting = others.any { it.answered && !it.autoMerge }, conference = true, participants = people)
+                conf.localHold, consulting = others.any { it.answered && !it.autoMerge }, conference = true, participants = people, operator = confOperator)
             return
         }
         val live = liveCalls().filter { !it.transferring || liveCalls().size == 1 }
@@ -336,7 +337,7 @@ object SipManager : SipUa.Events {
         val code = Regex("SIP/2.0\\s+(\\d{3})").find(req.body)?.groupValues?.get(1)?.toIntOrNull() ?: return
         when {
             code in 200..299 -> hangupCall(c)
-            code >= 300 -> { c.transferring = false; _notice.value = "Transfer failed ($code)" }
+            code >= 300 -> { c.transferring = false; confPeople.removeAll { it.id == c.callId }; _notice.value = "Transfer failed ($code)"; publish() }
         }
     }
 
@@ -547,7 +548,13 @@ object SipManager : SipUa.Events {
     fun dropParticipant(id: String) {
         val c = liveCalls().firstOrNull { it.callId == id && it !== confCall }
         if (c != null) { hangupCall(c); return }
-        _notice.value = "They are in the conference room: they can hang up themselves"
+        val room = confRoom?.removePrefix("*32")
+        val member = roomTracker.memberOf(id)
+        if (room == null || member == null) { _notice.value = "They are still joining: try again in a moment"; return }
+        Thread {
+            val ok = removeFromRoom(room, member)
+            main.post { if (!ok) _notice.value = "Could not remove them" }
+        }.start()
     }
 
     private fun end(c: Call) {
@@ -563,7 +570,7 @@ object SipManager : SipUa.Events {
         userHeld.remove(c)
         consultHoldDone(c)
         if (liveCalls().isEmpty()) { roomSearching = false; main.removeCallbacks(searchTick) }
-        if (c === confCall) { stopRoomPoll(); confCall = null; confRoom = null; confPeople.clear(); pendingMerge.clear()
+        if (c === confCall) { stopRoomPoll(); confOperator = false; confCall = null; confRoom = null; confPeople.clear(); pendingMerge.clear()
             liveCalls().forEach { it.autoMerge = false } }
         if (c.autoMerge) confCall?.media?.setMuted(_muted.value)
         // Another call may still be up (held caller after a consult)
@@ -990,6 +997,7 @@ object SipManager : SipUa.Events {
     private var confRoom: String? = null
     private val confPeople = mutableListOf<Participant>()
     private val pendingMerge = mutableListOf<Call>()
+    private var confOperator = false   // this phone pressed Merge: only it can remove people
     private const val ROOM_POLL_MS = 3_000L
     private const val ROOM_BUSY_MS = 10_000L
     private const val ROOM_SEARCH_MS = 10_000L
@@ -1013,7 +1021,7 @@ object SipManager : SipUa.Events {
         if (answered.size < 2) { _notice.value = "Wait for them to answer, then merge"; return }
         val room = "*32" + (1..7).map { "0123456789"[java.security.SecureRandom().nextInt(10)] }.joinToString("")
         val c = startCall(room) ?: run { _notice.value = "Could not start the conference"; return }
-        confRoom = room; confCall = c
+        confRoom = room; confCall = c; confOperator = true
         pendingMerge.clear(); pendingMerge.addAll(answered)
         publish()
     }
@@ -1075,7 +1083,7 @@ object SipManager : SipUa.Events {
                 val room = answer.room
                 if (answer.code == 200 && room != null && confCall == null && c.state !in ended) {
                     roomSearching = false
-                    confCall = c; confRoom = "*32$room"; confPeople.clear()
+                    confCall = c; confRoom = "*32$room"; confOperator = false; confPeople.clear()
                     startRoomPoll()
                     applyRoom(answer.members.orEmpty())
                 } else if (answer.code == 400 || answer.code == 401) roomSearching = false
@@ -1113,10 +1121,25 @@ object SipManager : SipUa.Events {
         } finally { conn.disconnect() }
     } catch (e: Exception) { RoomAnswer(0, null, null) }
 
+    private fun removeFromRoom(room: String, member: Int): Boolean = try {
+        val acc = Account.load(appContext)
+        val conn = java.net.URL("https://${acc.domain}/app/n2it/room.php").openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 5_000; conn.readTimeout = 5_000
+        conn.requestMethod = "POST"; conn.doOutput = true
+        val login = android.util.Base64.encodeToString("${acc.user.trim()}:${acc.password}".toByteArray(), android.util.Base64.NO_WRAP)
+        conn.setRequestProperty("Authorization", "Basic $login")
+        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        conn.outputStream.use { it.write("room=$room&member=$member".toByteArray()) }
+        try { conn.responseCode == 200 } finally { conn.disconnect() }
+    } catch (e: Exception) { false }
+
     private fun applyRoom(members: List<RoomTracker.Member>) {
         val gone = roomTracker.update(members, confPeople.map { it.id to it.number })
         val left = confPeople.filter { it.id in gone }
         confPeople.removeAll { it.id in gone }
+        val pending = liveCalls().map { it.callId }.toSet()
+        val stale = roomTracker.stale(confPeople.map { it.id }.filter { it !in pending })
+        confPeople.removeAll { it.id in stale }
         roomTracker.untied(members).forEach { m ->
             confPeople += Participant("room-${m.id}", m.number, Participant.Status.Talking, m.name.takeIf { it.isNotBlank() && it != m.number })
         }
