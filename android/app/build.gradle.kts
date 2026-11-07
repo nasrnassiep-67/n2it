@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -11,8 +12,8 @@ android {
         applicationId = "za.co.n2it.softphone"
         minSdk = 26
         targetSdk = 36
-        versionCode = 36
-        versionName = "0.3.10"
+        versionCode = 44
+        versionName = "0.3.18"
         fun prop(n: String) = (project.findProperty(n) as String? ?: "").replace("\"", "\\\"")
         buildConfigField("String", "DEV_TENANT", "\"${prop("sipTenant")}\"")
         buildConfigField("String", "DEV_USER", "\"${prop("sipUser")}\"")
@@ -64,4 +65,7 @@ dependencies {
     // Calls: WebRTC (BSD) for audio, OkHttp (Apache 2.0) for the SIP WebSocket. No Linphone (AGPLv3) since 0.3.0.
     implementation("io.github.webrtc-sdk:android:144.7559.15")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Push only: wakes the app for a call. No Analytics or other Firebase products.
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

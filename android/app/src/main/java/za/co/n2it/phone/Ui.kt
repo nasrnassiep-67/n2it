@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import java.text.DateFormat
 import java.util.Date
 
+private val LoginNavy = Color(0xFF0A2342)
 private val Green = Color(0xFF2E9E4F)
 private val Red = Color(0xFFD64545)
 private val Orange = Color(0xFFE65100)
@@ -209,29 +210,38 @@ fun LoginScreen(done: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(if (wasRefused) "Wrong extension or password. Sign in again." else null) }
     val scope = rememberCoroutineScope()
-    Column(Modifier.fillMaxSize().padding(24.dp).systemBarsPadding()) {
+    // Navy brand screen in light and dark mode alike; the form sits on a white card
+    Column(Modifier.fillMaxSize().background(LoginNavy).padding(24.dp).systemBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.weight(1f))
-        Text("N2IT Phone", fontSize = 32.sp)
+        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.novamo_logo), null, Modifier.size(84.dp))
+        Spacer(Modifier.height(14.dp))
+        Text("Novamo", fontSize = 34.sp, color = Color.White)
         Spacer(Modifier.height(24.dp))
-        OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Company code") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-            supportingText = { Text(if (acc.domain.isEmpty()) "Your company code, or the full server address" else "Connects to ${acc.domain}") })
-        OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = {
-                busy = true; problem = null
-                scope.launch {
-                    val p = signInProblem(SipManager.verify(acc), acc.domain)
-                    busy = false
-                    if (p == null) { Account.save(ctx, acc); SipManager.clearRefused(); done() } else { problem = p; SipManager.stopRegistering() }
+        MaterialTheme(colorScheme = androidx.compose.material3.lightColorScheme(primary = LoginNavy)) {
+            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = Color.White) {
+                Column(Modifier.padding(20.dp)) {
+                    OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Company code") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text(if (acc.domain.isEmpty()) "Your company code, or the full server address" else "Connects to ${acc.domain}") })
+                    OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") },
+                        singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = {
+                            busy = true; problem = null
+                            scope.launch {
+                                val p = signInProblem(SipManager.verify(acc), acc.domain)
+                                busy = false
+                                if (p == null) { Account.save(ctx, acc); SipManager.clearRefused(); done() } else { problem = p; SipManager.stopRegistering() }
+                            }
+                        },
+                        enabled = acc.isConfigured && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Signing in…" else "Sign in") }
+                    problem?.let { Spacer(Modifier.height(8.dp)); Text(it, color = Red) }
                 }
-            },
-            enabled = acc.isConfigured && !busy, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Signing in…" else "Sign in") }
-        problem?.let { Spacer(Modifier.height(8.dp)); Text(it, color = Red) }
+            }
+        }
         Spacer(Modifier.weight(1f))
-        VersionText()
+        MaterialTheme(colorScheme = androidx.compose.material3.darkColorScheme()) { VersionText() }
     }
 }
 
@@ -459,7 +469,7 @@ fun SettingsTab(onSignOut: () -> Unit) {
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         StatusRow(); Spacer(Modifier.height(4.dp)); DndButton(); Spacer(Modifier.height(8.dp))
-        OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Client (e.g. n2it)") },
+        OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Client (e.g. yourcompany)") },
             singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text(acc.domain) })
         OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
@@ -508,7 +518,7 @@ private fun EchoSection() {
     Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Use the phone's own echo canceller")
-            Text("Off: N2IT's echo canceller (recommended). Try on only if people hear themselves. Applies from the next call.",
+            Text("Off: the app's echo canceller (recommended). Try on only if people hear themselves. Applies from the next call.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(hw, { SipManager.setPhoneEchoCanceller(it) })
@@ -616,7 +626,7 @@ private fun AddAccountDialog(onDismiss: () -> Unit, onAdd: (Account) -> Unit) {
         title = { Text("Add account") },
         text = { Column {
             OutlinedTextField(a.tenant, { a = a.copy(tenant = it) }, label = { Text("Company code") }, singleLine = true,
-                supportingText = { Text(if (a.domain.isEmpty()) "e.g. n2it" else "Connects to ${a.domain}") })
+                supportingText = { Text(if (a.domain.isEmpty()) "e.g. yourcompany" else "Connects to ${a.domain}") })
             OutlinedTextField(a.user, { a = a.copy(user = it) }, label = { Text("Extension") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             PasswordField(a.password, { a = a.copy(password = it) })
@@ -661,7 +671,7 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
             // One card per person, sharing the screen (owner 2026-10-11: one long line of numbers wrapped over itself)
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(12.dp))
-            ConferenceCards(call.participants, compact = pad, modifier = Modifier.weight(1f).fillMaxWidth())
+            ConferenceCards(call.participants, call.operator, compact = pad, modifier = Modifier.weight(1f).fillMaxWidth())
             Spacer(Modifier.height(20.dp))
         } else {
             Spacer(Modifier.weight(1f))
@@ -730,18 +740,18 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
 /** Conference: the space between the status line and the buttons, split evenly between the people (up to 4);
  *  with more people, or while the keypad is open, a scrolling list of short cards. */
 @Composable
-private fun ConferenceCards(people: List<Participant>, compact: Boolean, modifier: Modifier) {
+private fun ConferenceCards(people: List<Participant>, operator: Boolean, compact: Boolean, modifier: Modifier) {
     val split = !compact && people.size <= 4
     Column(if (split) modifier else modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         people.forEach { p ->
-            key(p.id) { ParticipantCard(p, if (split) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().height(76.dp)) }
+            key(p.id) { ParticipantCard(p, operator, if (split) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().height(76.dp)) }
         }
     }
 }
 
 /** Name, number, status and a hang-up for this person only. Tall cards stack it centred; short ones in a row. */
 @Composable
-private fun ParticipantCard(p: Participant, modifier: Modifier) {
+private fun ParticipantCard(p: Participant, operator: Boolean, modifier: Modifier) {
     val name = rememberContactName(p.number) ?: p.name
     val title = name ?: displayNumber(p.number)
     val number = if (name != null) displayNumber(p.number) else null
@@ -750,8 +760,10 @@ private fun ParticipantCard(p: Participant, modifier: Modifier) {
         Participant.Status.Ringing -> "Ringing…" to Color(0xFFE0A030)
         Participant.Status.OnHold -> "On hold" to MaterialTheme.colorScheme.onSurfaceVariant
     }
+    // Only the operator removes people; anyone can still cancel a call of their own that is ringing or on hold
+    val canDrop = operator || p.status != Participant.Status.Talking
     val drop: @Composable () -> Unit = {
-        FilledIconButton({ SipManager.dropParticipant(p.id) }, Modifier.size(44.dp),
+        if (canDrop) FilledIconButton({ SipManager.dropParticipant(p.id) }, Modifier.size(44.dp),
             colors = IconButtonDefaults.filledIconButtonColors(containerColor = Red)) { Icon(Icons.Default.CallEnd, "Hang up on $title", tint = Color.White) }
     }
     Surface(modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
