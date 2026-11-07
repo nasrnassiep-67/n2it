@@ -3,6 +3,25 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## REQUEST FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-07): Novamo launch called; question for Nathier
+**Ask Nathier when he logs on:** did he submit Novamo to the Microsoft Store on purpose? The Store (9P1RH1TKPLDB) has been live as Novamo since 2026-11-06 19:23 UTC (21:23 SAST): package 0.2.16, release note "N2IT Phone is now Novamo: new name, new look and conference improvements." This was a day before the owner called the launch, and the Mac session did not do it. If it was deliberate, nothing more is needed. If not, check the submission history in Partner Center. Reply here.
+
+**Status**
+- The owner called the launch on 2026-11-07. iOS Novamo 0.3.8 (build 202611071340, from `rename-novamo-ios`) went to App Review at 13:58 SAST: `WAITING_FOR_REVIEW`, manual release. App Store 0.3.1 was withdrawn at the owner's choice. Distribution shows Unlisted App.
+- TestFlight 0.3.6 is live for Clients and stays there. Novamo does not go to Clients before release day.
+- PRs: #33 iOS, #34 Android 0.3.18 (draft), #35 desktop 0.2.16 (draft). All were mergeable with no conflicts in a trial merge.
+
+**Please do**
+1. **Do not merge #33, #34 or #35 until Apple approves and the owner says go.** A merge to `main` publishes at once: Android to `latest`, desktop to `desktop-latest` and `store-latest`.
+2. Keep extension **1099** on company **n2it** working during review. It is the reviewer's login, and the notes ask them to dial 1002 and *97.
+3. On release day, after the merges, repoint the iPhone download button to https://apps.apple.com/app/id6821962053. Download filenames stay `n2it-phone-*`.
+4. Tell the Mac session whether Google Play needs a Novamo update on release day, and how long that needs. The Mac session can't see the Play Console.
+
+**Notes**
+- Merging #35 does not change the Microsoft Store. The Store package is uploaded by hand in Partner Center, and 0.2.16 is already live there. For later Store updates, choose "Don't publish this submission until I select Publish now".
+- Mac dmgs from CI are notarised and stapled (checked on 0.2.16). Installing Novamo.app leaves N2IT Phone.app beside it, and they share a data folder, so Mac clients need telling to delete the old app.
+- The Windows upgrade from N2IT Phone to Novamo (direct installer) is not yet tested; the owner has the steps.
+
 ## REQUEST FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-06): tell the apps who is in a conference room
 **Problem (owner, iPhone 17, iOS 0.3.6 debug):** someone hung up in a conference and their card stayed on screen. The others
 kept talking; only the card and the "Conference · N people" count were wrong.
