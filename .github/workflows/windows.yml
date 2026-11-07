@@ -48,7 +48,7 @@ jobs:
         run: |
           cp dist/*.appx n2it-phone-store.appx
           gh release delete store-latest --cleanup-tag -y || true
-          gh release create store-latest n2it-phone-store.appx --prerelease --title "N2IT Phone Microsoft Store package (latest)" \
+          gh release create store-latest n2it-phone-store.appx --prerelease --title "Novamo Microsoft Store package (latest)" \
             --notes "Build of commit ${GITHUB_SHA::7}. Unsigned on purpose (the Store signs it): upload it in Partner Center > N2IT Phone > Packages. It cannot be installed by double-click."
 
   linux:
@@ -155,5 +155,5 @@ jobs:
           gh release delete desktop-latest --cleanup-tag -y || true
           gh release create desktop-latest n2it-phone-setup.exe n2it-phone.AppImage n2it-phone.deb n2it-phone.pacman \
             $(ls n2it-phone-mac-*.dmg 2>/dev/null) --prerelease \
-            --title "N2IT Phone desktop (latest test build)" \
+            --title "Novamo desktop (latest test build)" \
             --notes "Build of commit ${GITHUB_SHA::7}. Windows: run n2it-phone-setup.exe (SmartScreen: More info > Run anyway). Linux: .deb (Ubuntu/Debian), .pacman (Arch/Omarchy) or AppImage (chmod +x; needs fuse2/libfuse2). macOS: n2it-phone-mac-arm64.dmg (Apple Silicon, M1 and later) or n2it-phone-mac-x64.dmg (Intel); drag to Applications, open once, then System Settings > Privacy & Security > Open Anyway.${mac_note}"
