@@ -1,38 +1,12 @@
-# N2IT Solutions Privacy Policy (draft)
-
-Last updated: 7 November 2026 · @N2IT Support
+# Privacy Policy
 
 How N2IT handles personal information on our website, our hosted phone system and the Novamo app (formerly N2IT Phone).
 
-## Review notes (delete before publishing)
-
-The current policy ([privacy-policy.pdf](https://www.n2it.co.za/privacy-policy.pdf), last changed December 2021) does not cover the phone apps or the hosted PBX. Apple needs a privacy policy URL for TestFlight external testing and for the App Store, and it must describe what the app collects.
-
-Gaps in the 2021 policy:
-
-| Gap | Why it matters |
-| --- | --- |
-| No mention of Novamo (iPhone or Android) | Apple reviewers check the policy against the app |
-| Push tokens sent to Apple (USA) not covered | POPIA section 72 covers sending personal information outside South Africa |
-| Call records, voicemail and recordings on the PBX not covered | This is the main personal information N2IT holds for clients |
-| No retention periods, no data subject rights, no Information Officer or Information Regulator details | Required under POPIA |
-| Mentions advertisers, a "personalise function" and "52% males" | None of these apply to N2IT; remove them |
-| Published as a PDF | Apple accepts a PDF link, but a normal web page at /privacy is easier to keep current |
-
-Confirm with the Apple side before publishing:
-
-- [ ] Does the app read the phone's contacts, or only show its own call list?
-- [ ] Does the app use any crash reporting or analytics service? This draft says it does not.
-- [ ] Is the call history stored on the phone only, and are the sign-in details kept in the iPhone Keychain (as section 3 says)?
-- [ ] Does the Android app use push (Firebase), or does it only ring while open?
-- [ ] Who is N2IT's registered Information Officer, and which email should requests go to?
-- [ ] Are calls recorded for any clients? (The PBX has call recording available.)
-
-Facts in this draft were taken from the PBX server code on 13 October 2026: the push sign-in service, the push sender and the iPhone registration page.
+Last updated: 7 November 2026
 
 ## 1. Who we are and what this policy covers
 
-N2IT Solutions ("N2IT", "we") is the responsible party for the personal information described here, under the Protection of Personal Information Act 4 of 2013 (POPIA). We respect your privacy and never sell your personal information or share it with advertisers.
+N2IT Solutions (“N2IT”, “we”) is the responsible party for the personal information described here, under the Protection of Personal Information Act 4 of 2013 (POPIA). We respect your privacy and never sell your personal information or share it with advertisers.
 
 This policy covers:
 
@@ -41,11 +15,23 @@ This policy covers:
 - the Novamo app for iPhone and Android
 - the iPhone registration page used to install test versions of Novamo
 
-Novamo is for staff of businesses that use N2IT's phone system. Your employer gives you your extension and password. If your employer is our client, they decide how their phone system is used, and we process call information on their behalf.
+Novamo is for staff of businesses that use N2IT’s phone system. Your employer gives you your extension and password. If your employer is our client, they decide how their phone system is used, and we process call information on their behalf.
 
 ## 2. Our website
 
-You can browse our website without telling us who you are. The site uses cookies to remember your preferences and to count visits. You can set your browser to refuse cookies. If you contact us through the website, we use your details only to answer you.
+You can browse our website without telling us who you are. We do not use analytics, advertising or tracking cookies, and we do not count or profile visitors.
+
+**Cookies.** Ordinary visitors get no cookies from our pages. WordPress sets login cookies only for N2IT staff who sign in to manage the site. Cloudflare may set a security cookie if it needs to check that a visitor is not a robot.
+
+**Cloudflare.** Our website runs behind Cloudflare, which protects it from attacks and delivers its pages. Cloudflare therefore receives your IP address and the pages you request. It also adds a small script that hides our email addresses from spam robots.
+
+**Contact and support forms.** The contact form asks for your name, company, email, phone number, topic, whether you want a call back, and your message. The support form asks for your name, email, subject and message. We also record your IP address and the page you sent it from. The form is emailed to our team (support@n2it.co.za or helpdesk@n2it.co.za) and a copy is kept in our website system, so we can answer you and follow up. We use your IP address to block spam and limit repeated sends.
+
+**Spam protection.** The forms and our login page use Cloudflare Turnstile, which checks that you are a person. Turnstile receives your IP address and basic browser information.
+
+**Server logs.** Our web server records IP addresses and the pages requested, for security and fault finding.
+
+**Other sites.** Our website links to other sites, such as our client portals and webmail. We are not responsible for the privacy practices of sites we do not run.
 
 ## 3. The Novamo app
 
@@ -53,26 +39,29 @@ Novamo lets you make and take calls on your company extension from your phone. I
 
 | Information | Why we use it | Where it is kept |
 | --- | --- | --- |
-| Company code, extension number and extension password | To sign you in to your company's phone system | On your phone (iPhone Keychain or Android secure storage), and on our PBX as part of your extension |
+| Company code, extension number and extension password | To sign you in to your company’s phone system | On your phone (iPhone Keychain or Android secure storage), and on our PBX as part of your extension |
 | Push token (a random code Apple gives your iPhone) | To wake the app and ring your phone when it is locked | On our PBX, linked to your extension, until you sign out or it stops working |
-| Phone numbers and names of callers, and the people you call | To connect calls and show who is calling | Shown on your phone and in the phone's call list; call records are kept on our PBX |
+| Phone numbers and names of callers, and the people you call | To connect calls and show who is calling | Shown on your phone and in the phone’s call list; call records are kept on our PBX |
 | The sound of your calls | To carry the call | Sent live over an encrypted connection, not stored, unless your company turned on call recording |
-| Your phone's IP address and app version | To connect calls, stop password guessing and fix faults | In our PBX logs |
+| Your phone’s IP address and app version | To connect calls, stop password guessing and fix faults | In our PBX logs |
 
 Permissions the app asks for:
 
 - **Microphone**: so the other person can hear you during a call. It is used only while a call is in progress.
 - **Notifications and calls (iPhone CallKit)**: so incoming calls ring like normal phone calls, also when the phone is locked.
+- **Contacts** (if you allow it): so you can call people from your address book and see callers’ names. Your contacts are read on your phone only; we do not upload them or use them for anything else.
+- **Phone calls** (Android): so N2IT calls work like normal phone calls on your phone. The app does not read your call history.
+- **Camera and location** (iPhone): the calling software we use requires these entries. Novamo has no video calls, never turns on the camera and never reads your location.
 
-The app does not collect your location, contacts, photos, browsing or other apps' data. It does not track you across other companies' apps or websites.
+The app does not collect your location, photos, browsing or other apps’ data. It does not track you across other companies’ apps or websites.
 
-**Push notifications.** When someone calls your extension and your iPhone is locked, our PBX sends a wake-up message through Apple Push Notification service. The message contains the caller's name and number and your extension number, so your phone can show who is calling.
+**Push notifications.** When someone calls your extension and your iPhone is locked, our PBX sends a wake-up message through Apple Push Notification service. The message contains the caller’s name and number and your extension number, so your phone can show who is calling.
 
 **Signing out.** When you sign out, the app deletes your sign-in details from the phone and our PBX deletes its push token. Deleting the app also removes everything it stored on the phone.
 
 ## 4. iPhone registration for test versions
 
-Before Novamo is on the App Store, we install test versions on registered iPhones. If you register on voip.n2it.co.za/download, we collect your name, company, extension (optional), your iPhone's device ID (UDID), model, iOS version and device name, and your IP address. We use these only to add your iPhone to Apple's list of test devices. The registration profile is not left on your phone.
+Before Novamo is on the App Store, we install test versions on registered iPhones. If you register on voip.n2it.co.za/download, we collect your name, company, extension (optional), your iPhone’s device ID (UDID), model, iOS version and device name, and your IP address. We use these only to add your iPhone to Apple’s list of test devices. The registration profile is not left on your phone.
 
 ## 5. Who we share information with
 
@@ -80,10 +69,11 @@ We do not sell personal information or share it for advertising. We share it onl
 
 - with **Apple** (Apple Push Notification service and TestFlight), to ring locked iPhones and to install test versions of the app
 - with the **telephone network providers** that carry calls to and from outside numbers, which receive the numbers needed to connect each call
+- with **Cloudflare**, which protects and delivers our website and checks that form senders are people
 - with **your employer**, if they are our client, who can see call records and voicemail for their own extensions
 - when the law requires it
 
-**Outside South Africa.** Apple processes push messages and test-device details in the United States. Under POPIA section 72, we send this information only to the extent needed for these services. Apple is bound by its own privacy terms and data protection law.
+**Outside South Africa.** Apple processes push messages and test-device details in the United States. Cloudflare, which protects our website, processes visitors’ IP addresses and requests on its global network. Under POPIA section 72, we send this information only to the extent needed for these services. Apple and Cloudflare are bound by their own privacy terms and data protection law.
 
 ## 6. How we protect information
 
@@ -111,9 +101,12 @@ To stop using Novamo, sign out of the app and delete it. To remove your iPhone r
 
 ## 9. Contact us and complaints
 
-Information Officer, N2IT Solutions: support@n2it.co.za
+Information Officer, N2IT Solutions: privacy@n2it.co.za
 
-If you are not happy with how we handled your request, you can complain to the Information Regulator (South Africa): [inforegulator.org.za](https://inforegulator.org.za), complaints.IR@inforegulator.org.za.
+If you are not happy with how we handled your personal information, you can complain to the Information Regulator (South Africa) at [inforegulator.org.za](https://inforegulator.org.za):
+
+- about how we process your personal information: POPIAComplaints@inforegulator.org.za
+- about a request for access to your information: PAIAComplaints@inforegulator.org.za
 
 ## 10. Changes to this policy
 
