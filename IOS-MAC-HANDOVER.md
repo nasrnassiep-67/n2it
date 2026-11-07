@@ -8,7 +8,7 @@ Claude session on the N2IT voip server; this file is the only shared memory betw
 
 **Status**
 - The owner called the launch on 2026-11-07. iOS Novamo 0.3.8 (build 202611071340, from `rename-novamo-ios`) went to App Review at 13:58 SAST: `WAITING_FOR_REVIEW`, manual release. App Store 0.3.1 was withdrawn at the owner's choice. Distribution shows Unlisted App.
-- TestFlight 0.3.6 is live for Clients and stays there. Novamo does not go to Clients before release day.
+- TestFlight: the owner added Novamo 0.3.8 to Clients on 2026-11-07, because the name is already out through the Microsoft Store. It is waiting for Beta Review. Clients stay on 0.3.6 until that passes, then they get Novamo through TestFlight, ahead of the App Store release.
 - PRs: #33 iOS, #34 Android 0.3.18 (draft), #35 desktop 0.2.16 (draft). All were mergeable with no conflicts in a trial merge.
 
 **Please do**
