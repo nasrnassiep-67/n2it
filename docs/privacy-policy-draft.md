@@ -1,6 +1,8 @@
 # N2IT Solutions Privacy Policy (draft)
 
-Oct 13, 2026 · @N2IT Support
+Last updated: 7 November 2026 · @N2IT Support
+
+How N2IT handles personal information on our website, our hosted phone system and the Novamo app (formerly N2IT Phone).
 
 ## Review notes (delete before publishing)
 
@@ -10,7 +12,7 @@ Gaps in the 2021 policy:
 
 | Gap | Why it matters |
 | --- | --- |
-| No mention of N2IT Phone (iPhone or Android) | Apple reviewers check the policy against the app |
+| No mention of Novamo (iPhone or Android) | Apple reviewers check the policy against the app |
 | Push tokens sent to Apple (USA) not covered | POPIA section 72 covers sending personal information outside South Africa |
 | Call records, voicemail and recordings on the PBX not covered | This is the main personal information N2IT holds for clients |
 | No retention periods, no data subject rights, no Information Officer or Information Regulator details | Required under POPIA |
@@ -36,18 +38,18 @@ This policy covers:
 
 - our website, www.n2it.co.za
 - our hosted phone system (PBX) at voip.n2it.co.za, including its web portal
-- the N2IT Phone app for iPhone and Android
-- the iPhone registration page used to install test versions of N2IT Phone
+- the Novamo app for iPhone and Android
+- the iPhone registration page used to install test versions of Novamo
 
-N2IT Phone is for staff of businesses that use N2IT's phone system. Your employer gives you your extension and password. If your employer is our client, they decide how their phone system is used, and we process call information on their behalf.
+Novamo is for staff of businesses that use N2IT's phone system. Your employer gives you your extension and password. If your employer is our client, they decide how their phone system is used, and we process call information on their behalf.
 
 ## 2. Our website
 
 You can browse our website without telling us who you are. The site uses cookies to remember your preferences and to count visits. You can set your browser to refuse cookies. If you contact us through the website, we use your details only to answer you.
 
-## 3. The N2IT Phone app
+## 3. The Novamo app
 
-N2IT Phone lets you make and take calls on your company extension from your phone. It collects only what it needs to do that. It has no adverts, no tracking and no analytics.
+Novamo lets you make and take calls on your company extension from your phone. It collects only what it needs to do that. It has no adverts, no tracking and no analytics.
 
 | Information | Why we use it | Where it is kept |
 | --- | --- | --- |
@@ -70,7 +72,7 @@ The app does not collect your location, contacts, photos, browsing or other apps
 
 ## 4. iPhone registration for test versions
 
-Before N2IT Phone is on the App Store, we install test versions on registered iPhones. If you register on voip.n2it.co.za/download, we collect your name, company, extension (optional), your iPhone's device ID (UDID), model, iOS version and device name, and your IP address. We use these only to add your iPhone to Apple's list of test devices. The registration profile is not left on your phone.
+Before Novamo is on the App Store, we install test versions on registered iPhones. If you register on voip.n2it.co.za/download, we collect your name, company, extension (optional), your iPhone's device ID (UDID), model, iOS version and device name, and your IP address. We use these only to add your iPhone to Apple's list of test devices. The registration profile is not left on your phone.
 
 ## 5. Who we share information with
 
@@ -105,7 +107,7 @@ Under POPIA you can ask us to:
 - delete information we no longer need
 - stop using your information for a purpose you object to
 
-To stop using N2IT Phone, sign out of the app and delete it. To remove your iPhone registration or other details, email us. If your extension belongs to your employer, we may also involve them.
+To stop using Novamo, sign out of the app and delete it. To remove your iPhone registration or other details, email us. If your extension belongs to your employer, we may also involve them.
 
 ## 9. Contact us and complaints
 
