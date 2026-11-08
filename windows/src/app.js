@@ -53,7 +53,6 @@ function signedIn(on) {
   $('me').textContent = on && acc ? `Ext ${acc.user} · ${acc.tenant}` : ''
   if (on) { renderRecent(); loadNames() }
 }
-$('tenant').oninput = () => ($('domain').textContent = domain($('tenant').value))
 
 /** Retire a UA the user switched away from (or logged out of): de-register it first so the PBX stops sending its
  *  calls here, then stop it. Its listeners are removed first, so its shutdown ("disconnected") can no longer
@@ -77,7 +76,7 @@ function wrongLogin() {
   const t = acc.tenant, u = acc.user
   retire(ua); ua = null
   show('phone', false); show('settings', false); show('contacts', false); show('login', true); signedIn(false)
-  $('tenant').value = t; $('user').value = u; $('pass').value = ''; $('domain').textContent = domain(t)
+  $('tenant').value = t; $('user').value = u; $('pass').value = ''
   $('login-err').textContent = 'Wrong extension or password. Check them and sign in again.'
   status('Not registered'); $('pass').focus()
 }
@@ -94,7 +93,7 @@ function verifyLogin(a) {
       try { u.removeAllListeners(); u.stop() } catch {}
       resolve(msg)
     }
-    const timer = setTimeout(() => finish(`No answer from ${d}. Check the company code and your internet connection.`), 12000)
+    const timer = setTimeout(() => finish('No answer. Check the company code and your internet connection.'), 12000)
     try {
       u = new JsSIP.UA({
         sockets: [new JsSIP.WebSocketInterface(`wss://${d}:${cfg().wssPort}/wss`)],
@@ -105,7 +104,7 @@ function verifyLogin(a) {
     u.on('registrationFailed', (e) => {
       const c = e.response?.status_code
       finish(WRONG_LOGIN.includes(c) ? 'Wrong extension or password. Check them and try again.'
-        : c === 404 ? `Extension not found at ${d}.` : `The PBX refused the sign-in (${e.cause}).`)
+        : c === 404 ? 'Extension not found. Check your company code and extension.' : `The PBX refused the sign-in (${e.cause}).`)
     })
     u.start()
   })
@@ -122,7 +121,7 @@ function connect() {
     display_name: acc.user, register: true, session_timers: false,
   }) } catch (e) { status(`Error: ${e.message}`); return }
   ua.on('connected', () => status('Connected, registering…'))
-  ua.on('disconnected', () => status(`Cannot reach ${d} (retrying)`))
+  ua.on('disconnected', () => status('Cannot reach the server (retrying)'))
   ua.on('registered', () => status('Registered'))
   ua.on('unregistered', () => status('Not registered'))
   ua.on('registrationFailed', (e) => {
@@ -378,7 +377,7 @@ async function activate(a, saved) {
 /** Log [a] out and forget it; with no account left, back to the sign-in screen. */
 async function logOut(a) {
   if (calls.length) { say('Finish the call first.'); return }
-  if (!ask(`Log out of extension ${a.user} (${domain(a.tenant)})? It is removed from this computer.`)) return
+  if (!ask(`Log out of extension ${a.user} (${a.tenant})? It is removed from this computer.`)) return
   if (key(a) !== key(acc)) { acc.saved = acc.saved.filter((x) => key(x) !== key(a)); await store.save(acc); renderAccounts(); return }
   const [next, ...rest] = acc.saved || []
   if (next) { await activate(next, rest); return }
@@ -390,7 +389,7 @@ function renderAccounts() {
     const active = a === acc
     const row = document.createElement('div'); row.className = 'contact'
     const who = document.createElement('div'); who.textContent = `Extension ${a.user}${active ? ' (active)' : ''}`
-    const sub = document.createElement('small'); sub.textContent = domain(a.tenant); who.append(document.createElement('br'), sub)
+    const sub = document.createElement('small'); sub.textContent = a.tenant; who.append(document.createElement('br'), sub)
     const btns = document.createElement('div')
     if (!active) btns.append(Object.assign(document.createElement('button'), { className: 'go', textContent: 'Use', onclick: () => useAccount(a) }))
     btns.append(Object.assign(document.createElement('button'), { className: 'end', textContent: 'Log out', onclick: () => logOut(a) }))
