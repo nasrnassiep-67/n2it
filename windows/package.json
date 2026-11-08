@@ -1,6 +1,6 @@
 {
   "name": "n2it-phone-desktop",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "description": "Novamo desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
@@ -73,7 +73,7 @@
         "pacman"
       ],
       "category": "Telephony",
-      "maintainer": "N2IT <support@n2it.co.za>"
+      "maintainer": "N2IT <support@novamo.co.za>"
     },
     "protocols": [
       {
@@ -111,7 +111,7 @@
   },
   "author": {
     "name": "N2IT",
-    "email": "support@n2it.co.za"
+    "email": "support@novamo.co.za"
   },
   "homepage": "https://n2it.co.za"
 }
