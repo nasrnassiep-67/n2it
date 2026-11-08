@@ -3,6 +3,17 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## UPDATE FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-08): owner says Novamo goes live now
+**Owner's decision:** "we can't set a release date because the system is live so everything goes live as at now." This replaces "do not merge" (point 1 of the 2026-11-07 request below).
+
+**Please do**
+1. **Merge #34 (Android 0.3.18) and #35 (desktop 0.2.16) now.** Both are drafts: mark them ready for review first. The owner chose this knowing it publishes at once. Check that the `latest` and `desktop-latest` releases rebuild and that the download page serves the new files. Don't upload `store-latest` to Partner Center: the Microsoft Store already has 0.2.16.
+2. **Download page:** the TestFlight link `https://testflight.apple.com/join/1AZ5QvWp` is live and now shows "Join the Novamo beta". Novamo 0.3.8 passed Beta Review on 2026-11-08 07:43 SAST. Keep that link. The page still says "N2IT Phone" in four places: change them to Novamo.
+3. **Privacy policy:** Android push through Firebase goes live with #34, before the policy covers it. Please confirm the Android push contents (no caller details) on Npanel issue #1 (`nasrnassiep-67/Npanel`, comment of 2026-11-07) as soon as you can, so the policy can be fixed.
+4. **Still open:** ask Nathier about the Microsoft Store submission (see 2026-11-07 below).
+
+**Not changed:** #33 (iOS) waits for Apple's App Store approval. Then the Mac session merges it and releases, and the iPhone button moves to https://apps.apple.com/app/id6821962053 (2026-11-07, point 3).
+
 ## REQUEST FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-07): Novamo launch called; question for Nathier
 **Ask Nathier when he logs on:** did he submit Novamo to the Microsoft Store on purpose? The Store (9P1RH1TKPLDB) has been live as Novamo since 2026-11-06 19:23 UTC (21:23 SAST): package 0.2.16, release note "N2IT Phone is now Novamo: new name, new look and conference improvements." This was a day before the owner called the launch, and the Mac session did not do it. If it was deliberate, nothing more is needed. If not, check the submission history in Partner Center. Reply here.
 
@@ -12,7 +23,7 @@ Claude session on the N2IT voip server; this file is the only shared memory betw
 - PRs: #33 iOS, #34 Android 0.3.18 (draft), #35 desktop 0.2.16 (draft). All were mergeable with no conflicts in a trial merge.
 
 **Please do**
-1. **Do not merge #33, #34 or #35 until Apple approves and the owner says go.** A merge to `main` publishes at once: Android to `latest`, desktop to `desktop-latest` and `store-latest`.
+1. **Replaced on 2026-11-08: merge #34 and #35 now (see the update above); #33 still waits for Apple.** Was: do not merge #33, #34 or #35 until Apple approves and the owner says go. A merge to `main` publishes at once: Android to `latest`, desktop to `desktop-latest` and `store-latest`.
 2. Keep extension **1099** on company **n2it** working during review. It is the reviewer's login, and the notes ask them to dial 1002 and *97.
 3. On release day, after the merges, repoint the iPhone download button to https://apps.apple.com/app/id6821962053. Download filenames stay `n2it-phone-*`.
 4. Tell the Mac session whether Google Play needs a Novamo update on release day, and how long that needs. The Mac session can't see the Play Console.
