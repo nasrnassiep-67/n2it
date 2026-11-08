@@ -123,7 +123,7 @@ private fun CrashScreen(text: String, onContinue: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
         Text("Novamo stopped last time", style = MaterialTheme.typography.titleLarge)
-        Text("Please tap Copy and send this to N2IT, then Continue.", Modifier.padding(vertical = 8.dp))
+        Text("Please tap Copy and send this to your support contact, then Continue.", Modifier.padding(vertical = 8.dp))
         Row {
             Button({ clipboard.setText(AnnotatedString(text)) }) { Text("Copy") }
             Spacer(Modifier.width(12.dp))

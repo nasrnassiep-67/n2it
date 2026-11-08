@@ -12,8 +12,8 @@ android {
         applicationId = "za.co.n2it.softphone"
         minSdk = 26
         targetSdk = 36
-        versionCode = 45
-        versionName = "0.3.19"
+        versionCode = 46
+        versionName = "0.3.20"
         fun prop(n: String) = (project.findProperty(n) as String? ?: "").replace("\"", "\\\"")
         buildConfigField("String", "DEV_TENANT", "\"${prop("sipTenant")}\"")
         buildConfigField("String", "DEV_USER", "\"${prop("sipUser")}\"")

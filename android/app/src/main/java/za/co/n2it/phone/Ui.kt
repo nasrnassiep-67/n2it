@@ -196,10 +196,10 @@ fun signInProblem(o: SipManager.RegOutcome?, domain: String): String? = when (o)
     is SipManager.RegOutcome.Ok -> null
     is SipManager.RegOutcome.Failed -> when (o.code) {
         401, 403, 407 -> "Wrong extension or password. Check them and try again."
-        404 -> "Extension not found at $domain."
+        404 -> "Extension not found. Check your company code and extension."
         else -> "The PBX refused the sign-in (${o.reason.ifBlank { o.code.toString() }})."
     }
-    null -> "No answer from $domain. Check the company code and your internet connection."
+    null -> "No answer. Check the company code and your internet connection."
 }
 
 @Composable
@@ -222,7 +222,7 @@ fun LoginScreen(done: () -> Unit) {
                 Column(Modifier.padding(20.dp)) {
                     OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Company code") },
                         singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        supportingText = { Text(if (acc.domain.isEmpty()) "Your company code, or the full server address" else "Connects to ${acc.domain}") })
+                        supportingText = { Text("Your company code") })
                     OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") },
                         singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
@@ -475,7 +475,7 @@ fun SettingsTab(onSignOut: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         StatusRow(); Spacer(Modifier.height(4.dp)); DndButton(); Spacer(Modifier.height(8.dp))
         OutlinedTextField(acc.tenant, { acc = acc.copy(tenant = it) }, label = { Text("Client (e.g. yourcompany)") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text(acc.domain) })
+            singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text(acc.tenant) })
         OutlinedTextField(acc.user, { acc = acc.copy(user = it) }, label = { Text("Extension") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         PasswordField(acc.password, { acc = acc.copy(password = it) }, Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -596,7 +596,7 @@ private fun AccountsSection(onActiveChanged: (Account) -> Unit, onNoneLeft: () -
             modifier = Modifier.clickable(enabled = !isActive && !inCall) { use(a) },
             leadingContent = { RadioButton(selected = isActive, onClick = if (isActive || inCall) null else ({ use(a) })) },
             headlineContent = { Text("Extension ${a.user}") },
-            supportingContent = { Text(a.domain + if (isActive) " · active" else "") },
+            supportingContent = { Text(a.tenant + if (isActive) " · active" else "") },
             trailingContent = { TextButton({ leaving = a }, enabled = !inCall) { Text("Log out", color = Red) } })
     }
     OutlinedButton({ adding = true }, enabled = !inCall, modifier = Modifier.fillMaxWidth()) {
@@ -607,7 +607,7 @@ private fun AccountsSection(onActiveChanged: (Account) -> Unit, onNoneLeft: () -
         AlertDialog(
             onDismissRequest = { leaving = null },
             title = { Text("Log out of extension ${a.user}?") },
-            text = { Text("${a.domain} is removed from this phone. You can add it again later with its password.") },
+            text = { Text("${a.tenant} is removed from this phone. You can add it again later with its password.") },
             confirmButton = { TextButton({
                 leaving = null
                 val wasActive = a.sameAs(active)
@@ -631,7 +631,7 @@ private fun AddAccountDialog(onDismiss: () -> Unit, onAdd: (Account) -> Unit) {
         title = { Text("Add account") },
         text = { Column {
             OutlinedTextField(a.tenant, { a = a.copy(tenant = it) }, label = { Text("Company code") }, singleLine = true,
-                supportingText = { Text(if (a.domain.isEmpty()) "e.g. yourcompany" else "Connects to ${a.domain}") })
+                supportingText = { Text("e.g. yourcompany") })
             OutlinedTextField(a.user, { a = a.copy(user = it) }, label = { Text("Extension") }, singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             PasswordField(a.password, { a = a.copy(password = it) })
