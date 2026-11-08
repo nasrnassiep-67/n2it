@@ -197,7 +197,7 @@ class SipUa(private val events: Events) {
         pending.values.toList().forEach { tx -> main.removeCallbacks(tx.timeout); pending.remove(tx.branch); tx.onResponse(synthetic(tx.req, 503, "Connection lost")) }
         events.onTransportDown()
         if (!wanted) return
-        setReg(RegState.Progress, 0, "Cannot reach $domain (retrying)")
+        setReg(RegState.Progress, 0, "Cannot reach the server (retrying)")
         main.postDelayed(reconnect, backoff)
         backoff = (backoff * 2).coerceAtMost(30_000L)
     }
