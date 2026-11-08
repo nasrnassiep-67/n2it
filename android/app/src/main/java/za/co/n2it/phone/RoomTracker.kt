@@ -5,15 +5,16 @@ package za.co.n2it.phone
  * Cautious on purpose, because a card must never go while the person can still hear the call:
  *  - a card is only tied to a member once its number has been seen in the room, so someone still being moved in stays;
  *  - a card only goes after its member has been missing from two lists in a row.
- * Plain Kotlin with no Android calls, and it never adds a card.
+ * Plain Kotlin with no Android calls.
  */
 internal class RoomTracker {
-    data class Member(val id: Int, val match: String, val self: Boolean)
+    data class Member(val id: Int, val match: String, val self: Boolean, val number: String = "", val name: String = "")
 
     private val learned = HashMap<String, Int>()   // card id -> room member id
     private val missing = HashMap<String, Int>()   // card id -> lists in a row without them
+    private val waiting = HashMap<String, Int>()   // card id -> lists without ever finding their person
 
-    fun reset() { learned.clear(); missing.clear() }
+    fun reset() { learned.clear(); missing.clear(); waiting.clear() }
 
     /** [cards] = card id to number. Returns the ids of the cards whose person has left. */
     fun update(members: List<Member>, cards: List<Pair<String, String>>): List<String> {
@@ -39,6 +40,20 @@ internal class RoomTracker {
         gone.forEach { learned.remove(it); missing.remove(it) }
         return gone
     }
+
+    /** The room member behind a card, for removing them. */
+    fun memberOf(card: String) = learned[card]
+
+    /** Cards never matched after 5 lists (15 s): someone else answered that call, or it never joined. They go quietly. */
+    fun stale(cards: List<String>): List<String> {
+        waiting.keys.retainAll(cards.toSet())
+        val old = cards.filter { it !in learned }.filter { c -> (waiting.merge(c, 1, Int::plus) ?: 0) >= 5 }
+        old.forEach { waiting.remove(it) }
+        return old
+    }
+
+    /** Members in the room with no card yet: someone the host of the room added, or everyone on a phone that was moved in. */
+    fun untied(members: List<Member>) = members.filter { !it.self && it.id !in learned.values }
 
     companion object {
         /** Same rule as the PBX's "match": digits only, the last 9 when there are 9 or more, so 082…, 2782… and +2782… agree. */

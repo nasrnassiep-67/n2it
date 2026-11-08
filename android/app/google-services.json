@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "676545290259",
+    "project_id": "n2it-phone",
+    "storage_bucket": "n2it-phone.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:676545290259:android:6db01cb345ea41252a5fe6",
+        "android_client_info": {
+          "package_name": "za.co.n2it.softphone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqmXJrPa3P59m0brYs_Tu2ozOo8L0ewjw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

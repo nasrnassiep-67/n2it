@@ -1,7 +1,7 @@
 name: Android APK
 on:
   push:
-    branches: [main]
+    branches: [main, android-firebase-push, rename-novamo]
     paths: ['android/**', '.github/workflows/android.yml']
   workflow_dispatch:
 permissions:
@@ -46,5 +46,5 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk n2it-phone.apk
           cp android/app/build/outputs/bundle/release/app-release.aab n2it-phone.aab
           gh release delete latest --cleanup-tag -y || true
-          gh release create latest n2it-phone.apk n2it-phone.aab --prerelease --title "N2IT Phone (latest test build)" \
+          gh release create latest n2it-phone.apk n2it-phone.aab --prerelease --title "Novamo (latest test build)" \
             --notes "Build of commit ${GITHUB_SHA::7}. Install on Android (allow unknown apps), then sign in with company code, extension and password. n2it-phone.aab is the Google Play bundle (the download page ignores it)."

@@ -96,7 +96,7 @@ class PhoneService : Service() {
                     .setColor(0xFFE65100.toInt()).setColorized(true)
                     .addAction(0, "Turn off", dndOff(this)).build()
             }
-            return b.setContentTitle("N2IT Phone").setContentText("Ready to receive calls").build()
+            return b.setContentTitle("Novamo").setContentText("Ready to receive calls").build()
         }
         val who = if (call.conference) "Conference: " + call.participants.joinToString(", ") { it.name ?: displayNumber(it.number) } else call.name ?: call.number
         val status = when {
