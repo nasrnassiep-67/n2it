@@ -241,6 +241,11 @@ fun LoginScreen(done: () -> Unit) {
             }
         }
         Spacer(Modifier.weight(1f))
+        Text("support@novamo.co.za", fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f),
+            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+            modifier = Modifier.clickable {
+                runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:support@novamo.co.za"))) }
+            }.padding(vertical = 8.dp))
         MaterialTheme(colorScheme = androidx.compose.material3.darkColorScheme()) { VersionText() }
     }
 }
