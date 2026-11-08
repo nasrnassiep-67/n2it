@@ -1,7 +1,7 @@
 {
   "name": "n2it-phone-desktop",
-  "version": "0.2.13",
-  "description": "N2IT Phone desktop client (WebRTC softphone over WSS to FusionPBX)",
+  "version": "0.2.16",
+  "description": "Novamo desktop client (WebRTC softphone over WSS to FusionPBX)",
   "main": "src/main.js",
   "scripts": {
     "bundle": "npx --yes esbuild@0.24.0 node_modules/jssip/lib/JsSIP.js --bundle --platform=browser --format=iife --global-name=JsSIP --minify --outfile=src/vendor/jssip.min.js",
@@ -26,7 +26,7 @@
   },
   "build": {
     "appId": "za.co.n2it.softphone.desktop",
-    "productName": "N2IT Phone",
+    "productName": "Novamo",
     "files": [
       "src/**"
     ],
@@ -38,9 +38,9 @@
       "identityName": "N2ITSolutions.N2ITPhone",
       "publisher": "CN=7501823B-3E22-4B8F-87E3-1321277C359B",
       "publisherDisplayName": "N2IT Solutions",
-      "displayName": "N2IT Phone",
+      "displayName": "Novamo",
       "applicationId": "N2ITPhone",
-      "backgroundColor": "#FFFFFF",
+      "backgroundColor": "#16C7B7",
       "languages": [
         "en-US"
       ],
@@ -58,7 +58,7 @@
       ],
       "category": "public.app-category.business",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "N2IT Phone needs the microphone for calls."
+        "NSMicrophoneUsageDescription": "Novamo needs the microphone for calls."
       },
       "artifactName": "n2it-phone-mac-${arch}.${ext}",
       "hardenedRuntime": true,
@@ -85,7 +85,7 @@
         ]
       },
       {
-        "name": "N2IT Phone notification",
+        "name": "Novamo notification",
         "schemes": [
           "n2itphone"
         ]

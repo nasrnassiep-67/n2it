@@ -442,7 +442,7 @@ $('cfg').onclick = async () => {
   // Phone links: Windows lets the user (not the app) choose the app for tel: links.
   const l = await links.status()
   show('s-links', l.platform === 'win32')
-  $('s-links-msg').textContent = l.tel ? 'Phone number links open in N2IT Phone.' : 'Phone number links open in another app.'
+  $('s-links-msg').textContent = l.tel ? 'Phone number links open in Novamo.' : 'Phone number links open in another app.'
 }
 $('s-links-set').onclick = () => links.settings()
 $('s-back').onclick = () => { show('settings', false); show('phone', true) }
