@@ -2,7 +2,7 @@ import Foundation
 
 /// App Store screenshots (debug builds only): launched with `-screenshots` the app shows a signed-in demo extension
 /// with sample contacts and recents and never contacts a PBX; `-screenshotTab <0-4>` picks the tab and
-/// `-screenshotCall` also opens the call screen.
+/// `-screenshotCall` also opens the call screen, `-screenshotConference` the conference screen.
 enum Screenshots {
     #if DEBUG
     static let on = ProcessInfo.processInfo.arguments.contains("-screenshots")
@@ -55,6 +55,12 @@ enum Screenshots {
         sip.newVoicemails = 2; sip.hasVoicemail = true
         if ProcessInfo.processInfo.arguments.contains("-screenshotCall") {
             sip.activeCall = CallInfo(number: "0825550142", state: .StreamsRunning, incoming: false, name: "Aisha Patel")
+        }
+        if ProcessInfo.processInfo.arguments.contains("-screenshotConference") {
+            sip.activeCall = CallInfo(number: "Aisha Patel, Sales", state: .StreamsRunning, incoming: false, name: nil)
+            sip.participants = [Participant(id: "a", number: "0825550142", name: "Aisha Patel", status: .talking),
+                                Participant(id: "b", number: "1002", name: "Sales", status: .talking)]
+            sip.inConference = true; sip.roomOperator = true; sip.roomCount = 3
         }
     }
 }
