@@ -75,12 +75,26 @@ fun App(onSignedIn: () -> Unit, onSignedOut: () -> Unit) {
     }
 }
 
+/**
+ * Time since the call was answered, "0:42", "12:05", "1:02:09"; null before the answer. Ticks once a second while shown
+ * (2026-11-12, Nathier: the apps had no call timer). Keeps counting on hold; each call (consult, conference) has its own start.
+ */
+@Composable
+fun callTimer(since: Long): String? {
+    if (since <= 0L) return null
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(since) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(1000L - now % 1000L) } }
+    val s = ((now - since) / 1000L).coerceAtLeast(0L)
+    return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
+}
+
 @Composable
 private fun ReturnToCallBar(call: CallInfo, onClick: () -> Unit) {
     Surface(color = Green, modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Call, null, tint = Color.White); Spacer(Modifier.width(10.dp))
-            Text((if (call.onHold) "On hold: " else "On call: ") + (call.name ?: call.number) + " · tap to return",
+            val t = callTimer(call.connectedAt)
+            Text((if (call.onHold) "On hold: " else "On call: ") + (call.name ?: call.number) + (t?.let { " · $it" } ?: "") + " · tap to return",
                 color = Color.White, maxLines = 1)
         }
     }
@@ -658,14 +672,15 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
     val connected = call.onHold || call.state == CallState.StreamsRunning || call.state == CallState.Connected
     val ringingIn = call.state == CallState.IncomingReceived
-    val label = if (call.conference) "Conference · ${call.participants.size + 1} people" else when (call.state) {
+    val timer = callTimer(call.connectedAt)
+    val label = (if (call.conference) "Conference · ${call.participants.size + 1} people" else when (call.state) {
         CallState.IncomingReceived -> "Incoming call"
         CallState.OutgoingInit, CallState.OutgoingProgress -> "Calling…"
         CallState.OutgoingRinging, CallState.OutgoingEarlyMedia -> "Ringing…"
         CallState.StreamsRunning, CallState.Connected -> "Connected"
         CallState.Paused, CallState.Pausing -> "On hold"
         else -> ""
-    }
+    }) + (if (timer != null && connected) " · $timer" else "")
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         // Back to contacts/keypad with the call still up; the green bar (or the notification) brings it back.
         BackHandler(enabled = !ringingIn, onBack = onMinimise)

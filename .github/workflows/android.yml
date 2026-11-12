@@ -1,7 +1,7 @@
 name: Android APK
 on:
   push:
-    branches: [main, android-firebase-push, rename-novamo]
+    branches: [main, android-firebase-push, rename-novamo, android-0.3.21-call-timer]
     paths: ['android/**', '.github/workflows/android.yml']
   workflow_dispatch:
 permissions:
