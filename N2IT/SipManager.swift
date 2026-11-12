@@ -18,6 +18,8 @@ struct CallInfo: Identifiable {
     let incoming: Bool
     /// Caller ID name from the PBX, or the contact's name; nil when unknown.
     var name: String? = nil
+    /// When the call was answered (nil = not yet): the call screen counts from it (2026-11-12, Nathier: no call timer).
+    var connectedAt: Date? = nil
 }
 
 /// One other person in a conference: the call screen gives each one a card (as on Android). `id` is the SIP Call-ID.
@@ -71,7 +73,8 @@ private final class SipCall {
     var invite: SipMsg?
     var dialog: Dialog?
     var media: CallMedia?
-    var answered = false
+    var answered = false { didSet { if answered && connectedAt == nil { connectedAt = Date() } } }
+    var connectedAt: Date?
     var answering = false
     /// Answered on another phone of the extension (the PBX's CANCEL says so): not a missed call.
     var elsewhere = false
@@ -475,7 +478,8 @@ final class SipManager: ObservableObject, SipUaEvents {
             let others = liveCalls().filter { $0 !== conf && !$0.transferring }
             let ringing = others.map { Participant(id: $0.callId, number: $0.number, name: $0.name, status: $0.answered ? .onHold : .ringing) }
             let people = confPeople + ringing
-            activeCall = CallInfo(number: people.map { $0.name ?? $0.number }.joined(separator: ", "), state: conf.state, incoming: false, name: nil)
+            activeCall = CallInfo(number: people.map { $0.name ?? $0.number }.joined(separator: ", "), state: conf.state, incoming: false, name: nil,
+                                  connectedAt: liveCalls().compactMap { $0.connectedAt }.min())   // from the first answer, not the merge
             inConference = true; participants = people
             onHold = conf.localHold
             consulting = others.contains { $0.answered && !$0.autoMerge }
@@ -487,7 +491,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         guard let c = currentCall() ?? ringingCall() ?? live.first else {
             activeCall = nil; onHold = false; consulting = false; return
         }
-        activeCall = CallInfo(number: c.number, state: c.state, incoming: c.incoming, name: c.name)
+        activeCall = CallInfo(number: c.number, state: c.state, incoming: c.incoming, name: c.name, connectedAt: c.connectedAt)
         onHold = c.state == .Paused || c.state == .Pausing
         consulting = live.count > 1
     }

@@ -302,7 +302,7 @@ struct CallView: View {
             if sip.inConference {
                 // One card per person, sharing the space above the buttons (as Android; a single line of names was hard to read)
                 VStack(spacing: 12) {
-                    Text(label).foregroundStyle(.secondary).padding(.top, 16)
+                    labelWithTimer.padding(.top, 16)
                     if let n = sip.notice { Text(n).font(.footnote).foregroundStyle(.orange).multilineTextAlignment(.center).padding(.horizontal) }
                     ConferenceCards(people: sip.participants, compact: showPad)
                 }
@@ -312,7 +312,7 @@ struct CallView: View {
                 if let name = sip.activeCall?.name, name != sip.activeCall?.number {
                     Text(sip.activeCall?.number ?? "").font(.title3).foregroundStyle(.secondary)
                 }
-                Text(label).foregroundStyle(.secondary)
+                labelWithTimer
                 if sip.tester, let d = sip.audioDiag { Text(d).font(.caption2.monospaced()).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal) }
                 if let n = sip.notice { Text(n).font(.footnote).foregroundStyle(.orange).multilineTextAlignment(.center).padding(.horizontal) }
                 Spacer()
@@ -385,6 +385,22 @@ struct CallView: View {
             NumberPicker(mode: .add(inConference: sip.inConference), onAdd: { sip.addParticipant($0) },
                          onTransfer: { _, _ in })
         }
+    }
+
+    /// "Connected · 0:42": time since the answer, once a second; keeps counting on hold (2026-11-12, as Android and Windows).
+    @ViewBuilder private var labelWithTimer: some View {
+        if connected, let since = sip.activeCall?.connectedAt {
+            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                Text(label + " · " + Self.callTime(ctx.date.timeIntervalSince(since))).foregroundStyle(.secondary).monospacedDigit()
+            }
+        } else {
+            Text(label).foregroundStyle(.secondary)
+        }
+    }
+
+    static func callTime(_ t: TimeInterval) -> String {
+        let s = max(0, Int(t))
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
     }
 
     private var connected: Bool { sip.onHold || sip.activeCall?.state == .StreamsRunning || sip.activeCall?.state == .Connected }

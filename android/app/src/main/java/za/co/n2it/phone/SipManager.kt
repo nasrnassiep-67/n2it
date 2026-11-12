@@ -30,7 +30,9 @@ enum class CallState {
 
 data class CallInfo(val number: String, val state: CallState, val incoming: Boolean, val onHold: Boolean = false, val consulting: Boolean = false,
                     val conference: Boolean = false, val participants: List<Participant> = emptyList(), val name: String? = null,
-                    val operator: Boolean = false)
+                    val operator: Boolean = false,
+                    /** When this call was answered (ms, 0 = not yet): the call screen counts from it (2026-11-12, Nathier). */
+                    val connectedAt: Long = 0L)
 /** One other person in a conference (the conference screen gives each one a card). [id] is the SIP Call-ID. */
 /** [name] is the caller ID name the PBX sent (e.g. "Nasr" for 1002), when there is one. */
 data class Participant(val id: String, val number: String, val status: Status, val name: String? = null) {
@@ -131,14 +133,15 @@ object SipManager : SipUa.Events {
                 if (it.answered) Participant.Status.OnHold else Participant.Status.Ringing, it.name) }
             val people = confPeople + ringing
             _call.value = CallInfo(people.joinToString(", ") { it.name ?: it.number }, conf.state, false,
-                conf.localHold, consulting = others.any { it.answered && !it.autoMerge }, conference = true, participants = people, operator = confOperator)
+                conf.localHold, consulting = others.any { it.answered && !it.autoMerge }, conference = true, participants = people, operator = confOperator,
+                connectedAt = liveCalls().filter { it.connectedAt > 0 }.minOfOrNull { it.connectedAt } ?: 0L)   // from the first answer, not the merge
             return
         }
         val live = liveCalls().filter { !it.transferring || liveCalls().size == 1 }
         val c = currentCall() ?: ringingCall() ?: live.firstOrNull()
         if (c == null) { _call.value = null; return }
         _call.value = CallInfo(c.number, c.state, c.incoming, c.state == CallState.Paused || c.state == CallState.Pausing,
-            live.size > 1, name = c.name)
+            live.size > 1, name = c.name, connectedAt = c.connectedAt)
     }
 
     private fun setState(c: Call, s: CallState) {

@@ -1,7 +1,7 @@
 name: iOS build
 on:
   push:
-    branches: [main]
+    branches: [main, call-timer]
     paths: ['N2IT/**', 'project.yml', 'Config/**', '.github/workflows/ios.yml']
   workflow_dispatch:
     inputs:
