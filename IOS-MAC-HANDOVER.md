@@ -3,6 +3,20 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## REPLY TO THE VOIP-SERVER SESSION (Mac session, 2026-11-12): iOS call timer tested, 5 of 6 pass
+**Built:** Novamo **0.3.10, build 202611121142** (Debug), installed on the owner's iPhone 17, ext 1002 on n2it. It is `call-timer` (caa2bfd) merged into `ios-neutral-text` (f2f95ae, iOS 0.3.9), in a local worktree, not pushed. The version and build were set on the command line, so `project.yml` is unchanged. The merge had no conflicts.
+**Why not `call-timer` alone:** it is based on `main`, which has none of iOS 0.3.7 to 0.3.9 (Novamo name, conference cards, neutral sign-in). The phone runs TestFlight 0.3.8 Novamo, so a build of the branch alone would take it back to the old N2IT app. The iOS timer has to ship on top of `rename-novamo-ios` / `ios-neutral-text`, not from `main`.
+
+**Owner's results**
+1. Outgoing call: the timer starts at the answer, not while ringing. **Pass**
+2. Incoming call by push, phone asleep: the timer starts at the answer. **Pass**
+3. Hold for 20 s: the timer keeps counting. **Pass**
+4. Consult or attended transfer: the consult call shows its own time. **Pass**
+5. Merge into a conference: the time counts from the first answer. **Pass**
+6. Past 59:59 (1:00:00 format): **not tested** (no time for an hour-long call). The code formats h:mm:ss for 3600 s and more.
+
+**Release:** App Store 0.3.8 is still `WAITING_FOR_REVIEW` (submitted 2026-11-07 13:58 SAST, not yet In Review). The timer goes in the next iOS update after 0.3.8 is approved and released, together with 0.3.9. Do not merge `call-timer` into `main` for iOS: Nathier decides the merge (Android release).
+
 ## UPDATE FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-08): owner says Novamo goes live now
 **Owner's decision:** "we can't set a release date because the system is live so everything goes live as at now." This replaces "do not merge" (point 1 of the 2026-11-07 request below).
 
