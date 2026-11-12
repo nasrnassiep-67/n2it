@@ -24,6 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -930,7 +933,8 @@ private fun shortLabel(s: String) = if (s.length > 18) s.take(17).trimEnd() + "â
  * saved), so a typed number needs one press of the button and a tapped contact visibly changes something.
  */
 @Composable
-private fun NumberOrContact(book: ContactBook, target: String, onChange: (String) -> Unit) {
+private fun NumberOrContact(book: ContactBook, target: String, modifier: Modifier = Modifier, onChange: (String) -> Unit) {
+    val keyboard = LocalSoftwareKeyboardController.current
     val company = book.company
     val phone = book.phone
     val q = target.trim()
@@ -940,7 +944,7 @@ private fun NumberOrContact(book: ContactBook, target: String, onChange: (String
     val list = (company.filter(::matches).map { it to true } + phone.filter(::matches).map { it to false }).take(60)
     val number = dialable(target)
     val who = book.whois(target)
-    Column {
+    Column(modifier) {
         OutlinedTextField(target, onChange, label = { Text("Name, extension or number") }, singleLine = true,
             modifier = Modifier.fillMaxWidth())
         if (number != null) Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp),
@@ -956,9 +960,11 @@ private fun NumberOrContact(book: ContactBook, target: String, onChange: (String
             }
         }
         // a list that only repeats the person named above would just be a second thing to tap
-        if (list.isNotEmpty() && !(who != null && list.size == 1)) LazyColumn(Modifier.heightIn(max = 260.dp).padding(top = 4.dp)) {
+        // the list takes the room between the box and the buttons and scrolls (2026-11-12, Nathier: in the old pop-up the
+        // keyboard covered the list and the buttons); a tap puts the keyboard away so the buttons are in reach
+        if (list.isNotEmpty() && !(who != null && list.size == 1)) LazyColumn(Modifier.weight(1f).padding(top = 4.dp)) {
             items(list) { (c, isCompany) ->
-                ListItem(modifier = Modifier.clickable { onChange(SipManager.cleanNumber(c.number)) },
+                ListItem(modifier = Modifier.clickable { onChange(SipManager.cleanNumber(c.number)); keyboard?.hide() },
                     leadingContent = { Icon(if (isCompany) Icons.Default.Business else Icons.Default.Person, null) },
                     headlineContent = { Text(c.name) }, supportingContent = { Text(c.number) })
             }
@@ -970,25 +976,48 @@ private var companyCache: List<PhoneContact> = emptyList()
 /** What the Call / Transfer buttons dial: the typed number, or nothing when the box holds a name search. */
 private fun dialable(target: String) = SipManager.cleanNumber(target).takeIf { n -> n.isNotBlank() && target.none { it.isLetter() } || '@' in target }
 
+/**
+ * Add participant / Transfer as a full screen (2026-11-12, Nathier: the small pop-up was covered by the keyboard on
+ * Android; iOS scrolls and lights its button up once a contact is picked). Title and Cancel at the top, the number box
+ * and the matching contacts in the middle, the action buttons pinned just above the keyboard (imePadding); the buttons
+ * are grey until there is someone to call and turn green / filled once there is.
+ */
+@Composable
+private fun PickerScreen(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit,
+                         actions: @Composable RowScope.() -> Unit) {
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    TextButton(onDismiss) { Text("Cancel") }
+                }
+                Spacer(Modifier.height(8.dp))
+                Column(Modifier.weight(1f).fillMaxWidth(), content = content)
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), content = actions)
+            }
+        }
+    }
+}
+
 @Composable
 private fun AddParticipantDialog(inConference: Boolean, onDismiss: () -> Unit, onAdd: (String) -> Unit) {
     var target by remember { mutableStateOf("") }
     val book = rememberContactBook()
     val number = dialable(target)
     val name = number?.let { book.whois(target)?.name?.ifBlank { null } ?: it }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add participant") },
-        text = { Column {
-            NumberOrContact(book, target) { target = it }
-            Spacer(Modifier.height(8.dp))
-            Text(if (inConference) "They join the conference when they answer."
-                else "The current call goes on hold. Tap Merge calls once they answer.", style = MaterialTheme.typography.bodySmall)
-        } },
-        confirmButton = { TextButton({ number?.let(onAdd) }, enabled = number != null) {
+    PickerScreen("Add participant", onDismiss, content = {
+        NumberOrContact(book, target, Modifier.weight(1f)) { target = it }
+        Text(if (inConference) "They join the conference when they answer."
+            else "The current call goes on hold. Tap Merge calls once they answer.", style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 8.dp))
+    }) {
+        Button({ number?.let(onAdd) }, enabled = number != null, modifier = Modifier.weight(1f).height(52.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Green)) {
+            Icon(if (inConference) Icons.Default.PersonAdd else Icons.Default.Call, null); Spacer(Modifier.width(8.dp))
             Text(if (name == null) (if (inConference) "Add" else "Call") else (if (inConference) "Add " else "Call ") + shortLabel(name), maxLines = 1)
-        } },
-        dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
+        }
+    }
 }
 
 @Composable
@@ -996,11 +1025,15 @@ private fun TransferDialog(onDismiss: () -> Unit, onBlind: (String) -> Unit, onC
     var target by remember { mutableStateOf("") }
     val book = rememberContactBook()
     val number = dialable(target)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Transfer to") },
-        text = { NumberOrContact(book, target) { target = it } },
-        confirmButton = { TextButton({ number?.let(onBlind) }, enabled = number != null) { Text("Blind") } },
-        dismissButton = { Row { TextButton({ number?.let(onConsult) }, enabled = number != null) { Text("Consult first") }
-            TextButton(onDismiss) { Text("Cancel") } } })
+    PickerScreen("Transfer to", onDismiss, content = {
+        NumberOrContact(book, target, Modifier.weight(1f)) { target = it }
+    }) {
+        OutlinedButton({ number?.let(onConsult) }, enabled = number != null, modifier = Modifier.weight(1f).height(52.dp)) {
+            Text("Consult first", maxLines = 1)
+        }
+        Button({ number?.let(onBlind) }, enabled = number != null, modifier = Modifier.weight(1f).height(52.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Green)) {
+            Icon(Icons.Default.PhoneForwarded, null); Spacer(Modifier.width(8.dp)); Text("Transfer now", maxLines = 1)
+        }
+    }
 }
