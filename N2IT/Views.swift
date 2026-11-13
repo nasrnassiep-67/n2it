@@ -199,7 +199,7 @@ struct RecentsView: View {
                         VStack(alignment: .leading) {
                             Text(r.name ?? r.number).foregroundStyle(r.missed ? .red : .primary)
                             if r.name != nil { Text(r.number).font(.caption).foregroundStyle(.secondary) }
-                            Text(r.date, style: .relative).font(.caption).foregroundStyle(.secondary)
+                            Text(r.date.formatted(date: .numeric, time: .shortened)).font(.caption).foregroundStyle(.secondary)   // fixed time, like Android (.relative kept ticking)
                         }
                     }
                 }
