@@ -1,5 +1,9 @@
 package za.co.n2it.phone
 
+import android.view.WindowManager
+import android.os.Build
+import android.app.KeyguardManager
+import android.app.Activity
 import android.content.Context
 import android.provider.ContactsContract
 import androidx.activity.compose.BackHandler
@@ -47,6 +51,46 @@ private val dndTime = java.text.SimpleDateFormat("EEE d MMM, HH:mm", java.util.L
 /** True while a call is up but the user left the call screen to use the rest of the app. */
 private val callMinimised = mutableStateOf(false)
 
+/*
+ * Lock screen (0.3.25, 2026-11-13, Nathier: "if the phone is locked you can still use the softphone"; a lost or stolen
+ * phone could call out on the extension). The manifest had showWhenLocked + turnScreenOn on the whole activity, so once
+ * open over the lock screen the keypad, contacts and settings worked without unlocking. Now:
+ *  - the app shows over the lock screen only while a call rings or is up (applyLockMode), the screen is woken only for a
+ *    ringing call; when the call ends the phone is simply locked again;
+ *  - leaving the call screen while locked (minimise, Back, Transfer, Add participant) asks for the PIN / fingerprint
+ *    first (unlockThen), then carries on;
+ *  - if the phone locks during a call while the user is elsewhere in the app, waking it shows only the call screen and
+ *    closes an open Transfer / Add participant screen (onLockedResume).
+ */
+private val lockedResumes = mutableIntStateOf(0)
+
+private fun Context.keyguardLocked() = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
+
+/** Run [action] now if the phone is unlocked; else ask Android to unlock (PIN / fingerprint) and run it once unlocked. */
+fun Context.unlockThen(action: () -> Unit) {
+    val activity = this as? Activity
+    if (activity == null || !keyguardLocked()) { action(); return }
+    getSystemService(KeyguardManager::class.java).requestDismissKeyguard(activity, object : KeyguardManager.KeyguardDismissCallback() {
+        override fun onDismissSucceeded() { action() }
+    })
+}
+
+/** Over the lock screen only during a call; wake the screen only while it rings. */
+fun Activity.applyLockMode(inCall: Boolean, ringing: Boolean) {
+    if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(inCall); setTurnScreenOn(ringing) }
+    else {
+        @Suppress("DEPRECATION") val flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+        @Suppress("DEPRECATION") val wake = WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        if (inCall) window.addFlags(flags) else window.clearFlags(flags)
+        if (ringing) window.addFlags(wake) else window.clearFlags(wake)
+    }
+}
+
+/** MainActivity.onResume: shown over the lock screen during a call = only the call screen, no open picker. */
+fun onLockedResume(ctx: Context) {
+    if (SipManager.call.value != null && ctx.keyguardLocked()) { callMinimised.value = false; lockedResumes.intValue++ }
+}
+
 /** Dial from the app: with a call already up, hold it and ring [number] (ready to merge or transfer). */
 private fun dial(number: String) {
     if (SipManager.call.value != null) { SipManager.addParticipant(number); callMinimised.value = false }
@@ -66,7 +110,9 @@ fun App(onSignedIn: () -> Unit, onSignedOut: () -> Unit) {
     LaunchedEffect(call == null, call?.state == CallState.IncomingReceived) {
         if (call == null || call?.state == CallState.IncomingReceived) minimised = false
     }
-    if (call != null && !minimised) { CallScreen(call!!, onMinimise = { minimised = true }); return }
+    val ringing = call?.state == CallState.IncomingReceived
+    LaunchedEffect(call != null, ringing) { (ctx as? Activity)?.applyLockMode(call != null, ringing) }
+    if (call != null && !minimised) { CallScreen(call!!, onMinimise = { ctx.unlockThen { minimised = true } }); return }
     if (!loggedIn) {
         LoginScreen { loggedIn = true; onSignedIn() }
     } else {
@@ -669,10 +715,14 @@ private fun AddAccountDialog(onDismiss: () -> Unit, onAdd: (Account) -> Unit) {
 
 @Composable
 fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
+    val ctx = LocalContext.current
     val muted by SipManager.muted.collectAsState()
     var pad by remember { mutableStateOf(false) }
     var transferTo by remember { mutableStateOf<Boolean?>(null) }  // null = closed, false = blind, true = attended
     var adding by remember { mutableStateOf(false) }
+    // the phone locked during the call: an open Transfer / Add participant screen closes (it lists contacts and dials)
+    val locks by lockedResumes
+    LaunchedEffect(locks) { if (locks > 0) { transferTo = null; adding = false } }
     val connected = call.onHold || call.state == CallState.StreamsRunning || call.state == CallState.Connected
     val ringingIn = call.state == CallState.IncomingReceived
     val timer = callTimer(call.connectedAt)
@@ -721,9 +771,9 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 if (!call.conference) {
                     FilledTonalIconToggleButton(call.onHold, { SipManager.toggleHold() }, Modifier.size(64.dp)) { Icon(Icons.Default.Pause, "Hold") }
-                    FilledTonalIconButton({ transferTo = false }, Modifier.size(64.dp)) { Icon(Icons.Default.PhoneForwarded, "Transfer") }
+                    FilledTonalIconButton({ ctx.unlockThen { transferTo = false } }, Modifier.size(64.dp)) { Icon(Icons.Default.PhoneForwarded, "Transfer") }
                 }
-                FilledTonalIconButton({ adding = true }, Modifier.size(64.dp)) { Icon(Icons.Default.PersonAdd, "Add participant") }
+                FilledTonalIconButton({ ctx.unlockThen { adding = true } }, Modifier.size(64.dp)) { Icon(Icons.Default.PersonAdd, "Add participant") }
             }
             if (call.consulting) {
                 Spacer(Modifier.height(12.dp))
@@ -754,7 +804,6 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
         onBlind = { SipManager.blindTransfer(it); transferTo = null },
         onConsult = { SipManager.consult(it); transferTo = null })
     val notice by SipManager.notice.collectAsState()
-    val ctx = LocalContext.current
     LaunchedEffect(notice) {
         notice?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show(); SipManager.clearNotice() }
     }

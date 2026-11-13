@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() { super.onResume(); SipManager.checkDnd(); SipManager.refresh() }
+    override fun onResume() { super.onResume(); SipManager.checkDnd(); SipManager.refresh(); onLockedResume(this) }
 
     // Answer from the incoming-call notification
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleAnswer(intent) }
