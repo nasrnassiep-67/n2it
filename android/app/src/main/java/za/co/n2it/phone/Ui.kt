@@ -27,6 +27,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.SideEffect
+import android.view.WindowManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -985,9 +989,19 @@ private fun dialable(target: String) = SipManager.cleanNumber(target).takeIf { n
 @Composable
 private fun PickerScreen(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit,
                          actions: @Composable RowScope.() -> Unit) {
-    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    // 0.3.23 (2026-11-13, Nathier: the transfer screen could not scroll and only the top of the green button showed):
+    // a Compose Dialog with decorFitsSystemWindows = false does not reliably get the navigation-bar / keyboard insets, so
+    // systemBarsPadding().imePadding() came to 0 and the buttons sat under the navigation bar / keyboard. Now the dialog
+    // window itself fits the system bars and is RESIZED by the keyboard (adjustResize), full screen: the system keeps the
+    // buttons above both, no insets needed.
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect {
+            window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+            @Suppress("DEPRECATION") window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     TextButton(onDismiss) { Text("Cancel") }
