@@ -94,7 +94,10 @@ class PhoneService : Service() {
                 return b.setContentTitle("DND enabled").setContentText(text)
                     .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                     .setColor(0xFFE65100.toInt()).setColorized(true)
-                    .addAction(0, "Turn off", dndOff(this)).build()
+                    // 0.3.26 (2026-11-13, Nathier's lock-screen rule: on a locked phone only answering a call is allowed):
+                    // Turn off worked from the lock screen; now Android asks for the PIN / fingerprint first (Android 12+)
+                    .addAction(NotificationCompat.Action.Builder(0, "Turn off", dndOff(this))
+                        .setAuthenticationRequired(true).build()).build()
             }
             return b.setContentTitle("Novamo").setContentText("Ready to receive calls").build()
         }
