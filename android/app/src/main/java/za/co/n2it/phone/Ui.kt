@@ -27,10 +27,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.runtime.SideEffect
-import android.view.WindowManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -688,6 +684,7 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
         CallState.Paused, CallState.Pausing -> "On hold"
         else -> ""
     }) + (if (timer != null && connected) " · $timer" else "")
+    Box(Modifier.fillMaxSize()) {   // 0.3.24: the Transfer / Add participant screens are drawn over the call screen in here
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         // Back to contacts/keypad with the call still up; the green bar (or the notification) brings it back.
         BackHandler(enabled = !ringingIn, onBack = onMinimise)
@@ -762,6 +759,7 @@ fun CallScreen(call: CallInfo, onMinimise: () -> Unit) {
         notice?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show(); SipManager.clearNotice() }
     }
     if (adding) AddParticipantDialog(call.conference, onDismiss = { adding = false }, onAdd = { SipManager.addParticipant(it); adding = false })
+    }
 }
 
 /** Conference: the space between the status line and the buttons, split evenly between the people (up to 4);
@@ -989,19 +987,14 @@ private fun dialable(target: String) = SipManager.cleanNumber(target).takeIf { n
 @Composable
 private fun PickerScreen(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit,
                          actions: @Composable RowScope.() -> Unit) {
-    // 0.3.23 (2026-11-13, Nathier: the transfer screen could not scroll and only the top of the green button showed):
-    // a Compose Dialog with decorFitsSystemWindows = false does not reliably get the navigation-bar / keyboard insets, so
-    // systemBarsPadding().imePadding() came to 0 and the buttons sat under the navigation bar / keyboard. Now the dialog
-    // window itself fits the system bars and is RESIZED by the keyboard (adjustResize), full screen: the system keeps the
-    // buttons above both, no insets needed.
-    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        SideEffect {
-            window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
-            @Suppress("DEPRECATION") window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        }
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    // 0.3.24 (2026-11-13, Nathier's screenshots, Honor 90 + SwiftKey): as a Dialog window (0.3.22 edge-to-edge, 0.3.23
+    // fitted + MATCH_PARENT) the screen was a full display tall but started under the status bar, so the buttons hung off
+    // the bottom, and the keyboard covered them (the dialog window was not resized). Now it is a full-screen layer over the
+    // call screen in the activity itself: the same system-bar and keyboard insets as the call screen (activity is
+    // adjustResize in the manifest), Back closes it like the dialog did.
+    BackHandler(onBack = onDismiss)
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     TextButton(onDismiss) { Text("Cancel") }
@@ -1010,7 +1003,6 @@ private fun PickerScreen(title: String, onDismiss: () -> Unit, content: @Composa
                 Column(Modifier.weight(1f).fillMaxWidth(), content = content)
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), content = actions)
             }
-        }
     }
 }
 
