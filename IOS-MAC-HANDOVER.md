@@ -3,6 +3,33 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## SECURITY CHECK FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-13): can Novamo iOS be used while the iPhone is locked?
+Answer to the lock-screen check that followed the Android 0.3.25 fix. **The rule:** with the phone locked, a person may only answer or decline an incoming call, and use the buttons on iOS's own call screen during that call (hang up, mute, speaker, keypad for menu digits). Everything else needs Face ID / Touch ID / the passcode first.
+
+**Result: no change needed on iOS.** iOS has no setting like Android's "show over the lock screen", so Novamo's own screens can't open over a locked phone. Checked in the code (`rename-novamo-ios`, 0.3.8, the build in App Review, and `main`). Items 1 and 6 still need a test on a real iPhone (see below).
+
+| # | Check | Result | Why |
+|---|---|---|---|
+| 1 | Novamo button on iOS's call screen while locked | Unlock required (expected, to test) | iOS asks for Face ID / passcode before it opens any app from the lock-screen call screen. The locked screen is iOS's own call screen, with no Novamo keypad, contacts or settings. |
+| 2 | Transfer / Add participant during a call, while locked | Unlock required | Those buttons are only inside the Novamo app (item 1). iOS shows no "add call" button, because Novamo allows one call at a time (`maximumCallsPerCallGroup = 1`). |
+| 3 | Siri "Call 1000 with Novamo" | Not supported, can't call | No Siri call support (no INStartCallIntent, no Intents extension, no NSUserActivityTypes). |
+| 4 | Novamo entries in the Phone app's Recents | Unlock required | Novamo calls do show in Recents (iOS default), but the Phone app's Recents need an unlock, and Novamo has no code to call back from a Recents tap, so a tap only opens the app. |
+| 5 | Widgets, App Shortcuts, Live Activities, notification buttons | None exist | Novamo has only the app itself: no extensions, notification buttons or call links. |
+| 6 | After the call ends while locked | Nothing stays usable (expected, to test) | iOS's call screen closes and the lock screen is back. |
+
+Calls start only from a tap inside the unlocked app (`CallKitManager.startCall`, called from `SipManager.call`).
+
+**Owner's decision (2026-11-13): keep Novamo calls in the iPhone's Recents** (`includesCallsInRecents` stays at its default of on). It isn't a hole today, and clients like seeing their Novamo calls in the normal call list.
+
+**Rule for future features (all platforms):** anything that starts a call from outside the app (Siri / INStartCallIntent, App Intents / Shortcuts, a Recents callback, widgets, notification buttons, `tel:` links) must require an unlocked phone. On iOS: App Intents with `authenticationPolicy = .requiresAuthentication` (or `.requiresLocalDeviceAuthentication`), and an Intents extension that returns "requires unlock" for INStartCallIntent while locked. Add a test for it before the feature merges.
+
+**Still to do: test on a real iPhone.** Nas has the iPhone on 1002 and will test when he's back; write down the iOS version (Settings > General > About):
+1. Lock the iPhone, ring 1002 and answer on the lock screen. Tap the Novamo button: Face ID / passcode should be asked for.
+2. Cancel the prompt. Check the call screen shows no add-call or contacts button.
+3. Hang up while still locked: the lock screen should come back, and nothing of Novamo should be usable.
+4. While locked, say "Call 1000 with Novamo" to Siri: it should not call through Novamo.
+If any step works without an unlock, report it here and the Mac session fixes it.
+
 ## UPDATE FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-08): owner says Novamo goes live now
 **Owner's decision:** "we can't set a release date because the system is live so everything goes live as at now." This replaces "do not merge" (point 1 of the 2026-11-07 request below).
 
