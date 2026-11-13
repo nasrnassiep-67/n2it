@@ -199,7 +199,7 @@ struct RecentsView: View {
                         VStack(alignment: .leading) {
                             Text(r.name ?? r.number).foregroundStyle(r.missed ? .red : .primary)
                             if r.name != nil { Text(r.number).font(.caption).foregroundStyle(.secondary) }
-                            Text(r.date, style: .relative).font(.caption).foregroundStyle(.secondary)
+                            Text(r.date.formatted(date: .numeric, time: .shortened)).font(.caption).foregroundStyle(.secondary)   // fixed time, like Android (.relative kept ticking)
                         }
                     }
                 }
@@ -448,8 +448,8 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Status") { StatusDot(); DndButton() }
-                Section(header: Text("SIP account"), footer: Text(acc.domain)) {
-                    TextField("Company code or server", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
+                Section(header: Text("SIP account"), footer: Text(acc.tenant)) {
+                    TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
                     PasswordField(text: $acc.password)
                     TextField("Voicemail number", text: $acc.voicemailNumber).keyboardType(.numbersAndPunctuation)
@@ -463,7 +463,7 @@ struct SettingsView: View {
                         Button("Copy details") { UIPasteboard.general.string = problem }
                     }
                 }
-                SignInStatus(checking: checking, problem: problem, domain: acc.domain)
+                SignInStatus(checking: checking, problem: problem)
                 Button("Save & Register") {
                     checking = true; problem = nil
                     let previous = Account.load()
@@ -504,7 +504,7 @@ struct AccountsSection: View {
                         .foregroundStyle(isActive ? Color.accentColor : .secondary)
                     VStack(alignment: .leading) {
                         Text("Extension \(a.user)")
-                        Text(a.domain + (isActive ? " · active" : "")).font(.caption).foregroundStyle(.secondary)
+                        Text(a.tenant + (isActive ? " · active" : "")).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Log out", role: .destructive) { leaving = a }.buttonStyle(.borderless).disabled(inCall)
@@ -524,7 +524,7 @@ struct AccountsSection: View {
             }
             Button("Cancel", role: .cancel) { leaving = nil }
         } message: { a in
-            Text("\(a.domain) is removed from this phone. You can add it again later with its password.")
+            Text("\(a.tenant) is removed from this phone. You can add it again later with its password.")
         }
     }
 
@@ -550,13 +550,13 @@ struct AddAccountView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(footer: Text((a.domain.isEmpty ? "Your company code (e.g. yourcompany), or the full server address" : "Connects to \(a.domain)")
+                Section(footer: Text("Your company code (e.g. yourcompany)"
                                      + "\nIt becomes the active account; the current one stays in the list.")) {
                     TextField("Company code", text: $a.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $a.user).keyboardType(.numberPad)
                     PasswordField(text: $a.password)
                 }
-                SignInStatus(checking: checking, problem: problem, domain: a.domain)
+                SignInStatus(checking: checking, problem: problem)
             }
             .navigationTitle("Add account").navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -602,13 +602,12 @@ struct PasswordField: View {
     }
 }
 
-/// "Checking with <domain>…" while the sign-in check runs, else the refusal in red.
+/// "Checking…" while the sign-in check runs, else the refusal in red.
 struct SignInStatus: View {
     let checking: Bool
     let problem: String?
-    let domain: String
     var body: some View {
-        if checking { HStack { ProgressView(); Text("Checking with \(domain)…").foregroundStyle(.secondary) } }
+        if checking { HStack { ProgressView(); Text("Checking…").foregroundStyle(.secondary) } }
         else if let problem { Text(problem).foregroundStyle(.red) }
     }
 }
@@ -636,6 +635,8 @@ struct LoginView: View {
                     }
                     card
                     Spacer(minLength: 0)
+                    Link("support@novamo.co.za", destination: URL(string: "mailto:support@novamo.co.za")!)
+                        .font(.footnote).foregroundStyle(.white.opacity(0.85))
                     VersionText().environment(\.colorScheme, .dark)
                 }
                 .padding(24)
@@ -653,14 +654,14 @@ struct LoginView: View {
     private var card: some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
-            Text(acc.domain.isEmpty ? "Your company code, or the full server address" : "Connects to \(acc.domain)")
+            Text("Your company code")
                 .font(.footnote).foregroundStyle(.secondary)
             Divider()
             TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
             Divider()
             PasswordField(text: $acc.password)
             Divider()
-            SignInStatus(checking: checking, problem: problem, domain: acc.domain)
+            SignInStatus(checking: checking, problem: problem)
             Button {
                 checking = true; problem = nil
                 Task {
