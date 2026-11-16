@@ -273,9 +273,14 @@ fun LoginScreen(done: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(if (wasRefused) "Wrong extension or password. Sign in again." else null) }
     val scope = rememberCoroutineScope()
-    // Navy brand screen in light and dark mode alike; the form sits on a white card
-    Column(Modifier.fillMaxSize().background(LoginNavy).padding(24.dp).systemBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.weight(1f))
+    // Navy brand screen in light and dark mode alike; the form sits on a white card.
+    // 0.3.27: the screen lifts above the keyboard (imePadding) and scrolls, so a tall keyboard (SwiftKey) no longer hides
+    // the password field; with the keyboard closed it looks as before (card centred, support + version at the bottom).
+    BoxWithConstraints(Modifier.fillMaxSize().background(LoginNavy).systemBarsPadding().imePadding()) {
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = maxHeight).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
+        Spacer(Modifier.height(0.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
         androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.novamo_logo), null, Modifier.size(84.dp))
         Spacer(Modifier.height(14.dp))
         Text("Novamo", fontSize = 34.sp, color = Color.White)
@@ -303,13 +308,17 @@ fun LoginScreen(done: () -> Unit) {
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(16.dp))
         Text("support@novamo.co.za", fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f),
             textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
             modifier = Modifier.clickable {
                 runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:support@novamo.co.za"))) }
             }.padding(vertical = 8.dp))
         MaterialTheme(colorScheme = androidx.compose.material3.darkColorScheme()) { VersionText() }
+        }
+    }
     }
 }
 
