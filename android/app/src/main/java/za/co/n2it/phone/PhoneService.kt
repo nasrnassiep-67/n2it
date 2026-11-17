@@ -130,7 +130,8 @@ class PhoneService : Service() {
 
     companion object {
         const val CH_STATUS = "status"; const val CH_CALL = "call"
-        const val ID_STATUS = 1; const val ID_CALL = 2
+        const val ID_STATUS = 1; const val ID_CALL = 2; const val ID_PUSH = 3
+        const val CH_PUSH = "call_push"
         private const val ACTION_IN_CALL = "za.co.n2it.phone.IN_CALL"
         private const val ACTION_IDLE = "za.co.n2it.phone.IDLE"
         private const val ACTION_HANGUP = "za.co.n2it.phone.HANGUP"
@@ -212,6 +213,8 @@ class PhoneService : Service() {
             b.setFullScreenIntent(open(c), true)
             if (busy || silenced) b.setSilent(true)
             nm.notify(ID_CALL, b.build())
+            // The call is here: the push's "Incoming call" banner makes way for this one (posted first, so no gap).
+            nm.cancel(ID_PUSH)
         }
 
         /** The other call ended while ours still rings: the normal incoming-call notification (full screen if locked). */
@@ -220,7 +223,33 @@ class PhoneService : Service() {
         fun silenceIncoming(c: Context) { if (lastCaller.isNotEmpty()) notifyIncoming(c, lastCaller, lastBusy, silenced = true) }
 
         fun clearIncoming(c: Context) {
-            c.getSystemService(NotificationManager::class.java).cancel(ID_CALL)
+            val nm = c.getSystemService(NotificationManager::class.java)
+            nm.cancel(ID_CALL); nm.cancel(ID_PUSH)
         }
+
+        /**
+         * 0.3.28 (2026-11-17): the Firebase push puts up an "Incoming call" banner at once, before the app has woken,
+         * registered and received the INVITE. On Samsung / Honor with the app asleep the call's own notification came
+         * only in the pull-down bar, without the pop-up, so the user had to open the app or swipe down to answer; a
+         * high-priority push that shows something straight away is also what Android expects (otherwise it lowers
+         * the push's priority). Silent (the ringtone starts with the INVITE), no full-screen intent (the locked-phone
+         * call screen stays with the real call), no caller details (the push carries none). Gone after 20 s, on the
+         * cancel push, or when the real call notification replaces it.
+         */
+        fun notifyPushRing(c: Context) {
+            val nm = c.getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(NotificationChannel(CH_PUSH, "Incoming calls (connecting)", NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null); enableVibration(false)
+            })
+            val n = NotificationCompat.Builder(c, CH_PUSH)
+                .setSmallIcon(R.drawable.ic_stat_n2it)
+                .setContentTitle("Incoming call").setContentText("Connecting…")
+                .setCategory(NotificationCompat.CATEGORY_CALL).setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(open(c)).setOngoing(true).setTimeoutAfter(20_000)
+                .build()
+            nm.notify(ID_PUSH, n)
+        }
+
+        fun clearPushRing(c: Context) { c.getSystemService(NotificationManager::class.java).cancel(ID_PUSH) }
     }
 }

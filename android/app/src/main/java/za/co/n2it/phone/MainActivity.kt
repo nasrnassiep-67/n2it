@@ -106,8 +106,10 @@ class MainActivity : ComponentActivity() {
     private fun askBatteryExemption() {
         val pm = getSystemService(PowerManager::class.java)
         val prefs = getSharedPreferences("n2it", MODE_PRIVATE)
-        if (pm.isIgnoringBatteryOptimizations(packageName) || prefs.getBoolean("battery_asked", false)) return
-        prefs.edit().putBoolean("battery_asked", true).apply()
+        // 0.3.28: asked once more ("battery_asked_2") on phones that still optimise the app. A sleeping app on Samsung /
+        // Honor rang without the pop-up banner (2026-11-17).
+        if (pm.isIgnoringBatteryOptimizations(packageName) || prefs.getBoolean("battery_asked_2", false)) return
+        prefs.edit().putBoolean("battery_asked", true).putBoolean("battery_asked_2", true).apply()
         try {
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
         } catch (e: ActivityNotFoundException) {

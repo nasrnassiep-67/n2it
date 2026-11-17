@@ -122,6 +122,8 @@ object SipManager : SipUa.Events {
     /** The call in front of the user: the one not on hold. */
     private fun currentCall() = liveCalls().firstOrNull { it.state != CallState.IncomingReceived && !it.localHold }
     private fun ringingCall() = liveCalls().firstOrNull { it.state == CallState.IncomingReceived && !it.answering }
+    /** A call ringing in (silenced or not); used by the push banner. */
+    fun hasRingingCall() = started && ringingCall() != null
 
     /** Mirror the calls into UI state: one call, or a held call plus a consult call. */
     private fun publish() {

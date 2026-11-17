@@ -12,11 +12,20 @@ import com.google.firebase.messaging.RemoteMessage
  * The background service stays as it is, for phones without Google services.
  */
 class PushService : FirebaseMessagingService() {
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
     override fun onNewToken(token: String) { PushToken.sync(this, token) }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        if (message.data["type"] != "call" || !Account.load(this).isConfigured) return
+        val type = message.data["type"]
+        if (type == "cancel") { main.post { if (!SipManager.hasRingingCall()) PhoneService.clearPushRing(this) }; return }
+        if (type != "call" || !Account.load(this).isConfigured) return
         SipManager.init(this)
+        // 0.3.28: the "Incoming call" banner at once (PhoneService.notifyPushRing), unless the call already rings or one is
+        // up (the app was awake and the INVITE came first), DND is on (the app turns the call away), or the push is late (the call is long gone). On the main
+        // thread, where the call list lives.
+        val fresh = message.sentTime <= 0 || System.currentTimeMillis() - message.sentTime < 30_000
+        if (fresh) main.post { if (!SipManager.dndActive() && !SipManager.hasRingingCall() && !SipManager.hasActiveCall()) PhoneService.notifyPushRing(this) }
         // High-priority messages may start a foreground service; if Android refuses, registering can still ring us.
         try { PhoneService.start(this) } catch (e: IllegalStateException) { }
         SipManager.wake()
