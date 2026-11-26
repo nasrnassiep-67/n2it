@@ -471,11 +471,11 @@ object SipManager : SipUa.Events {
                 setState(c, CallState.StreamsRunning)
                 if (c.hangupWanted) hangupCall(c)
             }
-            else -> fail(c, when (res.status) {
-                486, 600 -> "Busy"; 480 -> "Not available"; 404, 484 -> "Number not found"; 487 -> null
-                403 -> "Not allowed"; 408 -> "No answer"; 488 -> "Audio not accepted"; 503 -> res.reason.ifEmpty { "Not connected" }
-                else -> "${res.status} ${res.reason}".trim()
-            })
+            else -> {
+                val why = failWords(res.status)
+                fail(c, why)
+                if (why != null) CallFailReport.send(appContext, res.status, res.reason, why, c.number, c.callId)
+            }
         }
     }
 
@@ -487,6 +487,23 @@ object SipManager : SipUa.Events {
     }
 
     private fun ack(c: Call, res: SipMsg) { c.dialog?.let { ua.send(ua.inDialog(it, "ACK", res.cseq)) } }
+
+    /** Short words for a failed call (Nathier 2026-11-26): never the carrier's raw reply such as "482 Loop Detected",
+     *  which is isvoip's no-answer timeout. The real code goes to the PBX (CallFailReport), listed in Call trace.
+     *  Same table in iOS SipManager.swift and desktop app.js. null = the caller cancelled, say nothing. */
+    fun failWords(code: Int): String? = when (code) {
+        487 -> null
+        486, 600 -> "Busy"
+        603 -> "Declined"
+        480 -> "Not available"
+        408, 482 -> "No answer"
+        404, 410, 484, 604 -> "Number not found"
+        403 -> "Not allowed"
+        401, 407 -> "Sign-in problem, sign in again"
+        488, 606 -> "Audio not accepted"
+        in 500..599 -> "Can't connect right now, try again"
+        else -> "Call couldn't be connected"
+    }
 
     /** The call could not be made: say why (busy, rejected…) on the call screen instead of it just vanishing. */
     private fun fail(c: Call, why: String?) {

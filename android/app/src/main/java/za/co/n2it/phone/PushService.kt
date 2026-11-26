@@ -75,3 +75,26 @@ object PushToken {
         try { conn.responseCode } finally { conn.disconnect() }
     } catch (e: Exception) { 0 }
 }
+
+/** A call that could not be made: its real SIP code goes to the PBX (/push/call-failed, checked with the SIP password),
+ *  so support sees it in Call trace while the app only shows short words (Nathier 2026-11-26). Fire and forget. */
+object CallFailReport {
+    fun send(c: Context, code: Int, reason: String, shown: String, number: String, callId: String) {
+        val app = c.applicationContext
+        Thread {
+            val acc = Account.load(app)
+            if (!acc.isConfigured) return@Thread
+            val body = org.json.JSONObject().put("tenant", acc.domain).put("user", acc.user.trim()).put("password", acc.password)
+                .put("code", code).put("reason", reason).put("shown", shown).put("number", number).put("call_id", callId)
+                .put("app", "Android ${BuildConfig.VERSION_NAME}").put("at", System.currentTimeMillis() / 1000)
+            try {
+                val conn = java.net.URL("https://${acc.domain}/push/call-failed").openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 10_000; conn.readTimeout = 10_000
+                conn.requestMethod = "POST"; conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.outputStream.use { it.write(body.toString().toByteArray()) }
+                try { conn.responseCode } finally { conn.disconnect() }
+            } catch (e: Exception) { }
+        }.start()
+    }
+}
