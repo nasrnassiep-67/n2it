@@ -11,6 +11,22 @@ let ua, session, acc, muted = false
 let calls = [], mix = null, merging = false   // all live calls; mix = conference mixer (see buildMix)
 const cfg = () => ({ ...DEFAULTS, ...(acc?.settings || {}) })
 
+/** Short words for a failed call (Nathier 2026-11-26): never the carrier's raw reply such as "482 Loop Detected", which is
+ *  isvoip's no-answer timeout. The real code goes to the PBX (store.callFailed -> /push/call-failed), listed in Call trace.
+ *  Same table as Android SipManager.failWords and iOS SipManager.failWords. null = cancelled, say nothing. */
+function failWords(code) {
+  if (code === 487) return null
+  if ([486, 600].includes(code)) return 'Busy'
+  if (code === 603) return 'Declined'
+  if (code === 480) return 'Not available'
+  if ([408, 482].includes(code)) return 'No answer'
+  if ([404, 410, 484, 604].includes(code)) return 'Number not found'
+  if (code === 403) return 'Not allowed'
+  if ([401, 407].includes(code)) return 'Sign-in problem, sign in again'
+  if ([488, 606].includes(code)) return 'Audio not accepted'
+  if (code >= 500 && code <= 599) return "Can't connect right now, try again"
+  return "Call couldn't be connected"
+}
 const show = (id, on) => $(id).classList.toggle('hidden', !on)
 /** Status text in the top bar, a green / red dot, and the tray icon's tooltip. */
 function status(t) {
@@ -163,8 +179,13 @@ function connect() {
     s.on('ended', () => end(s))
     s.on('failed', (e) => {   // say why (no mic, busy, rejected…) instead of the call just vanishing
       end(s)
+      const code = e.originator === 'remote' ? e.message?.status_code : 0
+      if (!code && e.cause === JsSIP.C.causes.CANCELED) return   // we hung up before it was answered
+      const why = code ? failWords(code) : e.cause
+      if (!why) return
+      if (code && !s._incoming) store.callFailed({ code, reason: e.message.reason_phrase || '', shown: why, number: user(s), call_id: e.message.call_id || '' })
       const was = $('status').textContent
-      status(`Call failed: ${e.cause}`); setTimeout(() => { if ($('status').textContent.startsWith('Call failed')) status(was) }, 6000)
+      status(`Call failed: ${why}`); setTimeout(() => { if ($('status').textContent.startsWith('Call failed')) status(was) }, 6000)
     })
     s._incoming = originator === 'remote'
     s._log = { number: user(s), name: s.remote_identity.display_name, dir: s._incoming ? 'in' : 'out', at: Date.now() }
