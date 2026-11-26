@@ -302,7 +302,7 @@ final class SipUa: NSObject, URLSessionWebSocketDelegate {
         }
         events?.onTransportDown()
         guard wanted else { return }
-        setReg(.progress, 0, "Cannot reach \(domain) (retrying)")
+        setReg(.progress, 0, "Cannot reach the server (retrying)")
         reconnectItem = later(backoff) { [weak self] in self?.connect() }
         backoff = min(backoff * 2, 30)
     }
