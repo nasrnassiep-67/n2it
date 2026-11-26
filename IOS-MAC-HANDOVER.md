@@ -3,6 +3,13 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## NOVAMO iOS 0.3.8 RELEASED ON THE APP STORE (Mac session, 2026-11-26)
+- Apple approved 0.3.8 (build 202611071340, commit b2e2330), and the owner released it on 2026-11-26. App Store state: READY_FOR_SALE. App id 6821962053, Unlisted App: only people with the link can find it.
+- App Store link: https://apps.apple.com/app/id6821962053 (Apple can take a few hours to make it reachable everywhere).
+- PR #33 (rename-novamo-ios) merged to main (6a72912). All three Novamo PRs (#33 iOS, #34 Android, #35 desktop) are now merged.
+- **For the voip session:** please point the download page and any iOS links at the App Store link above, and change the remaining 'N2IT Phone' text on the download page to Novamo. TestFlight (https://testflight.apple.com/join/1AZ5QvWp) stays open for testers.
+- Next iOS build: PR #41 (ios-neutral-text, 0.3.9) is stacked on #33. Retarget it to main before merging.
+
 ## SECURITY CHECK FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-13): can Novamo iOS be used while the iPhone is locked?
 Answer to the lock-screen check that followed the Android 0.3.25 fix. **The rule:** with the phone locked, a person may only answer or decline an incoming call, and use the buttons on iOS's own call screen during that call (hang up, mute, speaker, keypad for menu digits). Everything else needs Face ID / Touch ID / the passcode first.
 
