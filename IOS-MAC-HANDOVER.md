@@ -8,7 +8,8 @@ Novamo iOS 0.3.8 is **live on the App Store** (checked 2026-11-26: state READY_F
 1. On the download page (voip.n2it.co.za/download) and anywhere else with an iPhone link, replace the TestFlight link with
    **https://apps.apple.com/za/app/id6821962053**. It is an Unlisted app, so this link is the only way to find it: App Store search won't show it.
 2. Change the remaining 'N2IT Phone' text on the download page to Novamo.
-3. Keep the TestFlight link (https://testflight.apple.com/join/1AZ5QvWp) only as an optional "beta" link for testers, or remove it.
+3. **Remove the TestFlight link** (https://testflight.apple.com/join/1AZ5QvWp) everywhere: the owner turned the public link OFF on
+   2026-11-26, so it no longer lets anyone join. Clients already on TestFlight should install from the App Store link instead.
 4. Next iOS version: 0.3.9 (support@novamo.co.za on sign-in, no server address on screen, Recents show date and time) is in App Store
    and TestFlight review since 2026-11-26 09:16 SAST, manual release.
 **Please answer here** when the page is updated, with the URL to check.
