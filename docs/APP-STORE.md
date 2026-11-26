@@ -26,42 +26,53 @@ Since 0.3.0 the app has no Linphone (own SIP over WSS + Google WebRTC, BSD), so 
 All countries **except China mainland** (Apple does not allow CallKit apps there; review rejects them otherwise).
 Price: Free.
 
-## Listing text
+## Listing text (Novamo; goes in with the launch version, nothing submitted yet)
 
-- **Name:** N2IT Phone (if taken, "N2IT Softphone", the current record name)
-- **Subtitle (30):** Your N2IT business extension
+The app is Novamo. N2IT stays the developer and publisher, and the description says "Powered by N2IT". The sign-in
+screen does not. Do not change the App Store Connect name until the launch is called.
+
+- **Name:** Novamo
+- **Subtitle (30):** Your office phone, anywhere
 - **Category:** Business (secondary: Productivity)
 - **Promotional text:** Take your office extension anywhere: calls ring on your iPhone, even when it's locked.
-- **Keywords (100):** softphone,voip,sip,pbx,business phone,extension,calls,office,n2it,voicemail
+- **Keywords (100):** softphone,voip,sip,pbx,business phone,extension,calls,office,voicemail,conference
 - **Support URL:** https://www.n2it.co.za/
 - **Privacy Policy URL:** https://www.n2it.co.za/privacy/
 - **Copyright:** 2026 N2IT
 
 **Description:**
 
-N2IT Phone puts your N2IT business phone extension on your iPhone. Make and receive company calls from anywhere,
-with the same number, voicemail and colleagues you have at the office.
+Novamo puts your business phone extension on your iPhone. Make and receive company calls from anywhere, with the same
+number, voicemail and colleagues you have at the office.
 
 - Calls ring like normal iPhone calls, even when the phone is locked
-- Company contacts and extensions from your PBX, alongside your own contacts
+- Company contacts and extensions from your phone system, alongside your own contacts
+- Find people by name, extension or number when you add someone or transfer a call
+- Conference calls that show who is in the call and who has left
 - Hold, mute, keypad, and switching between iPhone, speaker, Bluetooth and car kits
-- Transfer calls (blind or after speaking first) and add people to a 3-way call
+- Transfer calls (blind or after speaking first)
 - Do Not Disturb with an end time, so you never forget to switch it off
 - Voicemail indicator and one tap to listen
 - Recents with caller names
 - More than one extension on the same phone
 
-N2IT Phone needs an extension on an N2IT phone system. Sign in with the company code, extension and password from
-your N2IT administrator.
+Novamo needs an extension on a compatible business phone system. Sign in with the company code, extension and password
+from your administrator.
+
+Powered by N2IT.
 
 ## App Review information
 
 - **Sign-in required:** yes. Use the spare test extension given for TestFlight Beta Review (company code, extension,
   password). Put the company code in the notes, since the sign-in screen has three fields.
-- **Notes:** "N2IT Phone is a business softphone for customers of N2IT's hosted phone system. To test: sign in with
-  the details above, then dial 1002 (or *97 for voicemail). Incoming calls arrive by VoIP push and show the standard
-  iOS call screen (CallKit). This app is intended for unlisted distribution to N2IT's business customers; we are requesting unlisted
-  app distribution for it."
+- **Notes:** keep the answers to the Guideline 2.1 questions already in the App Store Connect Notes field, change the
+  app's name in them, and add this at the top: "Novamo is the new name of N2IT Softphone, approved as version 0.3.1. It
+  is the same app and the same developer: N2IT renamed it so that business customers of its phone system resellers see
+  a neutral name. Since 0.3.1 we added conference cards that show who is in a call, and a contact picker for adding
+  people and transferring calls. To test: sign in with the details above, then dial 1002 (or *97 for voicemail).
+  Incoming calls arrive by VoIP push and show the standard iOS call screen (CallKit). This app is intended for unlisted
+  distribution to business customers."
+- **Do not claim a licence** in the notes: N2IT has no current ICASA licence.
 - Contact: owner's name, phone and email.
 
 ## App Privacy (nutrition label)
@@ -89,6 +100,10 @@ Already answered by `ITSAppUsesNonExemptEncryption: false` in project.yml (stand
 
 Required sizes: iPhone 6.9" (1320 × 2868) and iPad 13" (2064 × 2752), because the app also runs on iPad
 (TARGETED_DEVICE_FAMILY 1,2).
+
+Novamo set: `~/Desktop/Novamo-AppStore-Screenshots` (7 iPhone, 5 iPad). No Settings shot: it shows the server address,
+which contains n2it. Conference shot: `-screenshotConference`; Add participant: `-screenshotCall -screenshotPicker 1002`.
+Wait about 12 s after launch, because earlier shots of some tabs came out blank.
 
 Debug builds have a screenshot mode with a demo extension and sample data that never contacts a PBX
 (`N2IT/Screenshots.swift`). Simulators: iPhone 18 Pro Max and iPad Pro 13-inch.

@@ -248,10 +248,15 @@ struct ParticipantCard: View {
     }
 
     var body: some View {
-        let drop = Button { sip.dropParticipant(p.id) } label: {
-            Image(systemName: "phone.down.fill").font(.system(size: 18)).foregroundStyle(.white)
-                .frame(width: 44, height: 44).background(Color.red).clipShape(Circle())
-        }.buttonStyle(.plain).accessibilityLabel("Hang up on \(title)")
+        // Only the operator removes people; anyone can still cancel a call of their own that is ringing or on hold
+        let drop = Group {
+            if sip.roomOperator || p.status != .talking {
+                Button { sip.dropParticipant(p.id) } label: {
+                    Image(systemName: "phone.down.fill").font(.system(size: 18)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).background(Color.red).clipShape(Circle())
+                }.buttonStyle(.plain).accessibilityLabel("Hang up on \(title)")
+            }
+        }
         let initial = Text(String(title.first(where: { $0.isLetter || $0.isNumber }) ?? "?").uppercased())
         Group {
             if tall {
@@ -390,7 +395,7 @@ struct CallView: View {
     private var connected: Bool { sip.onHold || sip.activeCall?.state == .StreamsRunning || sip.activeCall?.state == .Connected }
     private var ringingIn: Bool { sip.activeCall?.state == .IncomingReceived }
     private var label: String {
-        if sip.inConference { return "Conference · \(sip.participants.count + 1) people" }
+        if sip.inConference { return "Conference · \(sip.roomCount ?? sip.participants.count + 1) people" }
         switch sip.activeCall?.state {
         case .IncomingReceived: return "Incoming call"
         case .OutgoingProgress, .OutgoingInit: return "Calling…"
@@ -545,7 +550,7 @@ struct AddAccountView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(footer: Text((a.domain.isEmpty ? "Your company code (e.g. n2it), or the full server address" : "Connects to \(a.domain)")
+                Section(footer: Text((a.domain.isEmpty ? "Your company code (e.g. yourcompany), or the full server address" : "Connects to \(a.domain)")
                                      + "\nIt becomes the active account; the current one stays in the list.")) {
                     TextField("Company code", text: $a.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Extension", text: $a.user).keyboardType(.numberPad)
@@ -608,6 +613,9 @@ struct SignInStatus: View {
     }
 }
 
+/// Novamo brand navy: the sign-in screen stays this colour in light and dark mode alike (as Android).
+private let novamoNavy = Color(red: 10 / 255, green: 35 / 255, blue: 66 / 255)
+
 struct LoginView: View {
     @EnvironmentObject var sip: SipManager
     @State private var acc = Account.load()
@@ -616,27 +624,58 @@ struct LoginView: View {
     var done: () -> Void
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section(header: Text("Sign in"), footer: Text(acc.domain.isEmpty ? "Your company code, or the full server address" : "Connects to \(acc.domain)")) {
-                    TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    PasswordField(text: $acc.password)
-                }
-                SignInStatus(checking: checking, problem: problem, domain: acc.domain)
-                Button("Sign in") {
-                    checking = true; problem = nil
-                    Task {
-                        problem = await sip.signInProblem(acc, previous: nil)
-                        checking = false
-                        if problem == nil { acc.save(); PushManager.shared.uploadToken(); sip.loginRefused = false; done() }
+        GeometryReader { geo in
+            ScrollView {
+                VStack(spacing: 24) {
+                    Spacer(minLength: 0)
+                    VStack(spacing: 14) {
+                        Image("NovamoLogo").resizable().frame(width: 84, height: 84)
+                            .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+                            .accessibilityHidden(true)
+                        Text("Novamo").font(.system(size: 34, weight: .semibold)).foregroundStyle(.white)
                     }
-                }.disabled(!acc.isConfigured || checking)
-                Section { VersionText() }.listRowBackground(Color.clear)
-            }.navigationTitle("N2IT Phone")
-            .onAppear {
-                if sip.loginRefused { acc.password = ""; problem = "Wrong extension or password. Sign in again." }
+                    card
+                    Spacer(minLength: 0)
+                    VersionText().environment(\.colorScheme, .dark)
+                }
+                .padding(24)
+                .frame(minHeight: geo.size.height)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
+        .background(novamoNavy.ignoresSafeArea())
+        .onAppear {
+            if sip.loginRefused { acc.password = ""; problem = "Wrong extension or password. Sign in again." }
+        }
+    }
+
+    /// The form: always a white card with dark text, whatever the phone's appearance.
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Company code", text: $acc.tenant).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Text(acc.domain.isEmpty ? "Your company code, or the full server address" : "Connects to \(acc.domain)")
+                .font(.footnote).foregroundStyle(.secondary)
+            Divider()
+            TextField("Extension", text: $acc.user).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Divider()
+            PasswordField(text: $acc.password)
+            Divider()
+            SignInStatus(checking: checking, problem: problem, domain: acc.domain)
+            Button {
+                checking = true; problem = nil
+                Task {
+                    problem = await sip.signInProblem(acc, previous: nil)
+                    checking = false
+                    if problem == nil { acc.save(); PushManager.shared.uploadToken(); sip.loginRefused = false; done() }
+                }
+            } label: {
+                Text(checking ? "Signing in…" : "Sign in").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large).tint(novamoNavy)
+            .disabled(!acc.isConfigured || checking)
+        }
+        .padding(20)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .environment(\.colorScheme, .light)
     }
 }

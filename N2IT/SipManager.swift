@@ -364,6 +364,7 @@ final class SipManager: ObservableObject, SipUaEvents {
             c.elsewhere = why.contains("cause=200") || why.lowercased().contains("elsewhere")
             end(c)
         case "BYE":
+            dlog("BYE for \(req.callId): \(c == nil ? "no matching call" : "ending call")")
             ua.reply(req, 200, "OK")
             if let c { end(c) }
         case "UPDATE":
@@ -393,7 +394,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         guard let r = req.body.range(of: "SIP/2.0\\s+\\d{3}", options: .regularExpression),
               let code = Int(req.body[r].suffix(3)) else { return }
         if (200...299).contains(code) { hangupCall(c) }
-        else if code >= 300 { c.transferring = false; notice = "Transfer failed (\(code))" }
+        else if code >= 300 { moveFailed(c, "Transfer failed (\(code))") }
     }
 
     private func incoming(_ req: SipMsg) {
@@ -468,6 +469,10 @@ final class SipManager: ObservableObject, SipUaEvents {
     @Published var consulting = false
     @Published var inConference = false
     @Published var participants: [Participant] = []
+    /// People in the room, us included, from the PBX's latest answer; nil until it has answered.
+    @Published var roomCount: Int?
+    /// We pressed Merge, or the PBX says so: only the operator can remove people from the room.
+    @Published var roomOperator = false
 
     /// Mirror the calls into UI state: one call, or a held call plus a consult call.
     private func publish() {
@@ -496,6 +501,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         c.state = s
         if s == .StreamsRunning && !c.incoming { CallKitManager.shared.sipConnected() }
         if s == .StreamsRunning {
+            startRoomSearch()
             if c === confCall && !pendingMerge.isEmpty { let list = pendingMerge; pendingMerge = []; moveIntoRoom(list) }
             if c.autoMerge && confCall != nil { c.autoMerge = false; moveIntoRoom([c]) }
         }
@@ -697,6 +703,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         consultHoldDone(c)
         if c === confCall {
             confCall = nil; confRoom = nil; confPeople = []; pendingMerge = []
+            roomTracker?.stop(); roomTracker = nil; roomCount = nil; roomOperator = false
             liveCalls().forEach { $0.autoMerge = false }
         }
         if c.autoMerge { confCall?.media?.setMuted(muted) }
@@ -704,7 +711,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         if liveCalls().isEmpty {
             CallKitManager.shared.sipEnded()
             activeCall = nil; onHold = false; consulting = false; muted = false
-            wantedRoute = nil; audioDiag = nil
+            wantedRoute = nil; audioDiag = nil; roomSearching = false
         } else { publish() }
     }
 
@@ -829,7 +836,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         let req = ua.inDialog(d, "REFER").add("Refer-To", referTo).add("Referred-By", "<\(ua.aor)>")
         ua.request(req, onRetry: { d.localCseq = $0.cseq }) { [weak self] res in
             guard let self, res.status >= 200 else { return }
-            if res.status >= 300 { c.transferring = false; self.notice = "Transfer refused (\(res.status))"; return }
+            if res.status >= 300 { self.moveFailed(c, "Transfer refused (\(res.status))"); return }
             // Accepted: the PBX reports progress in NOTIFYs; if none comes, drop out anyway after 10 s
             later(10) { if c.transferring { self.hangupCall(c) } }
         }
@@ -872,6 +879,9 @@ final class SipManager: ObservableObject, SipUaEvents {
     private var confRoom: String?
     private var confPeople: [Participant] = []
     private var pendingMerge: [SipCall] = []
+    /// Asks the PBX who is in the room, so a card goes when that person hangs up (0.3.7).
+    private var roomTracker: RoomTracker?
+    private var roomCards = RoomCards()
 
     /// Add participant: in a conference, ring `number` with the room left as it is (holding it would play hold music
     /// to everyone; only our microphone is muted there) and move them in when they answer. Otherwise hold the call and
@@ -891,7 +901,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         guard answered.count >= 2 else { notice = "Wait for them to answer, then merge"; return }
         let room = "*32" + String((0..<7).map { _ in "0123456789".randomElement()! })
         guard let c = startCall(room) else { notice = "Could not start the conference"; return }
-        confRoom = room; confCall = c
+        confRoom = room; confCall = c; roomOperator = true
         pendingMerge = answered
         publish()
     }
@@ -903,6 +913,7 @@ final class SipManager: ObservableObject, SipUaEvents {
             confPeople.append(Participant(id: c.callId, number: c.number, name: c.name, status: .talking))
             refer(c, "<sip:\(room)@\(ua.domain)>")
         }
+        trackRoom(room)
         // Back to the room: unmute there, and off hold if a consult had put it on hold
         if let conf = confCall {
             conf.media?.setMuted(muted)
@@ -911,11 +922,98 @@ final class SipManager: ObservableObject, SipUaEvents {
         publish()
     }
 
-    /// Conference: someone still being rung (or on hold) can be hung up; people already in the room are mixed by the
-    /// PBX and can only leave themselves (hanging up ourselves leaves the others talking). As Android.
+    private func trackRoom(_ room: String) {
+        guard roomTracker == nil, confCall != nil, let api = RoomApi(Account.load()) else { return }
+        roomCards = RoomCards()
+        roomTracker = RoomTracker(api: api, room: String(room.dropFirst(3)),
+                                  onAnswer: { [weak self] in self?.applyRoom($0) },
+                                  onClosed: { [weak self] in
+                                      dlog("room closed: three 404s, ending the call")
+                                      if let c = self?.confCall { self?.hangupCall(c) }
+                                  })
+        roomTracker?.start()
+    }
+
+    /// What the PBX says about the room, the only thing that changes the cards (spec: IOS-MAC-HANDOVER.md, ROOM API UPDATE).
+    private func applyRoom(_ a: RoomAnswer) {
+        roomCount = a.count
+        if let host = a.host { roomOperator = host }
+        let gone = roomCards.update(cards: confPeople.map { (id: $0.id, number: $0.number) }, members: a.members)
+        let left = confPeople.filter { gone.contains($0.id) }
+        confPeople.removeAll { gone.contains($0.id) }
+        // Someone else answered that call (pickup, forward): their member gets a card of their own. Not while the REFER runs.
+        let pending = Set(liveCalls().map(\.callId))
+        let stale = roomCards.stale(confPeople.map(\.id).filter { !pending.contains($0) })
+        confPeople.removeAll { stale.contains($0.id) }
+        for m in roomCards.untied(a.members) {
+            let id = "room-\(m.id)"
+            let named = (m.name ?? "").isEmpty || m.name == m.number ? nil : m.name
+            confPeople.append(Participant(id: id, number: m.number, name: named, status: .talking))
+            roomCards.tie(id, to: m.id)
+        }
+        if !left.isEmpty { brief(left.map { "\(title($0)) left" }.joined(separator: ", ")) }
+        publish()
+    }
+
+    private func title(_ p: Participant) -> String { name(for: p.number) ?? p.name ?? p.number }
+
+    /// A notice that clears itself after a few seconds.
+    private func brief(_ text: String) {
+        notice = text
+        later(5) { [weak self] in if self?.notice == text { self?.notice = nil } }
+    }
+
+    /// A REFER into the room failed, for example voicemail had answered ("Cannot Blind Transfer 1 Legged calls"): that
+    /// person is not coming, so the card goes and their leg is hung up. Other transfers just say so.
+    private func moveFailed(_ c: SipCall, _ otherwise: String) {
+        c.transferring = false
+        guard let p = confPeople.first(where: { $0.id == c.callId }) else { notice = otherwise; return }
+        confPeople.removeAll { $0.id == c.callId }
+        brief("Could not add \(title(p))")
+        hangupCall(c)
+        confCall?.media?.setMuted(muted)   // back in the room with the microphone as the user left it, as Android
+        publish()
+    }
+
+    // Rule 0: someone moved in by the host never dialled the room, so on an answered call ask every 10 s whether it is
+    // in one.
+    private var roomSearching = false
+
+    private func startRoomSearch() {
+        guard !roomSearching, confCall == nil else { return }
+        roomSearching = true
+        later(10) { [weak self] in self?.searchRoom() }
+    }
+
+    private func searchRoom() {
+        guard roomSearching else { return }
+        let live = liveCalls()
+        guard confCall == nil, !live.isEmpty, let api = RoomApi(Account.load()) else { roomSearching = false; return }
+        guard live.count == 1, let c = live.first, c.answered, !c.transferring else {
+            later(10) { [weak self] in self?.searchRoom() }
+            return
+        }
+        api.get(room: nil) { [weak self] status, answer in
+            guard let self, self.roomSearching else { return }
+            if let answer, let room = answer.room, self.confCall == nil, !endedStates.contains(c.state) {
+                self.roomSearching = false
+                self.confCall = c; self.confRoom = "*32" + room; self.roomOperator = false; self.confPeople = []
+                self.trackRoom("*32" + room)
+                self.applyRoom(answer)
+            } else if let next = RoomTracker.delay(after: status, normal: 10) {
+                later(next) { [weak self] in self?.searchRoom() }
+            } else { self.roomSearching = false }
+        }
+    }
+
+    /// Conference: someone still being rung (or on hold) can be hung up by anyone; people in the room can only be removed
+    /// by the operator, through the PBX (the card goes when the room list says they left). As Android.
     func dropParticipant(_ id: String) {
         if let c = liveCalls().first(where: { $0.callId == id && $0 !== confCall }) { hangupCall(c); return }
-        notice = "They are in the conference room: they can hang up themselves"
+        guard let room = confRoom?.dropFirst(3), let member = roomCards.member(of: id), let api = RoomApi(Account.load()) else {
+            brief("They are still joining: try again in a moment"); return
+        }
+        api.remove(room: String(room), member: member) { [weak self] ok in if !ok { self?.brief("Could not remove them") } }
     }
 
     /// Attended transfer, step 2: connect the held caller to the consulted party (REFER with Replaces); the PBX joins
