@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('store', {
   clear: () => ipcRenderer.invoke('account:clear'),
   directory: () => ipcRenderer.invoke('directory:load'),
   version: () => ipcRenderer.invoke('app:version'),
+  callFailed: (o) => ipcRenderer.invoke('call:failed', o),
 })
 // Incoming calls: window pop-up + Windows notification (main.js), its buttons, and other apps' microphone use.
 contextBridge.exposeInMainWorld('callUi', {

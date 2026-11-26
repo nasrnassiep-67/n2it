@@ -166,6 +166,22 @@ ipcMain.handle('directory:load', async () => {
   } catch (e) { return { error: `Cannot reach ${host}` } }
 })
 
+// A call that could not be made: its real SIP code goes to the PBX (/push/call-failed, checked with the SIP password, as
+// the phone apps), so support sees it in Call trace while the app shows short words (Nathier 2026-11-26). Fire and forget.
+ipcMain.handle('call:failed', async (_e, o) => {
+  let acc
+  try { acc = JSON.parse(safeStorage.decryptString(fs.readFileSync(file()))) } catch { return }
+  const t = acc.tenant.trim().toLowerCase().replace(/\.+$/, '')
+  const host = t.includes('.') ? t : `${t}.voip.n2it.co.za`
+  const body = { tenant: t, user: acc.user.trim(), password: acc.pass, code: Number(o?.code) || 0,
+    reason: String(o?.reason || ''), shown: String(o?.shown || ''), number: String(o?.number || ''),
+    call_id: String(o?.call_id || ''), app: `Desktop ${app.getVersion()} ${process.platform}`, at: Math.floor(Date.now() / 1000) }
+  try {
+    await fetch(`https://${host}/push/call-failed`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), signal: AbortSignal.timeout(10000) })
+  } catch {}
+})
+
 // Chromium's separate audio process is a known cause of "NotReadableError: Could not start audio source" on some
 // Windows PCs whose mic works in other apps; capture in the main process instead. Windows only: on Linux an audio
 // fault then takes the whole app down (main-thread crash on Omarchy/Hyprland, 2026-10-09).
