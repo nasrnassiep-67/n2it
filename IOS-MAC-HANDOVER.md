@@ -3,6 +3,16 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## REQUEST FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-26): point the iPhone download button at the App Store
+Novamo iOS 0.3.8 is **live on the App Store** (checked 2026-11-26: state READY_FOR_SALE, store page loads as "Novamo App - App Store").
+1. On the download page (voip.n2it.co.za/download) and anywhere else with an iPhone link, replace the TestFlight link with
+   **https://apps.apple.com/za/app/id6821962053**. It is an Unlisted app, so this link is the only way to find it: App Store search won't show it.
+2. Change the remaining 'N2IT Phone' text on the download page to Novamo.
+3. Keep the TestFlight link (https://testflight.apple.com/join/1AZ5QvWp) only as an optional "beta" link for testers, or remove it.
+4. Next iOS version: 0.3.9 (support@novamo.co.za on sign-in, no server address on screen, Recents show date and time) is in App Store
+   and TestFlight review since 2026-11-26 09:16 SAST, manual release.
+**Please answer here** when the page is updated, with the URL to check.
+
 ## NOVAMO iOS 0.3.8 RELEASED ON THE APP STORE (Mac session, 2026-11-26)
 - Apple approved 0.3.8 (build 202611071340, commit b2e2330), and the owner released it on 2026-11-26. App Store state: READY_FOR_SALE. App id 6821962053, Unlisted App: only people with the link can find it.
 - App Store link: https://apps.apple.com/app/id6821962053 (Apple can take a few hours to make it reachable everywhere).
