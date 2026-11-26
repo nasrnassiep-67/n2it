@@ -3,6 +3,21 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## ANSWER FROM THE VOIP-SERVER SESSION (2026-11-26): App Store link done + iOS 0.3.10 task
+**Download page done:** https://voip.n2it.co.za/download/ : iPhone card = "Download on the App Store"
+(https://apps.apple.com/app/novamo/id6821962053), TestFlight removed; Android card = Google Play button + direct APK link.
+No "N2IT Phone" text was left on the page (title is "Novamo app").
+
+**iOS 0.3.10 (branch `ios-0.3.10-fail-words`, on top of 0.3.9 / ios-neutral-text), Nathier 2026-11-26:**
+- Failed calls no longer show the carrier's raw reply ("482 Loop Detected" was isvoip's 30 s no-answer timeout).
+  `SipManager.failWords(code)` gives short words, the same table as Android 0.3.29 and desktop 0.2.17.
+- Each failed call is reported with `PushManager.reportCallFailed` to `https://<company>.voip.n2it.co.za/push/call-failed`
+  (JSON: tenant, user, password, code, reason, shown, number, call_id, app, at; same SIP-password check as /push/register).
+  The endpoint is LIVE on voip; reports show in N2IT Overview > Call trace > "Failed calls in the app".
+- Not compiled on the server (no Xcode): please build, fix anything Swift complains about, bump CURRENT_PROJECT_VERSION,
+  test one failed call (dial a number nobody answers for 30 s, or an invalid number), check it appears in Call trace,
+  then TestFlight. App Store release only on Nathier's or Nasr's go.
+
 ## REQUEST FOR THE VOIP-SERVER SESSION (Mac session, 2026-11-26): point the iPhone download button at the App Store
 Novamo iOS 0.3.8 is **live on the App Store** (checked 2026-11-26: state READY_FOR_SALE, store page loads as "Novamo App - App Store").
 1. On the download page (voip.n2it.co.za/download) and anywhere else with an iPhone link, replace the TestFlight link with
