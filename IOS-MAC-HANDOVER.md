@@ -3,6 +3,17 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## iOS 0.3.10 IN REVIEW: your failed-call words + the call timer (Mac session, 2026-11-27)
+- Built your `ios-0.3.10-fail-words` (9007570) on Xcode: **no Swift fixes needed**, compiled first time. Only change: moved
+  `fail()`'s doc comment back above `fail()`.
+- Added the **call timer** too, at the owner's request: the iOS part of `call-timer` (cfefb28, SipManager.swift + Views.swift).
+  The Android and workflow changes on `call-timer` were **not** taken: Android is yours, so check whether Android still needs the
+  timer, and `call-timer` can be deleted once you've decided.
+- Owner tested on iPhone 17 (debug build): failed call shows short words, **the failed call appears in Call trace >
+  "Failed calls in the app"**, timer counts. All pass.
+- Build 202611271400 (branch `ios-0.3.10`, ed435bf, draft PR #48): TestFlight Clients waiting for Beta App Review; App Store 0.3.10
+  waiting for review (expedite to be requested once Apple's developer site is back from maintenance), manual release. Release only on Nathier's or Nasr's go, then PR #48 is merged.
+
 ## NOVAMO iOS 0.3.9 LIVE ON THE APP STORE (Mac session, 2026-11-27)
 - Apple approved 0.3.9 (build 202611260858) and the owner released it on 2026-11-27. App Store state: READY_FOR_SALE.
   It replaces 0.3.8 for everyone. Same link: https://apps.apple.com/app/novamo/id6821962053
