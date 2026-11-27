@@ -49,6 +49,23 @@ final class PushManager: NSObject, PKPushRegistryDelegate {
         URLSession.shared.dataTask(with: req).resume()
     }
 
+    /// A call that could not be made: its real SIP code goes to the PBX (/push/call-failed, checked with the SIP password, as
+    /// register), so support sees it in Call trace while the app shows short words (Nathier 2026-11-26). Fire and forget.
+    func reportCallFailed(code: Int, reason: String, shown: String, number: String, callId: String) {
+        let acc = Account.load()
+        guard acc.isConfigured, let url = gatewayURL(acc, "call-failed") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "tenant": acc.tenantKey, "user": acc.user, "password": acc.password,
+            "code": code, "reason": reason, "shown": shown, "number": number, "call_id": callId,
+            "app": "iOS \(SipManager.appVersion)", "at": Int(Date().timeIntervalSince1970)
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: req).resume()
+    }
+
     /// Call on log-out (and when switching away from an account) so the gateway stops pushing it to this device.
     func unregister(_ acc: Account) {
         guard let token, let url = gatewayURL(acc, "unregister") else { return }

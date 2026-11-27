@@ -18,6 +18,8 @@ struct CallInfo: Identifiable {
     let incoming: Bool
     /// Caller ID name from the PBX, or the contact's name; nil when unknown.
     var name: String? = nil
+    /// When the call was answered (nil = not yet): the call screen counts from it (2026-11-12, Nathier: no call timer).
+    var connectedAt: Date? = nil
 }
 
 /// One other person in a conference: the call screen gives each one a card (as on Android). `id` is the SIP Call-ID.
@@ -71,7 +73,8 @@ private final class SipCall {
     var invite: SipMsg?
     var dialog: Dialog?
     var media: CallMedia?
-    var answered = false
+    var answered = false { didSet { if answered && connectedAt == nil { connectedAt = Date() } } }
+    var connectedAt: Date?
     var answering = false
     /// Answered on another phone of the extension (the PBX's CANCEL says so): not a missed call.
     var elsewhere = false
@@ -480,7 +483,8 @@ final class SipManager: ObservableObject, SipUaEvents {
             let others = liveCalls().filter { $0 !== conf && !$0.transferring }
             let ringing = others.map { Participant(id: $0.callId, number: $0.number, name: $0.name, status: $0.answered ? .onHold : .ringing) }
             let people = confPeople + ringing
-            activeCall = CallInfo(number: people.map { $0.name ?? $0.number }.joined(separator: ", "), state: conf.state, incoming: false, name: nil)
+            activeCall = CallInfo(number: people.map { $0.name ?? $0.number }.joined(separator: ", "), state: conf.state, incoming: false, name: nil,
+                                  connectedAt: liveCalls().compactMap { $0.connectedAt }.min())   // from the first answer, not the merge
             inConference = true; participants = people
             onHold = conf.localHold
             consulting = others.contains { $0.answered && !$0.autoMerge }
@@ -492,7 +496,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         guard let c = currentCall() ?? ringingCall() ?? live.first else {
             activeCall = nil; onHold = false; consulting = false; return
         }
-        activeCall = CallInfo(number: c.number, state: c.state, incoming: c.incoming, name: c.name)
+        activeCall = CallInfo(number: c.number, state: c.state, incoming: c.incoming, name: c.name, connectedAt: c.connectedAt)
         onHold = c.state == .Paused || c.state == .Pausing
         consulting = live.count > 1
     }
@@ -608,17 +612,9 @@ final class SipManager: ObservableObject, SipUaEvents {
             setState(c, .StreamsRunning)
             if c.hangupWanted { hangupCall(c) }
         } else {
-            switch res.status {
-            case 486, 600: fail(c, "Busy")
-            case 480: fail(c, "Not available")
-            case 404, 484: fail(c, "Number not found")
-            case 487: fail(c, nil)
-            case 403: fail(c, "Not allowed")
-            case 408: fail(c, "No answer")
-            case 488: fail(c, "Audio not accepted")
-            case 503: fail(c, res.reason.isEmpty ? "Not connected" : res.reason)
-            default: fail(c, "\(res.status) \(res.reason)".trimmingCharacters(in: .whitespaces))
-            }
+            let why = SipManager.failWords(res.status)
+            fail(c, why)
+            if let why { PushManager.shared.reportCallFailed(code: res.status, reason: res.reason, shown: why, number: c.number, callId: c.callId) }
         }
     }
 
@@ -633,6 +629,25 @@ final class SipManager: ObservableObject, SipUaEvents {
     }
 
     private func ack(_ c: SipCall, _ res: SipMsg) { if let d = c.dialog { ua.send(ua.inDialog(d, "ACK", cseq: res.cseq)) } }
+
+    /// Short words for a failed call (Nathier 2026-11-26): never the carrier's raw reply such as "482 Loop Detected", which is
+    /// isvoip's no-answer timeout. The real code goes to the PBX (PushManager.reportCallFailed), listed in Call trace.
+    /// Same table as Android SipManager.failWords and desktop app.js failWords. nil = the caller cancelled, say nothing.
+    static func failWords(_ code: Int) -> String? {
+        switch code {
+        case 487: return nil
+        case 486, 600: return "Busy"
+        case 603: return "Declined"
+        case 480: return "Not available"
+        case 408, 482: return "No answer"
+        case 404, 410, 484, 604: return "Number not found"
+        case 403: return "Not allowed"
+        case 401, 407: return "Sign-in problem, sign in again"
+        case 488, 606: return "Audio not accepted"
+        case 500...599: return "Can't connect right now, try again"
+        default: return "Call couldn't be connected"
+        }
+    }
 
     /// The call could not be made: say why (busy, rejected…) on the call screen instead of it just vanishing.
     private func fail(_ c: SipCall, _ why: String?) {
