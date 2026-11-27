@@ -1,7 +1,7 @@
 name: Desktop installers
 on:
   push:
-    branches: [main, rename-novamo-desktop]
+    branches: [main, rename-novamo-desktop, desktop-0.2.17-fail-words]
     paths: ['windows/**', '.github/workflows/windows.yml']
   workflow_dispatch:
 permissions:
