@@ -23,7 +23,7 @@ targets:
       CODE_SIGN_STYLE: Automatic
       ENABLE_BITCODE: NO
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-      MARKETING_VERSION: "0.3.10"  # failed calls: short words on screen, real SIP code reported to the PBX (Call trace)
+      MARKETING_VERSION: "0.3.10"  # failed calls: short words + real SIP code to the PBX (Call trace); call timer on the call screen
       CURRENT_PROJECT_VERSION: "4"
     entitlements:
       path: N2IT/N2IT.entitlements
