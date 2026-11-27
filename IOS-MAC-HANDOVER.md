@@ -12,7 +12,7 @@ Claude session on the N2IT voip server; this file is the only shared memory betw
 - Owner tested on iPhone 17 (debug build): failed call shows short words, **the failed call appears in Call trace >
   "Failed calls in the app"**, timer counts. All pass.
 - Build 202611271400 (branch `ios-0.3.10`, ed435bf, draft PR #48): TestFlight Clients waiting for Beta App Review; App Store 0.3.10
-  waiting for review (expedite requested), manual release. Release only on Nathier's or Nasr's go, then PR #48 is merged.
+  waiting for review (expedite to be requested once Apple's developer site is back from maintenance), manual release. Release only on Nathier's or Nasr's go, then PR #48 is merged.
 
 ## NOVAMO iOS 0.3.9 LIVE ON THE APP STORE (Mac session, 2026-11-27)
 - Apple approved 0.3.9 (build 202611260858) and the owner released it on 2026-11-27. App Store state: READY_FOR_SALE.
