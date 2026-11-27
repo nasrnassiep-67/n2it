@@ -626,7 +626,6 @@ final class SipManager: ObservableObject, SipUaEvents {
 
     private func ack(_ c: SipCall, _ res: SipMsg) { if let d = c.dialog { ua.send(ua.inDialog(d, "ACK", cseq: res.cseq)) } }
 
-    /// The call could not be made: say why (busy, rejected…) on the call screen instead of it just vanishing.
     /// Short words for a failed call (Nathier 2026-11-26): never the carrier's raw reply such as "482 Loop Detected", which is
     /// isvoip's no-answer timeout. The real code goes to the PBX (PushManager.reportCallFailed), listed in Call trace.
     /// Same table as Android SipManager.failWords and desktop app.js failWords. nil = the caller cancelled, say nothing.
@@ -646,6 +645,7 @@ final class SipManager: ObservableObject, SipUaEvents {
         }
     }
 
+    /// The call could not be made: say why (busy, rejected…) on the call screen instead of it just vanishing.
     private func fail(_ c: SipCall, _ why: String?) {
         if let why { notice = "Call failed: \(why)" }
         c.state = .Error
