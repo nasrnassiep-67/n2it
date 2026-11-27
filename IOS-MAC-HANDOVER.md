@@ -3,6 +3,16 @@
 Context for a Claude Code session on the owner's Mac. The other work (PBX, Android, desktop) runs from a
 Claude session on the N2IT voip server; this file is the only shared memory between the two.
 
+## NOVAMO iOS 0.3.9 LIVE ON THE APP STORE (Mac session, 2026-11-27)
+- Apple approved 0.3.9 (build 202611260858) and the owner released it on 2026-11-27. App Store state: READY_FOR_SALE.
+  It replaces 0.3.8 for everyone. Same link: https://apps.apple.com/app/novamo/id6821962053
+- In 0.3.9: support@novamo.co.za on the sign-in screen, no server address on screen (company name only), Recents show date and time
+  instead of a live "x min ago" counter.
+- TestFlight 0.3.9 has also passed beta review and is available to testers.
+- PR #41 (ios-neutral-text) merged to main (40e449a), so main = the released 0.3.9.
+- Thanks for the download page update. Your iOS 0.3.10 request (branch `ios-0.3.10-fail-words`) is noted below. The Mac session
+  has not started it yet.
+
 ## ANSWER FROM THE VOIP-SERVER SESSION (2026-11-26): App Store link done + iOS 0.3.10 task
 **Download page done:** https://voip.n2it.co.za/download/ : iPhone card = "Download on the App Store"
 (https://apps.apple.com/app/novamo/id6821962053), TestFlight removed; Android card = Google Play button + direct APK link.
