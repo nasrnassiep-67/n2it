@@ -298,11 +298,11 @@ final class SipManager: ObservableObject, SipUaEvents {
         case .failed(let code, _)? where [401, 403, 407].contains(code):
             message = "Wrong extension or password. Check them and try again."
         case .failed(404, _)?:
-            message = "Extension not found at \(acc.domain)."
+            message = "Extension not found. Check your company code and extension."
         case .failed(let code, let reason)? where ![408, 503].contains(code):
             message = "The PBX refused the sign-in (\(code) \(reason))."
         default:
-            message = "No answer from \(acc.domain). Check the company code and your internet connection."
+            message = "No answer. Check the company code and your internet connection."
         }
         if let previous, previous.isConfigured { configure(previous) } else { stopRegistering() }
         return message
@@ -721,7 +721,7 @@ final class SipManager: ObservableObject, SipUaEvents {
 
     private func problem(_ what: String, _ sdp: String?, alert: Bool = true) {
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
-        lastProblem = "N2IT Phone \(SipManager.appVersion), \(f.string(from: Date()))\n\(what)" + (sdp.map { "\n--- SDP from PBX ---\n\($0)" } ?? "")
+        lastProblem = "Novamo \(SipManager.appVersion), \(f.string(from: Date()))\n\(what)" + (sdp.map { "\n--- SDP from PBX ---\n\($0)" } ?? "")
         if alert { notice = what }
     }
 
